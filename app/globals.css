@@ -24,3 +24,253 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ============================================================
+   CUSTOM FONTS - @font-face declarations
+   Add these to the bottom of app/globals.css
+   ============================================================ */
+
+@font-face {
+  font-family: 'American Typewriter';
+  src: url('/fonts/American Typewriter Copywriter.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Arial Bold';
+  src: url('/fonts/Arial Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Ballpark Weiner';
+  src: url('/fonts/Ballpark-Stadium .TTF') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Big Bimbo';
+  src: url('/fonts/Big-Bimbo-Rockit Ship.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Blackout';
+  src: url('/fonts/Black-out-Favorite child.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Britannic Bold';
+  src: url('/fonts/Britannic Bold Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Brush Script';
+  src: url('/fonts/Brush Script.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Brush Script Opti';
+  src: url('/fonts/BrushScriptOpti-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'College Block';
+  src: url('/fonts/College Block.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Cooper';
+  src: url('/fonts/Cooper-Different Strokes.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Cubano';
+  src: url('/fonts/Cubano-Mexicano.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Eras';
+  src: url('/fonts/Eras.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Exotic';
+  src: url('/fonts/Exotic.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Futura';
+  src: url('/fonts/Futura Bold.otf') format('opentype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Handel Gothic';
+  src: url('/fonts/HandelGothic.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Honey Script';
+  src: url('/fonts/Honey-Script-Poobear.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Impact';
+  src: url('/fonts/Impact.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'ITC Franklin Gothic';
+  src: url('/fonts/ITCFranklinGothicStd-MdCd.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Iron On Black';
+  src: url('/fonts/Iron-OnBlackletter-Regular-WALF.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Kaufman';
+  src: url('/fonts/Kaufmann-Bold.otf') format('opentype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'KG One More Night';
+  src: url('/fonts/KGOneMoreNight-Brunch.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Lemon Milk';
+  src: url('/fonts/LemonMilk.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Northern Lights';
+  src: url('/fonts/NorthernLights-Moonshadow.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Octin Sport';
+  src: url('/fonts/Octin-sports-Day School.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Diana';
+  src: url('/fonts/OPTIDiannaScript-BoldAgen.otf') format('opentype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Princetown';
+  src: url('/fonts/Princetown.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Rockwell';
+  src: url('/fonts/Rockwell.ttc') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Scratch';
+  src: url('/fonts/Scratch_.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Sign Painter';
+  src: url('/fonts/SignPainter HouseScript Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Souvenir';
+  src: url('/fonts/Souvenir-Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Superstar';
+  src: url('/fonts/Superstar-Highschool High.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Swiss';
+  src: url('/fonts/Swiss721Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Turnpike';
+  src: url('/fonts/Turnpike.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Univers';
+  src: url('/fonts/Univers-Condensed-Sans alot.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Wagner Modern';
+  src: url('/fonts/Wagner Modern.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
