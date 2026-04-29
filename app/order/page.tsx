@@ -88,31 +88,31 @@ function OrderPage() {
   }
 
   if (loading) return (
-    <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+    <div className="min-h-screen bg-white flex items-center justify-center">
       <p className="text-white font-mono">Loading your design...</p>
     </div>
   )
 
   if (error && !design) return (
-    <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+    <div className="min-h-screen bg-white flex items-center justify-center">
       <p className="text-red-400 font-mono">{error}</p>
     </div>
   )
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white" style={{ fontFamily: 'DM Sans, sans-serif' }}>
+    <div className="min-h-screen bg-white text-white" style={{ fontFamily: 'DM Sans, sans-serif' }}>
       {/* Header */}
-      <header className="flex items-center justify-between px-6 h-14 bg-[#161616] border-b border-[#2a2a2a]">
+      <header className="flex items-center justify-between px-6 h-14 bg-white border-b border-gray-200">
         <div className="font-black text-xl tracking-widest">
           TEE<span className="text-[#dd3333]">STUDIO</span>
         </div>
         {/* Steps */}
         <div className="flex items-center gap-2 font-mono text-xs">
-          <span className="text-gray-500">1. DESIGN</span>
+          <span className="text-gray-400">1. DESIGN</span>
           <span className="text-gray-600">→</span>
           <span className="text-[#dd3333] font-bold">2. QUANTITY & SIZES</span>
           <span className="text-gray-600">→</span>
-          <span className="text-gray-500">3. REVIEW</span>
+          <span className="text-gray-400">3. REVIEW</span>
         </div>
         <div className="w-32" />
       </header>
@@ -121,7 +121,7 @@ function OrderPage() {
         {/* Left - Design Preview */}
         <div className="flex-1">
           <h2 className="text-lg font-bold font-mono mb-4">Your Design</h2>
-          <div className="bg-[#111] border border-[#2a2a2a] rounded-xl overflow-hidden">
+          <div className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
             {design?.canvas_png_front ? (
               <img src={design.canvas_png_front} alt="Your design - front"
                 className="w-full object-contain" />
@@ -132,15 +132,15 @@ function OrderPage() {
             )}
           </div>
           {design?.canvas_png_back && (
-            <div className="mt-4 bg-[#111] border border-[#2a2a2a] rounded-xl overflow-hidden">
-              <p className="text-xs font-mono text-gray-500 px-3 pt-3">BACK</p>
+            <div className="mt-4 bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
+              <p className="text-xs font-mono text-gray-400 px-3 pt-3">BACK</p>
               <img src={design.canvas_png_back} alt="Your design - back"
                 className="w-full object-contain" />
             </div>
           )}
           {/* Edit design link */}
           <a href={`/designer?product_id=${design?.shopify_product_id?.split('/').pop()}&variant_id=${design?.shopify_variant_id?.split('/').pop()}&title=${encodeURIComponent(design?.product_title || '')}&price=${((design?.unit_price || 0) * 100).toFixed(0)}&design_id=${design?.id}`}
-            className="mt-4 inline-block text-xs font-mono text-gray-500 hover:text-[#dd3333] transition-all underline">
+            className="mt-4 inline-block text-xs font-mono text-gray-400 hover:text-[#dd3333] transition-all underline">
             ← Edit Design
           </a>
         </div>
@@ -149,26 +149,26 @@ function OrderPage() {
         <div className="w-96 shrink-0 flex flex-col gap-6">
 
           {/* Product Info */}
-          <div className="bg-[#111] border border-[#2a2a2a] rounded-xl p-4">
-            <p className="text-xs font-mono text-gray-500 uppercase tracking-widest mb-1">Product</p>
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+            <p className="text-xs font-mono text-gray-400 uppercase tracking-widest mb-1">Product</p>
             <p className="font-bold">{design?.product_title}</p>
             <p className="text-sm text-gray-400 mt-1">Color: {design?.selected_color}</p>
             <p className="text-sm text-gray-400">Print: {design?.print_method?.replace('_', ' ')}</p>
           </div>
 
           {/* Pricing */}
-          <div className="bg-[#111] border border-[#2a2a2a] rounded-xl p-4">
-            <p className="text-xs font-mono text-gray-500 uppercase tracking-widest mb-3">Pricing</p>
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+            <p className="text-xs font-mono text-gray-400 uppercase tracking-widest mb-3">Pricing</p>
             <div className="flex flex-col gap-2 text-sm">
               <div className="flex justify-between text-gray-400">
                 <span>Blank shirt</span>
-                <span className="text-white">${design?.unit_price?.toFixed(2)}</span>
+                <span className="text-gray-900">${design?.unit_price?.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-gray-400">
                 <span>Print charge ({design?.sides_designed} side{(design?.sides_designed || 0) > 1 ? 's' : ''})</span>
-                <span className="text-white">+${design?.print_charge?.toFixed(2)}</span>
+                <span className="text-gray-900">+${design?.print_charge?.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between font-bold border-t border-[#2a2a2a] pt-2">
+              <div className="flex justify-between font-bold border-t border-gray-200 pt-2">
                 <span>Price per item</span>
                 <span className="text-[#dd3333]">${pricePerItem.toFixed(2)}</span>
               </div>
@@ -180,7 +180,7 @@ function OrderPage() {
               )}
             </div>
             {/* Discount tiers */}
-            <div className="mt-3 bg-[#0a0a0a] rounded-lg p-3 text-[10px] font-mono text-gray-600 flex flex-col gap-1">
+            <div className="mt-3 bg-white rounded-lg p-3 text-[10px] font-mono text-gray-600 flex flex-col gap-1">
               <div className={totalQty >= 6 ? 'text-[#dd3333]' : ''}>6+ shirts: 10% off</div>
               <div className={totalQty >= 12 ? 'text-[#dd3333]' : ''}>12+ shirts: 15% off</div>
               <div className={totalQty >= 24 ? 'text-[#dd3333]' : ''}>24+ shirts: 20% off</div>
@@ -188,13 +188,13 @@ function OrderPage() {
           </div>
 
           {/* Size Quantities */}
-          <div className="bg-[#111] border border-[#2a2a2a] rounded-xl p-4">
-            <p className="text-xs font-mono text-gray-500 uppercase tracking-widest mb-3">Sizes & Quantities</p>
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+            <p className="text-xs font-mono text-gray-400 uppercase tracking-widest mb-3">Sizes & Quantities</p>
             <div className="flex flex-col gap-2">
               {SIZES.map(size => (
                 <div key={size} className="flex items-center justify-between">
                   <span className="text-sm font-mono text-gray-300 w-10">{size}</span>
-                  <div className="flex items-center gap-3 bg-[#0a0a0a] border border-[#333] rounded-lg px-3 py-1.5">
+                  <div className="flex items-center gap-3 bg-white border border-[#333] rounded-lg px-3 py-1.5">
                     <button onClick={() => setQuantities(q => ({ ...q, [size]: Math.max(0, (q[size] || 0) - 1) }))}
                       className="text-gray-400 hover:text-[#dd3333] font-bold w-5 text-center text-lg leading-none">−</button>
                     <span className="text-sm font-mono w-5 text-center">{quantities[size] || 0}</span>
@@ -209,10 +209,10 @@ function OrderPage() {
             </div>
 
             {/* Totals */}
-            <div className="border-t border-[#2a2a2a] mt-4 pt-4 flex flex-col gap-2">
+            <div className="border-t border-gray-200 mt-4 pt-4 flex flex-col gap-2">
               <div className="flex justify-between text-sm text-gray-400">
                 <span>Total quantity</span>
-                <span className="text-white">{totalQty}</span>
+                <span className="text-gray-900">{totalQty}</span>
               </div>
               <div className="flex justify-between font-bold">
                 <span>Order total</span>
@@ -226,7 +226,7 @@ function OrderPage() {
 
           {/* Add to Cart Button */}
           <button onClick={handleAddToCart} disabled={adding || totalQty === 0}
-            className="w-full py-4 rounded-xl bg-[#dd3333] text-black font-black text-lg tracking-wide hover:bg-yellow-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+            className="w-full py-4 rounded-xl bg-[#dd3333] text-black font-black text-lg tracking-wide hover:bg-red-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
             {adding ? 'Adding to Cart...' : `Add to Cart → ${totalQty > 0 ? `(${totalQty} item${totalQty > 1 ? 's' : ''})` : ''}`}
           </button>
 
