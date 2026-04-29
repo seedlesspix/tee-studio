@@ -154,7 +154,6 @@ export default function DesignerCanvas({
   const [dbFonts, setDbFonts] = useState<{ label: string; value: string }[]>([])
   const [dbColors, setDbColors] = useState<{ label: string; hex: string }[]>([])
   const [letterSpacing, setLetterSpacing] = useState(0)
-  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center')
   const [isBold, setIsBold] = useState(false)
   const [isItalic, setIsItalic] = useState(false)
   const [isUppercase, setIsUppercase] = useState(false)
