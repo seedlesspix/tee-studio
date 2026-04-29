@@ -93,7 +93,7 @@ export default function ClipartPanel({ printMethod, onSelect }: Props) {
         placeholder="Search all clipart..."
         value={search}
         onChange={e => setSearch(e.target.value)}
-        className="w-full bg-[#1e1e1e] border border-[#2a2a2a] rounded px-3 py-2 text-sm text-white outline-none focus:border-[#e8ff47]"
+        className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333]"
       />
 
       {/* Category dropdown - hidden when searching */}
@@ -101,7 +101,7 @@ export default function ClipartPanel({ printMethod, onSelect }: Props) {
         <select
           value={selectedCategory}
           onChange={e => setSelectedCategory(e.target.value)}
-          className="w-full bg-[#1e1e1e] border border-[#2a2a2a] rounded px-3 py-2 text-sm text-white outline-none focus:border-[#e8ff47] font-mono cursor-pointer"
+          className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333] font-mono cursor-pointer"
         >
           {categories.map(cat => (
             <option key={cat.id} value={cat.id}>
@@ -113,16 +113,16 @@ export default function ClipartPanel({ printMethod, onSelect }: Props) {
 
       {/* Search results label */}
       {search.trim() && (
-        <p className="text-xs text-gray-500 font-mono">
+        <p className="text-xs text-gray-600 font-mono">
           {filtered.length} result{filtered.length !== 1 ? 's' : ''} for &ldquo;{search}&rdquo;
         </p>
       )}
 
       {/* Clipart grid */}
       {loading ? (
-        <p className="text-xs text-gray-500 text-center py-4">Loading...</p>
+        <p className="text-xs text-gray-600 text-center py-4">Loading...</p>
       ) : filtered.length === 0 ? (
-        <p className="text-xs text-gray-500 text-center py-4">No clipart found</p>
+        <p className="text-xs text-gray-600 text-center py-4">No clipart found</p>
       ) : (
         <div className="grid grid-cols-3 gap-2 max-h-96 overflow-y-auto pr-1">
           {filtered.map(item => (
@@ -130,7 +130,7 @@ export default function ClipartPanel({ printMethod, onSelect }: Props) {
               key={item.id}
               onClick={() => onSelect(item.file_url, item.file_type)}
               title={item.name}
-              className="bg-[#1e1e1e] border border-[#2a2a2a] rounded-lg p-2 hover:border-[#e8ff47] transition-all flex flex-col items-center gap-1"
+              className="bg-white border border-gray-200 rounded-lg p-2 hover:border-[#dd3333] transition-all flex flex-col items-center gap-1"
             >
               <img
                 src={item.file_url}
@@ -138,7 +138,7 @@ export default function ClipartPanel({ printMethod, onSelect }: Props) {
                 className="w-12 h-12 object-contain"
                 loading="lazy"
               />
-              <span className="text-[9px] text-gray-500 font-mono text-center leading-tight truncate w-full">
+              <span className="text-[9px] text-gray-600 font-mono text-center leading-tight truncate w-full">
                 {item.name}
               </span>
             </button>

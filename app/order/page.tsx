@@ -4,7 +4,7 @@ import { useSearchParams } from 'next/navigation'
 import { supabase } from '../lib/supabase'
 import { createShopifyCart } from '../lib/shopify'
 
-const SIZES = ['S', 'M', 'L', 'XL', '2XL', '3XL']
+const ALL_SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL']
 
 interface DesignOrder {
   id: string
@@ -20,6 +20,7 @@ interface DesignOrder {
   sides_designed: number
   print_method: string
   quantities: Record<string, number>
+  available_sizes: string[]
 }
 
 function OrderPage() {
@@ -38,12 +39,22 @@ function OrderPage() {
         if (error || !data) { setError('Design not found'); setLoading(false); return }
         setDesign(data)
         const initQty: Record<string, number> = {}
-        SIZES.forEach(s => initQty[s] = data.quantities?.[s] || 0)
+        // Use available_sizes from product, or fall back to saved quantities
+        const sizesToUse = (data.available_sizes?.length > 0)
+          ? data.available_sizes
+          : Object.keys(data.quantities || {}).length > 0
+            ? Object.keys(data.quantities)
+            : ALL_SIZES
+        sizesToUse.forEach((s: string) => initQty[s] = data.quantities?.[s] || 0)
         setQuantities(initQty)
         setLoading(false)
       })
   }, [designId])
 
+  const SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL']
+  const sortedSizes = Object.keys(quantities).sort(
+    (a, b) => SIZE_ORDER.indexOf(a) - SIZE_ORDER.indexOf(b)
+  )
   const totalQty = Object.values(quantities).reduce((a, b) => a + b, 0)
   const pricePerItem = design ? (design.unit_price + design.print_charge) : 0
   const discount = totalQty >= 24 ? 0.20 : totalQty >= 12 ? 0.15 : totalQty >= 6 ? 0.10 : 0
@@ -108,11 +119,11 @@ function OrderPage() {
         </div>
         {/* Steps */}
         <div className="flex items-center gap-2 font-mono text-xs">
-          <span className="text-gray-400">1. DESIGN</span>
-          <span className="text-gray-600">→</span>
+          <span className="text-gray-900">1. DESIGN</span>
+          <span className="text-gray-800">→</span>
           <span className="text-[#dd3333] font-bold">2. QUANTITY & SIZES</span>
-          <span className="text-gray-600">→</span>
-          <span className="text-gray-400">3. REVIEW</span>
+          <span className="text-gray-800">→</span>
+          <span className="text-gray-900">3. REVIEW</span>
         </div>
         <div className="w-32" />
       </header>
@@ -126,21 +137,21 @@ function OrderPage() {
               <img src={design.canvas_png_front} alt="Your design - front"
                 className="w-full object-contain" />
             ) : (
-              <div className="aspect-square flex items-center justify-center text-gray-600 font-mono">
+              <div className="aspect-square flex items-center justify-center text-gray-800 font-mono">
                 No preview available
               </div>
             )}
           </div>
           {design?.canvas_png_back && (
             <div className="mt-4 bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
-              <p className="text-xs font-mono text-gray-400 px-3 pt-3">BACK</p>
+              <p className="text-xs font-mono text-gray-900 px-3 pt-3">BACK</p>
               <img src={design.canvas_png_back} alt="Your design - back"
                 className="w-full object-contain" />
             </div>
           )}
           {/* Edit design link */}
           <a href={`/designer?product_id=${design?.shopify_product_id?.split('/').pop()}&variant_id=${design?.shopify_variant_id?.split('/').pop()}&title=${encodeURIComponent(design?.product_title || '')}&price=${((design?.unit_price || 0) * 100).toFixed(0)}&design_id=${design?.id}`}
-            className="mt-4 inline-block text-xs font-mono text-gray-400 hover:text-[#dd3333] transition-all underline">
+            className="mt-4 inline-block text-xs font-mono text-gray-900 hover:text-[#dd3333] transition-all underline">
             ← Edit Design
           </a>
         </div>
@@ -150,26 +161,26 @@ function OrderPage() {
 
           {/* Product Info */}
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-            <p className="text-xs font-mono text-gray-400 uppercase tracking-widest mb-1">Product</p>
-            <p className="font-bold">{design?.product_title}</p>
-            <p className="text-sm text-gray-400 mt-1">Color: {design?.selected_color}</p>
-            <p className="text-sm text-gray-400">Print: {design?.print_method?.replace('_', ' ')}</p>
+            <p className="text-xs font-mono text-gray-900 uppercase tracking-widest mb-1">Product</p>
+            <p className="text-lg font-bold text-gray-900">{design?.product_title}</p>
+            <p className="text-sm text-gray-900 mt-1">Color: {design?.selected_color}</p>
+            <p className="text-sm text-gray-900">Print: {design?.print_method?.replace('_', ' ')}</p>
           </div>
 
           {/* Pricing */}
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-            <p className="text-xs font-mono text-gray-400 uppercase tracking-widest mb-3">Pricing</p>
+            <p className="text-xs font-mono text-gray-900 uppercase tracking-widest mb-3">Pricing</p>
             <div className="flex flex-col gap-2 text-sm">
-              <div className="flex justify-between text-gray-400">
+              <div className="flex justify-between text-gray-900">
                 <span>Blank shirt</span>
-                <span className="text-gray-900">${design?.unit_price?.toFixed(2)}</span>
+                <span className="text-gray-900 font-medium">${design?.unit_price?.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-gray-400">
+              <div className="flex justify-between text-gray-900">
                 <span>Print charge ({design?.sides_designed} side{(design?.sides_designed || 0) > 1 ? 's' : ''})</span>
                 <span className="text-gray-900">+${design?.print_charge?.toFixed(2)}</span>
               </div>
               <div className="flex justify-between font-bold border-t border-gray-200 pt-2">
-                <span>Price per item</span>
+                <span className="text-gray-900 font-bold">Price per item</span>
                 <span className="text-[#dd3333]">${pricePerItem.toFixed(2)}</span>
               </div>
               {discount > 0 && (
@@ -180,7 +191,7 @@ function OrderPage() {
               )}
             </div>
             {/* Discount tiers */}
-            <div className="mt-3 bg-white rounded-lg p-3 text-[10px] font-mono text-gray-600 flex flex-col gap-1">
+            <div className="mt-3 bg-white rounded-lg p-3 text-[10px] font-mono text-gray-800 flex flex-col gap-1">
               <div className={totalQty >= 6 ? 'text-[#dd3333]' : ''}>6+ shirts: 10% off</div>
               <div className={totalQty >= 12 ? 'text-[#dd3333]' : ''}>12+ shirts: 15% off</div>
               <div className={totalQty >= 24 ? 'text-[#dd3333]' : ''}>24+ shirts: 20% off</div>
@@ -189,19 +200,19 @@ function OrderPage() {
 
           {/* Size Quantities */}
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-            <p className="text-xs font-mono text-gray-400 uppercase tracking-widest mb-3">Sizes & Quantities</p>
+            <p className="text-xs font-mono text-gray-900 uppercase tracking-widest mb-3">Sizes & Quantities</p>
             <div className="flex flex-col gap-2">
-              {SIZES.map(size => (
+              {sortedSizes.map(size => (
                 <div key={size} className="flex items-center justify-between">
                   <span className="text-sm font-mono text-gray-300 w-10">{size}</span>
                   <div className="flex items-center gap-3 bg-white border border-[#333] rounded-lg px-3 py-1.5">
                     <button onClick={() => setQuantities(q => ({ ...q, [size]: Math.max(0, (q[size] || 0) - 1) }))}
-                      className="text-gray-400 hover:text-[#dd3333] font-bold w-5 text-center text-lg leading-none">−</button>
-                    <span className="text-sm font-mono w-5 text-center">{quantities[size] || 0}</span>
+                      className="text-gray-900 hover:text-[#dd3333] font-bold w-5 text-center text-lg leading-none">−</button>
+                    <span className="text-sm font-mono w-5 text-center text-gray-900 font-bold">{quantities[size] || 0}</span>
                     <button onClick={() => setQuantities(q => ({ ...q, [size]: (q[size] || 0) + 1 }))}
-                      className="text-gray-400 hover:text-[#dd3333] font-bold w-5 text-center text-lg leading-none">+</button>
+                      className="text-gray-900 hover:text-[#dd3333] font-bold w-5 text-center text-lg leading-none">+</button>
                   </div>
-                  <span className="text-xs text-gray-600 font-mono w-16 text-right">
+                  <span className="text-xs text-gray-800 font-mono w-16 text-right">
                     {quantities[size] > 0 ? `$${(quantities[size] * pricePerItem).toFixed(2)}` : ''}
                   </span>
                 </div>
@@ -210,12 +221,12 @@ function OrderPage() {
 
             {/* Totals */}
             <div className="border-t border-gray-200 mt-4 pt-4 flex flex-col gap-2">
-              <div className="flex justify-between text-sm text-gray-400">
+              <div className="flex justify-between text-sm text-gray-900">
                 <span>Total quantity</span>
                 <span className="text-gray-900">{totalQty}</span>
               </div>
               <div className="flex justify-between font-bold">
-                <span>Order total</span>
+                <span className="text-gray-900 font-bold">Order total</span>
                 <span className="text-[#dd3333] text-lg">${total}</span>
               </div>
             </div>
@@ -226,11 +237,11 @@ function OrderPage() {
 
           {/* Add to Cart Button */}
           <button onClick={handleAddToCart} disabled={adding || totalQty === 0}
-            className="w-full py-4 rounded-xl bg-[#dd3333] text-black font-black text-lg tracking-wide hover:bg-red-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+            className="w-full py-4 rounded-xl bg-[#dd3333] text-white font-black text-lg tracking-wide hover:bg-red-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
             {adding ? 'Adding to Cart...' : `Add to Cart → ${totalQty > 0 ? `(${totalQty} item${totalQty > 1 ? 's' : ''})` : ''}`}
           </button>
 
-          <p className="text-xs text-gray-600 font-mono text-center">
+          <p className="text-xs text-gray-800 font-mono text-center">
             You'll be able to review your order before checkout
           </p>
         </div>

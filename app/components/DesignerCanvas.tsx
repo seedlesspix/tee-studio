@@ -1369,6 +1369,7 @@ export default function DesignerCanvas({
         canvas_json_back: JSON.stringify(backObjectsRef.current.map((o: any) => o.toJSON?.() || {})),
         uploaded_files: uploadedFileUrls,
         quantities,
+        available_sizes: SIZES.filter(s => isSizeAvailable(s)),
         unit_price: unitPrice,
         print_charge: printCharge,
         price_per_item: pricePerItem,
