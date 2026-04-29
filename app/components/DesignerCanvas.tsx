@@ -979,6 +979,13 @@ export default function DesignerCanvas({
 
     // Create an offscreen canvas to draw curved text
     const offCanvas = document.createElement('canvas')
+    // Measure text first using a temp canvas to get totalWidth
+    const tempCtx = document.createElement('canvas').getContext('2d')!
+    tempCtx.font = `${fontStyle} ${fontWeight} ${fSize}px ${fontFamily}`
+    const chars = text.split('')
+    const charWidths = chars.map((ch: string) => tempCtx.measureText(ch).width + (letterSpacing || 0))
+    const totalWidth = charWidths.reduce((a: number, b: number) => a + b, 0)
+    const totalAngle = totalWidth / radius
     const size = Math.min(Math.max(totalWidth + padding * 2, (radius + padding) * 2), 1200)
     offCanvas.width = size
     offCanvas.height = size
@@ -989,10 +996,6 @@ export default function DesignerCanvas({
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
 
-    const chars = text.split('')
-    const charWidths = chars.map(ch => ctx.measureText(ch).width + (letterSpacing || 0))
-    const totalWidth = charWidths.reduce((a, b) => a + b, 0)
-    const totalAngle = totalWidth / radius
 
     // Center of the offscreen canvas
     const cx = size / 2
