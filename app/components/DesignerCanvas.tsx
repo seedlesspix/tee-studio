@@ -159,7 +159,7 @@ export default function DesignerCanvas({
   const [isUppercase, setIsUppercase] = useState(false)
   const [textShadow, setTextShadow] = useState(false)
   const [textOutline, setTextOutline] = useState(false)
-  const [textDirection, setTextDirection] = useState<'horizontal' | 'vertical'>('horizontal')
+  const [textDirection, setTextDirection] = useState<'horizontal' | 'vertical' | 'curve-up' | 'curve-down'>('horizontal')
   const [curveAmount, setCurveAmount] = useState(0)
   const [selectedTextPreview, setSelectedTextPreview] = useState<string>('')
   const [selectedObjectType, setSelectedObjectType] = useState<'text' | 'image' | 'svg' | null>(null)
