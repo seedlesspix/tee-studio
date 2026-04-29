@@ -204,7 +204,7 @@ function OrderPage() {
             <div className="flex flex-col gap-2">
               {sortedSizes.map(size => (
                 <div key={size} className="flex items-center justify-between">
-                  <span className="text-sm font-mono text-gray-300 w-10">{size}</span>
+                  <span className="text-sm font-mono text-gray-900 font-semibold w-10">{size}</span>
                   <div className="flex items-center gap-3 bg-white border border-[#333] rounded-lg px-3 py-1.5">
                     <button onClick={() => setQuantities(q => ({ ...q, [size]: Math.max(0, (q[size] || 0) - 1) }))}
                       className="text-gray-900 hover:text-[#dd3333] font-bold w-5 text-center text-lg leading-none">−</button>
