@@ -1171,7 +1171,7 @@ export default function DesignerCanvas({
         offCanvas.width = viewport.width
         offCanvas.height = viewport.height
         const ctx = offCanvas.getContext('2d')!
-        await page.render({ canvasContext: ctx, viewport }).promise
+        await page.render({ canvasContext: ctx, viewport, canvas: offCanvas }).promise
         const dataUrl = offCanvas.toDataURL('image/png')
         const { FabricImage } = await import('fabric')
         const img = await FabricImage.fromURL(dataUrl)
