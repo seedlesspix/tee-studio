@@ -93,6 +93,13 @@ export async function createShopifyCart(
         cart {
           id
           checkoutUrl
+          lines(first: 1) {
+            edges {
+              node {
+                id
+              }
+            }
+          }
         }
         userErrors {
           field

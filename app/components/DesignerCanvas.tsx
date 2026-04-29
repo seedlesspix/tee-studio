@@ -1227,40 +1227,57 @@ export default function DesignerCanvas({
     canvas.renderAll()
   }
 
-  // Export canvas as PNG blob - composite with shirt image
+  // Export canvas as PNG blob - composite with shirt image using proxy to avoid CORS
   const exportCanvasPNG = async (canvas: any): Promise<Blob | null> => {
-    return new Promise(resolve => {
+    return new Promise(async resolve => {
       try {
-        // Create composite canvas: shirt image + design
         const composite = document.createElement('canvas')
         composite.width = 680
         composite.height = 850
         const ctx = composite.getContext('2d')!
         ctx.fillStyle = '#ffffff'
         ctx.fillRect(0, 0, 680, 850)
-        // Draw shirt image first - use object-fit contain logic
-        if (shirtImgRef.current && shirtImgRef.current.complete && shirtImgRef.current.naturalWidth > 0) {
-          const img = shirtImgRef.current
-          const imgAspect = img.naturalWidth / img.naturalHeight
-          const canvasAspect = 680 / 850
-          let drawW = 680, drawH = 850, drawX = 0, drawY = 0
-          if (imgAspect > canvasAspect) {
-            drawH = 680 / imgAspect
-            drawY = (850 - drawH) / 2
-          } else {
-            drawW = 850 * imgAspect
-            drawX = (680 - drawW) / 2
+        // Load shirt image via server proxy to avoid CORS in production
+        const shirtSrc = shirtImgRef.current?.src
+        if (shirtSrc && !shirtSrc.startsWith('data:')) {
+          try {
+            const proxyRes = await fetch(`/api/preview?shirt=${encodeURIComponent(shirtSrc)}&design=x`)
+            if (proxyRes.ok) {
+              const { shirt } = await proxyRes.json()
+              await new Promise<void>(r => {
+                const img = new Image()
+                img.onload = () => {
+                  const imgAspect = img.naturalWidth / img.naturalHeight
+                  const canvasAspect = 680 / 850
+                  let drawW = 680, drawH = 850, drawX = 0, drawY = 0
+                  if (imgAspect > canvasAspect) {
+                    drawH = 680 / imgAspect
+                    drawY = (850 - drawH) / 2
+                  } else {
+                    drawW = 850 * imgAspect
+                    drawX = (680 - drawW) / 2
+                  }
+                  ctx.drawImage(img, drawX, drawY, drawW, drawH)
+                  r()
+                }
+                img.onerror = () => r()
+                img.src = shirt
+              })
+            }
+          } catch (e) {
+            // fallback: try drawing directly
+            if (shirtImgRef.current?.complete) {
+              try { ctx.drawImage(shirtImgRef.current, 0, 0, 680, 850) } catch (_) {}
+            }
           }
-          ctx.drawImage(img, drawX, drawY, drawW, drawH)
+        } else if (shirtImgRef.current?.complete) {
+          try { ctx.drawImage(shirtImgRef.current, 0, 0, 680, 850) } catch (_) {}
         }
         // Draw design canvas on top
         const designEl = canvasRef.current
-        if (designEl) {
-          ctx.drawImage(designEl, 0, 0, 680, 850)
-        }
+        if (designEl) ctx.drawImage(designEl, 0, 0, 680, 850)
         composite.toBlob(blob => resolve(blob), 'image/png', 0.95)
       } catch (e) {
-        // Fallback to just design canvas
         const dataUrl = canvas.toDataURL({ format: 'png', multiplier: 2 })
         if (!dataUrl) return resolve(null)
         fetch(dataUrl).then(r => r.blob()).then(resolve).catch(() => resolve(null))

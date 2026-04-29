@@ -78,8 +78,15 @@ function OrderPage() {
         shopify_cart_url: cart.checkoutUrl,
         status: 'cart_created'
       }).eq('id', design.id)
-      // Redirect to the specific cart URL with customer's items
-      window.location.href = cart.checkoutUrl
+      // Convert checkoutUrl to cart page URL (not straight to checkout)
+      // checkoutUrl: https://tshirtdeli.com/checkouts/...
+      // We want: https://tshirtdeli.com/cart
+      // Extract cart token from checkoutUrl or use cart id
+      const cartId = cart.id // gid://shopify/Cart/xxx
+      const cartToken = cartId.split('/').pop() || ''
+      // Use the cart permalink format
+      const cartPageUrl = `https://tshirtdeli.com/cart/c/${cartToken}`
+      window.location.href = cartPageUrl
     } else {
       setError('Failed to create cart. Please try again.')
       setAdding(false)
