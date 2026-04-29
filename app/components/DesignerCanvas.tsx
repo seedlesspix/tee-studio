@@ -148,6 +148,7 @@ export default function DesignerCanvas({
   const [textColor, setTextColor] = useState('#ffffff')
   const [fontSize, setFontSize] = useState(36)
   const [printMethod, setPrintMethod] = useState<string>('')
+  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center')
   const [selectedSvgColor, setSelectedSvgColor] = useState<string>('#000000')
   const [printPricing, setPrintPricing] = useState<Record<number, number>>({1: 12, 2: 20})
   const [dbFonts, setDbFonts] = useState<{ label: string; value: string }[]>([])
@@ -1472,7 +1473,7 @@ export default function DesignerCanvas({
             {(['text', 'upload', 'clipart'] as const).map(tab => (
               <button key={tab} onClick={() => setActiveTab(tab)}
                 className={`py-2 rounded text-xs font-mono capitalize transition-all ${
-                  activeTab === tab ? 'bg-[#dd3333] text-white font-bold' : 'text-gray-400 hover:text-gray-900'
+                  activeTab === tab ? 'bg-[#dd3333] text-white font-bold' : 'text-gray-400 hover:text-white'
                 }`}>
                 {tab}
               </button>
@@ -1598,6 +1599,28 @@ export default function DesignerCanvas({
                   </div>
                 </div>
                 <div>
+                  <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Text Align</label>
+                  <div className="flex gap-1">
+                    {(['left', 'center', 'right'] as const).map(align => (
+                      <button key={align}
+                        onClick={() => {
+                          setTextAlign(align)
+                          const canvas = (window as any)._fabricCanvas
+                          const obj = canvas?.getActiveObject()
+                          if (obj && obj.type === 'textbox') {
+                            obj.set('textAlign', align)
+                            canvas.renderAll()
+                          }
+                        }}
+                        className={`flex-1 py-1.5 rounded text-xs font-mono border transition-all ${
+                          textAlign === align
+                            ? 'bg-[#dd3333] text-white border-[#dd3333]'
+                            : 'bg-white text-gray-500 border-gray-200 hover:border-[#dd3333]'
+                        }`}>
+                        {align === 'left' ? '⬛◻◻' : align === 'center' ? '◻⬛◻' : '◻◻⬛'}
+                      </button>
+                    ))}
+                  </div>
                   <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Effects</label>
                   <div className="grid grid-cols-3 gap-2 mt-1">
                     <button onClick={() => setIsBold(b => !b)}
@@ -1938,33 +1961,6 @@ export default function DesignerCanvas({
           </div>
 
           <div className="h-px bg-gray-200" />
-
-          <div className="flex flex-col gap-2">
-            <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Sizes</label>
-            {!selectedColor && (
-              <p className="text-xs text-gray-400 italic">Select a color first</p>
-            )}
-            {SIZES.map(size => {
-              const available = isSizeAvailable(size)
-              if (!available && product) return null
-              return (
-                <div key={size} className="flex justify-between items-center">
-                  <span className="text-xs font-mono text-gray-400 w-8">{size}</span>
-                  <div className="flex items-center gap-3 bg-gray-100 border border-gray-200 rounded px-3 py-1">
-                    <button
-                      onClick={() => setQuantities(q => ({ ...q, [size]: Math.max(0, q[size] - 1) }))}
-                      className="text-gray-400 hover:text-[#dd3333] font-bold w-4 text-center">−
-                    </button>
-                    <span className="text-xs font-mono w-4 text-center">{quantities[size]}</span>
-                    <button
-                      onClick={() => setQuantities(q => ({ ...q, [size]: q[size] + 1 }))}
-                      className="text-gray-400 hover:text-[#dd3333] font-bold w-4 text-center">+
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
 
           <div className="h-px bg-gray-200" />
 
