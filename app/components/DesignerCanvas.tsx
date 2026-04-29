@@ -610,11 +610,11 @@ export default function DesignerCanvas({
       import('fabric').then(({ controlsUtils, Control, util }) => {
         // Helper to render icon controls
         const renderIcon = (icon: string) => (ctx: CanvasRenderingContext2D, left: number, top: number, _: any, fabricObject: any) => {
-          const size = 28
+          const size = 20
           ctx.save()
           ctx.translate(left, top)
           ctx.rotate(util.degreesToRadians(fabricObject.angle || 0))
-          ctx.fillStyle = '#e8ff47'
+          ctx.fillStyle = '#dd3333'
           ctx.beginPath()
           ctx.arc(0, 0, size / 2, 0, Math.PI * 2)
           ctx.fill()
@@ -638,7 +638,7 @@ export default function DesignerCanvas({
             return true
           },
           render: renderIcon('✕'),
-          sizeX: 28, sizeY: 28,
+          sizeX: 20, sizeY: 20,
         })
 
         // Rotate control (bottom-right)  
@@ -649,7 +649,7 @@ export default function DesignerCanvas({
           actionHandler: controlsUtils.rotationWithSnapping,
           actionName: 'rotate',
           render: renderIcon('↻'),
-          sizeX: 28, sizeY: 28,
+          sizeX: 20, sizeY: 20,
           withConnection: false,
         })
 
@@ -661,7 +661,7 @@ export default function DesignerCanvas({
           actionHandler: controlsUtils.scalingEqually,
           actionName: 'scale',
           render: renderIcon('⤡'),
-          sizeX: 28, sizeY: 28,
+          sizeX: 20, sizeY: 20,
         })
 
         // Stretch-X control (middle-right)
@@ -672,7 +672,7 @@ export default function DesignerCanvas({
           actionHandler: controlsUtils.scalingXOrSkewingY,
           actionName: 'scaleX',
           render: renderIcon('↔'),
-          sizeX: 28, sizeY: 28,
+          sizeX: 20, sizeY: 20,
         })
 
         // Apply to all future objects via prototype
@@ -690,7 +690,7 @@ export default function DesignerCanvas({
               cursorStyle: 'nw-resize',
               actionHandler: controlsUtils.scalingEqually,
               render: renderIcon('⤢'),
-              sizeX: 28, sizeY: 28,
+              sizeX: 20, sizeY: 20,
             }),
           }
           obj.setCoords()
@@ -1429,12 +1429,12 @@ export default function DesignerCanvas({
   const total = (totalQty * pricePerItem * (1 - discount)).toFixed(2)
 
   return (
-    <div className="flex flex-col h-screen text-white" style={{ fontFamily: 'DM Sans, sans-serif' }}>
+    <div className="flex flex-col h-screen text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
 
       {/* Header */}
-      <header className="flex items-center justify-between px-6 h-14 bg-[#161616] border-b border-[#2a2a2a] shrink-0">
+      <header className="flex items-center justify-between px-6 h-14 bg-white border-b border-gray-200 shrink-0">
         <div className="font-black text-xl tracking-widest">
-          TEE<span className="text-[#e8ff47]">STUDIO</span>
+          TEE<span className="text-[#dd3333]">STUDIO</span>
         </div>
         <div className="text-sm text-gray-400 truncate max-w-xs">{productTitle}</div>
         <button
@@ -1458,7 +1458,7 @@ export default function DesignerCanvas({
             }
           }}
           data-cart-btn
-          className="bg-[#e8ff47] text-black px-5 py-2 rounded text-sm font-bold tracking-wide hover:opacity-80 transition-opacity">
+          className="bg-[#dd3333] text-white px-5 py-2 rounded text-sm font-bold tracking-wide hover:opacity-80 transition-opacity">
           Next Step →
         </button>
       </header>
@@ -1467,12 +1467,12 @@ export default function DesignerCanvas({
       <div className="flex flex-1 overflow-hidden">
 
         {/* Left panel */}
-        <aside className="w-72 bg-[#161616] border-r border-[#2a2a2a] flex flex-col overflow-y-auto shrink-0">
-          <div className="grid grid-cols-3 gap-1 p-2 bg-[#1e1e1e] m-3 rounded-lg">
+        <aside className="w-72 bg-white border-r border-gray-200 flex flex-col overflow-y-auto shrink-0">
+          <div className="grid grid-cols-3 gap-1 p-2 bg-gray-100 m-3 rounded-lg">
             {(['text', 'upload', 'clipart'] as const).map(tab => (
               <button key={tab} onClick={() => setActiveTab(tab)}
                 className={`py-2 rounded text-xs font-mono capitalize transition-all ${
-                  activeTab === tab ? 'bg-[#e8ff47] text-black font-bold' : 'text-gray-400 hover:text-white'
+                  activeTab === tab ? 'bg-[#dd3333] text-white font-bold' : 'text-gray-400 hover:text-gray-900'
                 }`}>
                 {tab}
               </button>
@@ -1485,25 +1485,25 @@ export default function DesignerCanvas({
             {activeTab === 'text' && (
               <>
                 <div>
-                  <label className="text-xs text-gray-500 uppercase tracking-widest font-mono">Your Text</label>
+                  <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Your Text</label>
                   <input type="text" value={textInput}
                     onChange={e => setTextInput(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && addText()}
                     placeholder="Type something..."
-                    className="w-full mt-1 bg-[#1e1e1e] border border-[#2a2a2a] rounded px-3 py-2 text-sm text-white outline-none focus:border-[#e8ff47]"
+                    className="w-full mt-1 bg-gray-100 border border-gray-200 rounded px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333]"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 uppercase tracking-widest font-mono">Font</label>
+                  <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Font</label>
                   <div className="flex flex-col gap-1 mt-1 max-h-48 overflow-y-auto pr-1">
                     {(dbFonts.length > 0 ? dbFonts : fonts).map(f => (
                       <button key={f.value} onClick={() => setSelectedFont(f.value)}
                         className={`w-full text-left px-3 py-2 rounded border transition-all ${
                           selectedFont === f.value
-                            ? 'border-[#e8ff47] bg-[#e8ff47]/10'
-                            : 'border-[#2a2a2a] bg-[#1e1e1e] hover:border-[#444]'
+                            ? 'border-[#dd3333] bg-[#dd3333]/10'
+                            : 'border-gray-200 bg-gray-100 hover:border-[#444]'
                         }`}>
-                        <div className="text-xs text-gray-500 font-mono mb-0.5">{f.label}</div>
+                        <div className="text-xs text-gray-400 font-mono mb-0.5">{f.label}</div>
                         <div style={{ fontFamily: f.value, fontSize: '18px', color: '#fff', lineHeight: 1.2 }}>
                           {selectedTextPreview || textInput || 'Preview Text'}
                         </div>
@@ -1513,27 +1513,27 @@ export default function DesignerCanvas({
                 </div>
                 <div>
                   <div className="flex justify-between items-center">
-                    <label className="text-xs text-gray-500 uppercase tracking-widest font-mono">Size</label>
+                    <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Size</label>
                     <input type="number" min={8} max={120} value={fontSize}
                       onChange={e => setFontSize(Number(e.target.value))}
-                      className="w-14 bg-[#1e1e1e] border border-[#2a2a2a] rounded px-2 py-1 text-xs text-white outline-none text-center focus:border-[#e8ff47]"
+                      className="w-14 bg-gray-100 border border-gray-200 rounded px-2 py-1 text-xs text-gray-900 outline-none text-center focus:border-[#dd3333]"
                     />
                   </div>
                   <input type="range" min={8} max={120} value={fontSize}
                     onChange={e => setFontSize(Number(e.target.value))}
-                    className="w-full mt-1 accent-[#e8ff47]" />
+                    className="w-full mt-1 accent-[#dd3333]" />
                 </div>
                 <div>
                   <div className="flex justify-between items-center">
-                    <label className="text-xs text-gray-500 uppercase tracking-widest font-mono">Letter Spacing</label>
-                    <span className="text-xs text-[#e8ff47] font-mono">{letterSpacing}</span>
+                    <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Letter Spacing</label>
+                    <span className="text-xs text-[#dd3333] font-mono">{letterSpacing}</span>
                   </div>
                   <input type="range" min={-5} max={30} value={letterSpacing}
                     onChange={e => setLetterSpacing(Number(e.target.value))}
-                    className="w-full mt-1 accent-[#e8ff47]" />
+                    className="w-full mt-1 accent-[#dd3333]" />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 uppercase tracking-widest font-mono">Text Color</label>
+                  <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Text Color</label>
                   <div className="flex gap-2 mt-2 flex-wrap items-center">
                     {(dbColors.length > 0 ? dbColors : [
                       { label: 'White', hex: '#ffffff' },
@@ -1547,7 +1547,7 @@ export default function DesignerCanvas({
                         }}
                         className={`w-8 h-8 rounded-full transition-transform hover:scale-110 ${
                           textColor === c.hex
-                            ? 'ring-2 ring-[#e8ff47] ring-offset-1 ring-offset-[#161616]'
+                            ? 'ring-2 ring-[#dd3333] ring-offset-1 ring-offset-[#161616]'
                             : ''
                         }`}
                       />
@@ -1558,65 +1558,65 @@ export default function DesignerCanvas({
                       title="Custom color" />
                   </div>
                   {dbColors.length > 0 && (
-                    <p className="text-xs text-gray-500 mt-1 font-mono">
+                    <p className="text-xs text-gray-400 mt-1 font-mono">
                       {dbColors.find(c => c.hex === textColor)?.label || 'Custom'}
                     </p>
                   )}
                 </div>
 
                 <div>
-                  <label className="text-xs text-gray-500 uppercase tracking-widest font-mono">Direction</label>
+                  <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Direction</label>
                   <div className="grid grid-cols-2 gap-2 mt-1">
                     <button onClick={() => setTextDirection('horizontal')}
-                      className={`py-2 rounded text-xs font-mono transition-all ${textDirection === 'horizontal' ? 'bg-[#e8ff47] text-black' : 'bg-[#1e1e1e] text-gray-400 border border-[#2a2a2a]'}`}>
+                      className={`py-2 rounded text-xs font-mono transition-all ${textDirection === 'horizontal' ? 'bg-[#dd3333] text-white' : 'bg-gray-100 text-gray-400 border border-gray-200'}`}>
                       — Horizontal
                     </button>
                     <button onClick={() => setTextDirection('vertical')}
-                      className={`py-2 rounded text-xs font-mono transition-all ${textDirection === 'vertical' ? 'bg-[#e8ff47] text-black' : 'bg-[#1e1e1e] text-gray-400 border border-[#2a2a2a]'}`}>
+                      className={`py-2 rounded text-xs font-mono transition-all ${textDirection === 'vertical' ? 'bg-[#dd3333] text-white' : 'bg-gray-100 text-gray-400 border border-gray-200'}`}>
                       ↕ Vertical
                     </button>
                   </div>
                 </div>
                 <div>
                   <div className="flex justify-between items-center">
-                    <label className="text-xs text-gray-500 uppercase tracking-widest font-mono">Curve</label>
+                    <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Curve</label>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-400 font-mono">{curveAmount > 0 ? `+${curveAmount}` : curveAmount}</span>
                       <button onClick={() => setCurveAmount(0)}
-                        className={`text-[10px] px-2 py-0.5 rounded font-mono transition-all ${curveAmount !== 0 ? 'bg-[#e8ff47] text-black' : 'bg-[#2a2a2a] text-gray-600'}`}>
+                        className={`text-[10px] px-2 py-0.5 rounded font-mono transition-all ${curveAmount !== 0 ? 'bg-[#dd3333] text-white' : 'bg-gray-200 text-gray-400'}`}>
                         Straight
                       </button>
                     </div>
                   </div>
                   <input type="range" min="-100" max="100" value={curveAmount}
                     onChange={e => setCurveAmount(Number(e.target.value))}
-                    className="w-full mt-1 accent-[#e8ff47]" />
-                  <div className="flex justify-between text-[9px] text-gray-600 font-mono mt-0.5">
+                    className="w-full mt-1 accent-[#dd3333]" />
+                  <div className="flex justify-between text-[9px] text-gray-400 font-mono mt-0.5">
                     <span>⌣ Down</span>
                     <span>|</span>
                     <span>⌢ Up</span>
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 uppercase tracking-widest font-mono">Effects</label>
+                  <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Effects</label>
                   <div className="grid grid-cols-3 gap-2 mt-1">
                     <button onClick={() => setIsBold(b => !b)}
-                      className={`py-2 rounded text-xs font-bold transition-all ${isBold ? 'bg-[#e8ff47] text-black' : 'bg-[#1e1e1e] text-gray-400 border border-[#2a2a2a]'}`}>
+                      className={`py-2 rounded text-xs font-bold transition-all ${isBold ? 'bg-[#dd3333] text-white' : 'bg-gray-100 text-gray-400 border border-gray-200'}`}>
                       Bold
                     </button>
                     <button onClick={() => setIsItalic(i => !i)}
-                      className={`py-2 rounded text-xs italic transition-all ${isItalic ? 'bg-[#e8ff47] text-black' : 'bg-[#1e1e1e] text-gray-400 border border-[#2a2a2a]'}`}>
+                      className={`py-2 rounded text-xs italic transition-all ${isItalic ? 'bg-[#dd3333] text-white' : 'bg-gray-100 text-gray-400 border border-gray-200'}`}>
                       Italic
                     </button>
                     <button onClick={() => setIsUppercase(u => !u)}
-                      className={`py-2 rounded text-xs font-mono transition-all ${isUppercase ? 'bg-[#e8ff47] text-black' : 'bg-[#1e1e1e] text-gray-400 border border-[#2a2a2a]'}`}>
+                      className={`py-2 rounded text-xs font-mono transition-all ${isUppercase ? 'bg-[#dd3333] text-white' : 'bg-gray-100 text-gray-400 border border-gray-200'}`}>
                       AA
                     </button>
 
                   </div>
                 </div>
                 <button onClick={addText}
-                  className="w-full bg-[#e8ff47] text-black py-3 rounded font-bold text-sm tracking-wide hover:opacity-85 transition-opacity">
+                  className="w-full bg-[#dd3333] text-white py-3 rounded font-bold text-sm tracking-wide hover:opacity-85 transition-opacity">
                   + Add to Shirt
                 </button>
                 <button onClick={deleteSelected}
@@ -1628,8 +1628,8 @@ export default function DesignerCanvas({
             {/* UPLOAD TAB */}
             {activeTab === 'upload' && (
               <div>
-                <label className="text-xs text-gray-500 uppercase tracking-widest font-mono">Upload Artwork</label>
-                <label className="mt-2 flex flex-col items-center justify-center border-2 border-dashed border-[#2a2a2a] rounded-xl p-8 cursor-pointer hover:border-[#e8ff47] hover:bg-[#e8ff47]/5 transition-all">
+                <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Upload Artwork</label>
+                <label className="mt-2 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-xl p-8 cursor-pointer hover:border-[#dd3333] hover:bg-[#dd3333]/5 transition-all">
                   <span className="text-3xl mb-3">⬆</span>
                   <span className="text-sm text-gray-400 text-center">
                     Drop image here<br />
@@ -1683,7 +1683,7 @@ export default function DesignerCanvas({
                 />
                 {/* SVG Color swatches */}
                 <div className="mt-2">
-                  <label className="text-xs text-gray-500 uppercase tracking-widest font-mono">Clipart Color</label>
+                  <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Clipart Color</label>
                   <div className="flex gap-2 mt-2 flex-wrap items-center">
                     {(dbColors.length > 0 ? dbColors : [
                       { label: 'Black', hex: '#000000' },
@@ -1693,7 +1693,7 @@ export default function DesignerCanvas({
                         title={c.label}
                         style={{ background: c.hex, border: c.hex === '#ffffff' ? '1px solid #555' : 'none' }}
                         className={`w-8 h-8 rounded-full transition-transform hover:scale-110 ${
-                          selectedSvgColor === c.hex ? 'ring-2 ring-[#e8ff47] ring-offset-2 ring-offset-[#161616]' : ''
+                          selectedSvgColor === c.hex ? 'ring-2 ring-[#dd3333] ring-offset-2 ring-offset-[#161616]' : ''
                         }`}
                       />
                     ))}
@@ -1713,17 +1713,17 @@ export default function DesignerCanvas({
         </aside>
 
         {/* Canvas center */}
-        <section className="flex-1 flex flex-col items-center justify-center bg-[#111] relative overflow-hidden">
+        <section className="flex-1 flex flex-col items-center justify-center bg-gray-50 relative overflow-hidden">
 
           {isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-sm z-10">
+            <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm z-10">
               Loading canvas...
             </div>
           )}
 
           {/* Persistent alignment toolbar */}
           <div className="flex items-center gap-1 mb-2 px-1 flex-wrap">
-            <span className="text-xs text-gray-500 font-mono uppercase tracking-widest mr-1">Align:</span>
+            <span className="text-xs text-gray-400 font-mono uppercase tracking-widest mr-1">Align:</span>
             {[
               { label: '⬛◻◻', title: 'Align Left', fn: 'left' },
               { label: '◻⬛◻', title: 'Align Center', fn: 'center' },
@@ -1737,11 +1737,11 @@ export default function DesignerCanvas({
                   e.preventDefault()
                   ;(window as any)._alignObject?.(fn)
                 }}
-                className="px-2 py-1 rounded text-xs font-mono bg-[#1e1e1e] border border-[#2a2a2a] text-gray-400 hover:border-[#e8ff47] hover:text-white transition-all">
+                className="px-2 py-1 rounded text-xs font-mono bg-gray-100 border border-gray-200 text-gray-400 hover:border-[#dd3333] hover:text-gray-900 transition-all">
                 {label}
               </button>
             ))}
-            <span className="w-px h-4 bg-[#2a2a2a] mx-1" />
+            <span className="w-px h-4 bg-gray-200 mx-1" />
             <button
               title="Clear all objects from canvas"
               onPointerDown={e => {
@@ -1752,7 +1752,7 @@ export default function DesignerCanvas({
                 canvas.clear()
                 canvas.renderAll()
               }}
-              className="px-2 py-1 rounded text-xs font-mono bg-[#1e1e1e] border border-[#2a2a2a] text-red-500 hover:border-red-700 hover:bg-red-900/20 transition-all">
+              className="px-2 py-1 rounded text-xs font-mono bg-gray-100 border border-gray-200 text-red-500 hover:border-red-700 hover:bg-red-900/20 transition-all">
               Clear All
             </button>
           </div>
@@ -1813,8 +1813,8 @@ export default function DesignerCanvas({
               }}
               className={`px-4 py-1.5 rounded-full text-xs font-mono tracking-widest transition-all ${
                 shirtView === 'front'
-                  ? 'bg-[#e8ff47] text-black'
-                  : 'bg-[#161616] text-gray-400 border border-[#2a2a2a]'
+                  ? 'bg-[#dd3333] text-white'
+                  : 'bg-white text-gray-400 border border-gray-200'
               }`}
             >
               FRONT
@@ -1831,7 +1831,7 @@ export default function DesignerCanvas({
                     backObjectsRef.current = copies
                   })
                 }}
-                className="px-3 py-1.5 rounded-full text-xs font-mono tracking-widest bg-[#161616] text-gray-400 border border-[#2a2a2a] hover:border-[#e8ff47] hover:text-white transition-all">
+                className="px-3 py-1.5 rounded-full text-xs font-mono tracking-widest bg-white text-gray-400 border border-gray-200 hover:border-[#dd3333] hover:text-gray-900 transition-all">
                 Copy to Back
               </button>
             )}
@@ -1847,7 +1847,7 @@ export default function DesignerCanvas({
                     frontObjectsRef.current = copies
                   })
                 }}
-                className="px-3 py-1.5 rounded-full text-xs font-mono tracking-widest bg-[#161616] text-gray-400 border border-[#2a2a2a] hover:border-[#e8ff47] hover:text-white transition-all">
+                className="px-3 py-1.5 rounded-full text-xs font-mono tracking-widest bg-white text-gray-400 border border-gray-200 hover:border-[#dd3333] hover:text-gray-900 transition-all">
                 Copy to Front
               </button>
             )}
@@ -1870,8 +1870,8 @@ export default function DesignerCanvas({
                 }}
                 className={`px-4 py-1.5 rounded-full text-xs font-mono tracking-widest transition-all ${
                   shirtView === 'back'
-                    ? 'bg-[#e8ff47] text-black'
-                    : 'bg-[#161616] text-gray-400 border border-[#2a2a2a]'
+                    ? 'bg-[#dd3333] text-white'
+                    : 'bg-white text-gray-400 border border-gray-200'
                 }`}
               >
                 BACK
@@ -1881,23 +1881,23 @@ export default function DesignerCanvas({
         </section>
 
         {/* Right panel */}
-        <aside className="w-64 bg-[#161616] border-l border-[#2a2a2a] flex flex-col gap-4 p-4 overflow-y-auto shrink-0">
+        <aside className="w-64 bg-white border-l border-gray-200 flex flex-col gap-4 p-4 overflow-y-auto shrink-0">
           <h2 className="font-black text-lg tracking-widest">ORDER</h2>
 
           <div className="flex flex-col gap-2 text-sm">
             <div className="flex justify-between text-gray-400">
               <span>Product</span>
-              <span className="text-white text-right text-xs max-w-[120px] truncate">{productTitle}</span>
+              <span className="text-gray-900 text-right text-xs max-w-[120px] truncate">{productTitle}</span>
             </div>
             <div className="flex justify-between text-gray-400">
               <span>Color</span>
-              <span className="text-white text-xs">{selectedColor || '—'}</span>
+              <span className="text-gray-900 text-xs">{selectedColor || '—'}</span>
             </div>
             {/* Color swatches */}
             {!product && (
               <div className="flex gap-2 flex-wrap">
                 {[1, 2, 3, 4, 5, 6].map(i => (
-                  <div key={i} className="w-8 h-8 rounded-full bg-[#2a2a2a] animate-pulse" />
+                  <div key={i} className="w-8 h-8 rounded-full bg-gray-200 animate-pulse" />
                 ))}
               </div>
             )}
@@ -1913,7 +1913,7 @@ export default function DesignerCanvas({
                       }}
                       className={`w-8 h-8 rounded-full transition-all hover:scale-110 ${
                         selectedColor === color
-                          ? 'ring-2 ring-[#e8ff47] ring-offset-2 ring-offset-[#161616]'
+                          ? 'ring-2 ring-[#dd3333] ring-offset-2 ring-offset-[#161616]'
                           : ''
                       }`}
                     />
@@ -1923,26 +1923,26 @@ export default function DesignerCanvas({
             )}
             <div className="flex justify-between text-gray-400">
               <span>Blank price</span>
-              <span className="text-white">{`$${unitPrice.toFixed(2)}`}</span>
+              <span className="text-gray-900">{`$${unitPrice.toFixed(2)}`}</span>
             </div>
             {printCharge > 0 && (
               <div className="flex justify-between text-gray-400">
                 <span>Print charge ({sidesCount} side{sidesCount > 1 ? 's' : ''})</span>
-                <span className="text-white">{`+$${printCharge.toFixed(2)}`}</span>
+                <span className="text-gray-900">{`+$${printCharge.toFixed(2)}`}</span>
               </div>
             )}
-            <div className="flex justify-between font-bold border-t border-[#2a2a2a] pt-2">
+            <div className="flex justify-between font-bold border-t border-gray-200 pt-2">
               <span className="text-gray-300">Price per item</span>
-              <span className="text-[#e8ff47]">{`$${pricePerItem.toFixed(2)}`}</span>
+              <span className="text-[#dd3333]">{`$${pricePerItem.toFixed(2)}`}</span>
             </div>
           </div>
 
-          <div className="h-px bg-[#2a2a2a]" />
+          <div className="h-px bg-gray-200" />
 
           <div className="flex flex-col gap-2">
-            <label className="text-xs text-gray-500 uppercase tracking-widest font-mono">Sizes</label>
+            <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Sizes</label>
             {!selectedColor && (
-              <p className="text-xs text-gray-600 italic">Select a color first</p>
+              <p className="text-xs text-gray-400 italic">Select a color first</p>
             )}
             {SIZES.map(size => {
               const available = isSizeAvailable(size)
@@ -1950,15 +1950,15 @@ export default function DesignerCanvas({
               return (
                 <div key={size} className="flex justify-between items-center">
                   <span className="text-xs font-mono text-gray-400 w-8">{size}</span>
-                  <div className="flex items-center gap-3 bg-[#1e1e1e] border border-[#2a2a2a] rounded px-3 py-1">
+                  <div className="flex items-center gap-3 bg-gray-100 border border-gray-200 rounded px-3 py-1">
                     <button
                       onClick={() => setQuantities(q => ({ ...q, [size]: Math.max(0, q[size] - 1) }))}
-                      className="text-gray-400 hover:text-[#e8ff47] font-bold w-4 text-center">−
+                      className="text-gray-400 hover:text-[#dd3333] font-bold w-4 text-center">−
                     </button>
                     <span className="text-xs font-mono w-4 text-center">{quantities[size]}</span>
                     <button
                       onClick={() => setQuantities(q => ({ ...q, [size]: q[size] + 1 }))}
-                      className="text-gray-400 hover:text-[#e8ff47] font-bold w-4 text-center">+
+                      className="text-gray-400 hover:text-[#dd3333] font-bold w-4 text-center">+
                     </button>
                   </div>
                 </div>
@@ -1966,22 +1966,22 @@ export default function DesignerCanvas({
             })}
           </div>
 
-          <div className="h-px bg-[#2a2a2a]" />
+          <div className="h-px bg-gray-200" />
 
           <div className="flex flex-col gap-1 text-sm">
             <div className="flex justify-between text-gray-400">
               <span>Total qty</span>
-              <span className="text-white">{totalQty}</span>
+              <span className="text-gray-900">{totalQty}</span>
             </div>
             {discount > 0 && (
               <div className="flex justify-between text-gray-400">
                 <span>Discount</span>
-                <span className="text-[#e8ff47]">{`-${(discount * totalQty * unitPrice).toFixed(2)}`}</span>
+                <span className="text-[#dd3333]">{`-${(discount * totalQty * unitPrice).toFixed(2)}`}</span>
               </div>
             )}
             <div className="flex justify-between text-gray-400">
               <span>Total</span>
-              <span className="text-white">{`$${total}`}</span>
+              <span className="text-gray-900">{`$${total}`}</span>
             </div>
           </div>
         </aside>

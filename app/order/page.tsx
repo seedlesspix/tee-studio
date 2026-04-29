@@ -37,7 +37,6 @@ function OrderPage() {
       .then(({ data, error }) => {
         if (error || !data) { setError('Design not found'); setLoading(false); return }
         setDesign(data)
-        // Init quantities from saved or empty
         const initQty: Record<string, number> = {}
         SIZES.forEach(s => initQty[s] = data.quantities?.[s] || 0)
         setQuantities(initQty)
@@ -61,7 +60,7 @@ function OrderPage() {
       total_qty: totalQty,
       total_price: parseFloat(total),
       status: 'ordering'
-    }).eq('id', design.id)
+      }).eq('id', design.id)
 
     // Create Shopify cart
     const variantId = design.shopify_variant_id?.split('/').pop() || ''
@@ -78,15 +77,10 @@ function OrderPage() {
         shopify_cart_url: cart.checkoutUrl,
         status: 'cart_created'
       }).eq('id', design.id)
-      // Convert checkoutUrl to cart page URL (not straight to checkout)
-      // checkoutUrl: https://tshirtdeli.com/checkouts/...
-      // We want: https://tshirtdeli.com/cart
-      // Extract cart token from checkoutUrl or use cart id
-      const cartId = cart.id // gid://shopify/Cart/xxx
-      const cartToken = cartId.split('/').pop() || ''
-      // Use the cart permalink format
-      const cartPageUrl = `https://tshirtdeli.com/cart/c/${cartToken}`
-      window.location.href = cartPageUrl
+      // Go to cart page not checkout - use checkoutUrl as-is
+      // Shopify checkoutUrl format: https://tshirtdeli.com/cart/c/TOKEN
+      // which already shows the cart, not checkout
+      window.location.href = cart.checkoutUrl
     } else {
       setError('Failed to create cart. Please try again.')
       setAdding(false)
