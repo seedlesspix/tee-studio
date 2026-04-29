@@ -362,6 +362,8 @@ export default function DesignerCanvas({
         fontStyle: isItalic ? 'italic' : 'normal',
         textAlign: textAlign,
         charSpacing: letterSpacing * 10,
+        scaleX: 1,
+        scaleY: 1,
       })
       canvas.renderAll()
     }
@@ -619,17 +621,29 @@ export default function DesignerCanvas({
           ctx.arc(0, 0, size / 2, 0, Math.PI * 2)
           ctx.fill()
           ctx.fillStyle = '#fff'
-          ctx.font = `bold ${size * 0.45}px sans-serif`
+          ctx.font = `bold ${size * 0.55}px sans-serif`
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
           ctx.fillText(icon, 0, 1)
           ctx.restore()
         }
 
-        // Delete control (top-right)
+        // Rotate control (center-top)
+        const rotateControl = new Control({
+          x: 0, y: -0.5,
+          offsetX: 0, offsetY: -20,
+          cursorStyle: 'crosshair',
+          actionHandler: controlsUtils.rotationWithSnapping,
+          actionName: 'rotate',
+          render: renderIcon('↻'),
+          sizeX: 26, sizeY: 26,
+          withConnection: false,
+        })
+
+        // Delete control (bottom-right) - moved from top-right
         const deleteControl = new Control({
-          x: 0.5, y: -0.5,
-          offsetX: 8, offsetY: -8,
+          x: 0.5, y: 0.5,
+          offsetX: 10, offsetY: 10,
           cursorStyle: 'pointer',
           mouseUpHandler: (_: any, transform: any) => {
             const target = transform.target
@@ -638,59 +652,57 @@ export default function DesignerCanvas({
             return true
           },
           render: renderIcon('✕'),
-          sizeX: 20, sizeY: 20,
+          sizeX: 26, sizeY: 26,
         })
 
-        // Rotate control (bottom-right)  
-        const rotateControl = new Control({
-          x: 0.5, y: 0.5,
-          offsetX: 8, offsetY: 8,
-          cursorStyle: 'crosshair',
-          actionHandler: controlsUtils.rotationWithSnapping,
-          actionName: 'rotate',
-          render: renderIcon('↻'),
-          sizeX: 20, sizeY: 20,
-          withConnection: false,
-        })
-
-        // Scale control (bottom-left)
+        // Scale equally (top-right) - moved from top-right delete
         const scaleControl = new Control({
+          x: 0.5, y: -0.5,
+          offsetX: 10, offsetY: -10,
+          cursorStyle: 'ne-resize',
+          actionHandler: controlsUtils.scalingEqually,
+          actionName: 'scale',
+          render: renderIcon('⤢'),
+          sizeX: 26, sizeY: 26,
+        })
+
+        // Scale bottom-left
+        const scaleBLControl = new Control({
           x: -0.5, y: 0.5,
-          offsetX: -8, offsetY: 8,
-          cursorStyle: 'se-resize',
+          offsetX: -10, offsetY: 10,
+          cursorStyle: 'sw-resize',
           actionHandler: controlsUtils.scalingEqually,
           actionName: 'scale',
           render: renderIcon('⤡'),
-          sizeX: 20, sizeY: 20,
+          sizeX: 26, sizeY: 26,
         })
 
         // Stretch-X control (middle-right)
         const stretchControl = new Control({
           x: 0.5, y: 0,
-          offsetX: 8, offsetY: 0,
+          offsetX: 10, offsetY: 0,
           cursorStyle: 'ew-resize',
           actionHandler: controlsUtils.scalingXOrSkewingY,
           actionName: 'scaleX',
           render: renderIcon('↔'),
-          sizeX: 20, sizeY: 20,
+          sizeX: 26, sizeY: 26,
         })
 
-        // Apply to all future objects via prototype
-        const FabricObject = Object.getPrototypeOf(canvas.getActiveObject?.() || {}).constructor
         const applyControls = (obj: any) => {
           obj.controls = {
-            deleteControl,
             rotateControl,
+            deleteControl,
             scaleControl,
+            scaleBLControl,
             stretchControl,
-            // Keep top-left scale for accessibility
+            // Top-left scale
             tl: new Control({
               x: -0.5, y: -0.5,
-              offsetX: -8, offsetY: -8,
+              offsetX: -10, offsetY: -10,
               cursorStyle: 'nw-resize',
               actionHandler: controlsUtils.scalingEqually,
               render: renderIcon('⤢'),
-              sizeX: 20, sizeY: 20,
+              sizeX: 26, sizeY: 26,
             }),
           }
           obj.setCoords()
@@ -1437,7 +1449,7 @@ export default function DesignerCanvas({
         <div className="font-black text-xl tracking-widest">
           TEE<span className="text-[#dd3333]">STUDIO</span>
         </div>
-        <div className="text-sm text-gray-400 truncate max-w-xs">{productTitle}</div>
+        <div className="text-sm text-gray-800 truncate max-w-xs">{productTitle}</div>
         <button
           onClick={async () => {
             const canvas = (window as any)._fabricCanvas
@@ -1473,7 +1485,7 @@ export default function DesignerCanvas({
             {(['text', 'upload', 'clipart'] as const).map(tab => (
               <button key={tab} onClick={() => setActiveTab(tab)}
                 className={`py-2 rounded text-xs font-mono capitalize transition-all ${
-                  activeTab === tab ? 'bg-[#dd3333] text-white font-bold' : 'text-gray-400 hover:text-white'
+                  activeTab === tab ? 'bg-[#dd3333] text-white font-bold' : 'text-gray-800 hover:text-white'
                 }`}>
                 {tab}
               </button>
@@ -1486,7 +1498,7 @@ export default function DesignerCanvas({
             {activeTab === 'text' && (
               <>
                 <div>
-                  <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Your Text</label>
+                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Your Text</label>
                   <input type="text" value={textInput}
                     onChange={e => setTextInput(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && addText()}
@@ -1495,7 +1507,7 @@ export default function DesignerCanvas({
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Font</label>
+                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Font</label>
                   <div className="flex flex-col gap-1 mt-1 max-h-48 overflow-y-auto pr-1">
                     {(dbFonts.length > 0 ? dbFonts : fonts).map(f => (
                       <button key={f.value} onClick={() => setSelectedFont(f.value)}
@@ -1504,7 +1516,7 @@ export default function DesignerCanvas({
                             ? 'border-[#dd3333] bg-[#dd3333]/10'
                             : 'border-gray-200 bg-gray-100 hover:border-[#444]'
                         }`}>
-                        <div className="text-xs text-gray-400 font-mono mb-0.5">{f.label}</div>
+                        <div className="text-xs text-gray-800 font-mono mb-0.5">{f.label}</div>
                         <div style={{ fontFamily: f.value, fontSize: '18px', color: '#161616', lineHeight: 1.2 }}>
                           {selectedTextPreview || textInput || 'Preview Text'}
                         </div>
@@ -1514,7 +1526,7 @@ export default function DesignerCanvas({
                 </div>
                 <div>
                   <div className="flex justify-between items-center">
-                    <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Size</label>
+                    <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Size</label>
                     <input type="number" min={8} max={120} value={fontSize}
                       onChange={e => setFontSize(Number(e.target.value))}
                       className="w-14 bg-gray-100 border border-gray-200 rounded px-2 py-1 text-xs text-gray-900 outline-none text-center focus:border-[#dd3333]"
@@ -1526,7 +1538,7 @@ export default function DesignerCanvas({
                 </div>
                 <div>
                   <div className="flex justify-between items-center">
-                    <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Letter Spacing</label>
+                    <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Letter Spacing</label>
                     <span className="text-xs text-[#dd3333] font-mono">{letterSpacing}</span>
                   </div>
                   <input type="range" min={-5} max={30} value={letterSpacing}
@@ -1534,7 +1546,7 @@ export default function DesignerCanvas({
                     className="w-full mt-1 accent-[#dd3333]" />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Text Color</label>
+                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Text Color</label>
                   <div className="flex gap-2 mt-2 flex-wrap items-center">
                     {(dbColors.length > 0 ? dbColors : [
                       { label: 'White', hex: '#ffffff' },
@@ -1559,32 +1571,32 @@ export default function DesignerCanvas({
                       title="Custom color" />
                   </div>
                   {dbColors.length > 0 && (
-                    <p className="text-xs text-gray-400 mt-1 font-mono">
+                    <p className="text-xs text-gray-800 mt-1 font-mono">
                       {dbColors.find(c => c.hex === textColor)?.label || 'Custom'}
                     </p>
                   )}
                 </div>
 
                 <div>
-                  <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Direction</label>
+                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Direction</label>
                   <div className="grid grid-cols-2 gap-2 mt-1">
                     <button onClick={() => setTextDirection('horizontal')}
-                      className={`py-2 rounded text-xs font-mono transition-all ${textDirection === 'horizontal' ? 'bg-[#dd3333] text-white' : 'bg-gray-100 text-gray-400 border border-gray-200'}`}>
+                      className={`py-2 rounded text-xs font-mono transition-all ${textDirection === 'horizontal' ? 'bg-[#dd3333] text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
                       — Horizontal
                     </button>
                     <button onClick={() => setTextDirection('vertical')}
-                      className={`py-2 rounded text-xs font-mono transition-all ${textDirection === 'vertical' ? 'bg-[#dd3333] text-white' : 'bg-gray-100 text-gray-400 border border-gray-200'}`}>
+                      className={`py-2 rounded text-xs font-mono transition-all ${textDirection === 'vertical' ? 'bg-[#dd3333] text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
                       ↕ Vertical
                     </button>
                   </div>
                 </div>
                 <div>
                   <div className="flex justify-between items-center">
-                    <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Curve</label>
+                    <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Curve</label>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-400 font-mono">{curveAmount > 0 ? `+${curveAmount}` : curveAmount}</span>
+                      <span className="text-xs text-gray-800 font-mono">{curveAmount > 0 ? `+${curveAmount}` : curveAmount}</span>
                       <button onClick={() => setCurveAmount(0)}
-                        className={`text-[10px] px-2 py-0.5 rounded font-mono transition-all ${curveAmount !== 0 ? 'bg-[#dd3333] text-white' : 'bg-gray-200 text-gray-400'}`}>
+                        className={`text-[10px] px-2 py-0.5 rounded font-mono transition-all ${curveAmount !== 0 ? 'bg-[#dd3333] text-white' : 'bg-gray-200 text-gray-800'}`}>
                         Straight
                       </button>
                     </div>
@@ -1592,14 +1604,14 @@ export default function DesignerCanvas({
                   <input type="range" min="-100" max="100" value={curveAmount}
                     onChange={e => setCurveAmount(Number(e.target.value))}
                     className="w-full mt-1 accent-[#dd3333]" />
-                  <div className="flex justify-between text-[9px] text-gray-400 font-mono mt-0.5">
+                  <div className="flex justify-between text-[9px] text-gray-800 font-mono mt-0.5">
                     <span>⌣ Down</span>
                     <span>|</span>
                     <span>⌢ Up</span>
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Text Align</label>
+                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Text Align</label>
                   <div className="flex gap-1">
                     {(['left', 'center', 'right'] as const).map(align => (
                       <button key={align}
@@ -1615,7 +1627,7 @@ export default function DesignerCanvas({
                         className={`flex-1 py-1.5 rounded text-xs font-mono border transition-all ${
                           textAlign === align
                             ? 'bg-[#dd3333] text-white border-[#dd3333]'
-                            : 'bg-white text-gray-500 border-gray-200 hover:border-[#dd3333]'
+                            : 'bg-white text-gray-700 border-gray-200 hover:border-[#dd3333]'
                         }`}>
                         {align === 'left' ? (
                           <svg width="14" height="12" viewBox="0 0 14 12" fill="currentColor">
@@ -1639,18 +1651,18 @@ export default function DesignerCanvas({
                       </button>
                     ))}
                   </div>
-                  <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Effects</label>
+                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Effects</label>
                   <div className="grid grid-cols-3 gap-2 mt-1">
                     <button onClick={() => setIsBold(b => !b)}
-                      className={`py-2 rounded text-xs font-bold transition-all ${isBold ? 'bg-[#dd3333] text-white' : 'bg-gray-100 text-gray-400 border border-gray-200'}`}>
+                      className={`py-2 rounded text-xs font-bold transition-all ${isBold ? 'bg-[#dd3333] text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
                       Bold
                     </button>
                     <button onClick={() => setIsItalic(i => !i)}
-                      className={`py-2 rounded text-xs italic transition-all ${isItalic ? 'bg-[#dd3333] text-white' : 'bg-gray-100 text-gray-400 border border-gray-200'}`}>
+                      className={`py-2 rounded text-xs italic transition-all ${isItalic ? 'bg-[#dd3333] text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
                       Italic
                     </button>
                     <button onClick={() => setIsUppercase(u => !u)}
-                      className={`py-2 rounded text-xs font-mono transition-all ${isUppercase ? 'bg-[#dd3333] text-white' : 'bg-gray-100 text-gray-400 border border-gray-200'}`}>
+                      className={`py-2 rounded text-xs font-mono transition-all ${isUppercase ? 'bg-[#dd3333] text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
                       AA
                     </button>
 
@@ -1669,10 +1681,10 @@ export default function DesignerCanvas({
             {/* UPLOAD TAB */}
             {activeTab === 'upload' && (
               <div>
-                <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Upload Artwork</label>
+                <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Upload Artwork</label>
                 <label className="mt-2 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-xl p-8 cursor-pointer hover:border-[#dd3333] hover:bg-[#dd3333]/5 transition-all">
                   <span className="text-3xl mb-3">⬆</span>
-                  <span className="text-sm text-gray-400 text-center">
+                  <span className="text-sm text-gray-800 text-center">
                     Drop image here<br />
                     <span className="text-xs opacity-60">PNG, SVG, JPG, JPEG, PDF</span>
                     <span className="text-[10px] opacity-40 mt-0.5 block">AI · EPS · PSD supported via Cloudinary</span>
@@ -1724,7 +1736,7 @@ export default function DesignerCanvas({
                 />
                 {/* SVG Color swatches */}
                 <div className="mt-2">
-                  <label className="text-xs text-gray-400 uppercase tracking-widest font-mono">Clipart Color</label>
+                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Clipart Color</label>
                   <div className="flex gap-2 mt-2 flex-wrap items-center">
                     {(dbColors.length > 0 ? dbColors : [
                       { label: 'Black', hex: '#000000' },
@@ -1739,7 +1751,7 @@ export default function DesignerCanvas({
                       />
                     ))}
                   </div>
-                  <p className="text-xs text-gray-400 mt-1 font-mono">
+                  <p className="text-xs text-gray-800 mt-1 font-mono">
                     {(dbColors.length > 0 ? dbColors : [{ label: 'Black', hex: '#000000' }, { label: 'White', hex: '#ffffff' }]).find(c => c.hex === selectedSvgColor)?.label || selectedSvgColor || 'Black'}
                   </p>
                 </div>
@@ -1757,14 +1769,14 @@ export default function DesignerCanvas({
         <section className="flex-1 flex flex-col items-center justify-center bg-gray-50 relative overflow-hidden">
 
           {isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm z-10">
+            <div className="absolute inset-0 flex items-center justify-center text-gray-800 text-sm z-10">
               Loading canvas...
             </div>
           )}
 
           {/* Persistent alignment toolbar */}
           <div className="flex items-center gap-1 mb-2 px-1 flex-wrap">
-            <span className="text-xs text-gray-400 font-mono uppercase tracking-widest mr-1">Align:</span>
+            <span className="text-xs text-gray-800 font-mono uppercase tracking-widest mr-1">Align:</span>
             {[
               { label: '⬛◻◻', title: 'Align Left', fn: 'left' },
               { label: '◻⬛◻', title: 'Align Center', fn: 'center' },
@@ -1778,7 +1790,7 @@ export default function DesignerCanvas({
                   e.preventDefault()
                   ;(window as any)._alignObject?.(fn)
                 }}
-                className="px-2 py-1 rounded text-xs font-mono bg-gray-100 border border-gray-200 text-gray-400 hover:border-[#dd3333] hover:text-gray-900 transition-all">
+                className="px-2 py-1 rounded text-xs font-mono bg-gray-100 border border-gray-200 text-gray-800 hover:border-[#dd3333] hover:text-gray-900 transition-all">
                 {label}
               </button>
             ))}
@@ -1855,7 +1867,7 @@ export default function DesignerCanvas({
               className={`px-4 py-1.5 rounded-full text-xs font-mono tracking-widest transition-all ${
                 shirtView === 'front'
                   ? 'bg-[#dd3333] text-white'
-                  : 'bg-white text-gray-400 border border-gray-200'
+                  : 'bg-white text-gray-800 border border-gray-200'
               }`}
             >
               FRONT
@@ -1872,7 +1884,7 @@ export default function DesignerCanvas({
                     backObjectsRef.current = copies
                   })
                 }}
-                className="px-3 py-1.5 rounded-full text-xs font-mono tracking-widest bg-white text-gray-400 border border-gray-200 hover:border-[#dd3333] hover:text-gray-900 transition-all">
+                className="px-3 py-1.5 rounded-full text-xs font-mono tracking-widest bg-white text-gray-800 border border-gray-200 hover:border-[#dd3333] hover:text-gray-900 transition-all">
                 Copy to Back
               </button>
             )}
@@ -1888,7 +1900,7 @@ export default function DesignerCanvas({
                     frontObjectsRef.current = copies
                   })
                 }}
-                className="px-3 py-1.5 rounded-full text-xs font-mono tracking-widest bg-white text-gray-400 border border-gray-200 hover:border-[#dd3333] hover:text-gray-900 transition-all">
+                className="px-3 py-1.5 rounded-full text-xs font-mono tracking-widest bg-white text-gray-800 border border-gray-200 hover:border-[#dd3333] hover:text-gray-900 transition-all">
                 Copy to Front
               </button>
             )}
@@ -1912,7 +1924,7 @@ export default function DesignerCanvas({
                 className={`px-4 py-1.5 rounded-full text-xs font-mono tracking-widest transition-all ${
                   shirtView === 'back'
                     ? 'bg-[#dd3333] text-white'
-                    : 'bg-white text-gray-400 border border-gray-200'
+                    : 'bg-white text-gray-800 border border-gray-200'
                 }`}
               >
                 BACK
@@ -1926,11 +1938,11 @@ export default function DesignerCanvas({
           <h2 className="font-black text-lg tracking-widest">ORDER</h2>
 
           <div className="flex flex-col gap-2 text-sm">
-            <div className="flex justify-between text-gray-400">
+            <div className="flex justify-between text-gray-800">
               <span>Product</span>
               <span className="text-gray-900 text-right text-xs max-w-[120px] truncate">{productTitle}</span>
             </div>
-            <div className="flex justify-between text-gray-400">
+            <div className="flex justify-between text-gray-800">
               <span>Color</span>
               <span className="text-gray-900 text-xs">{selectedColor || '—'}</span>
             </div>
@@ -1962,18 +1974,18 @@ export default function DesignerCanvas({
                 ))}
               </div>
             )}
-            <div className="flex justify-between text-gray-400">
+            <div className="flex justify-between text-gray-800">
               <span>Blank price</span>
               <span className="text-gray-900">{`$${unitPrice.toFixed(2)}`}</span>
             </div>
             {printCharge > 0 && (
-              <div className="flex justify-between text-gray-400">
+              <div className="flex justify-between text-gray-800">
                 <span>Print charge ({sidesCount} side{sidesCount > 1 ? 's' : ''})</span>
                 <span className="text-gray-900">{`+$${printCharge.toFixed(2)}`}</span>
               </div>
             )}
             <div className="flex justify-between font-bold border-t border-gray-200 pt-2">
-              <span className="text-gray-300">Price per item</span>
+              <span className="text-gray-800">Price per item</span>
               <span className="text-[#dd3333]">{`$${pricePerItem.toFixed(2)}`}</span>
             </div>
           </div>
@@ -1983,17 +1995,17 @@ export default function DesignerCanvas({
           <div className="h-px bg-gray-200" />
 
           <div className="flex flex-col gap-1 text-sm">
-            <div className="flex justify-between text-gray-400">
+            <div className="flex justify-between text-gray-800">
               <span>Total qty</span>
               <span className="text-gray-900">{totalQty}</span>
             </div>
             {discount > 0 && (
-              <div className="flex justify-between text-gray-400">
+              <div className="flex justify-between text-gray-800">
                 <span>Discount</span>
                 <span className="text-[#dd3333]">{`-${(discount * totalQty * unitPrice).toFixed(2)}`}</span>
               </div>
             )}
-            <div className="flex justify-between text-gray-400">
+            <div className="flex justify-between text-gray-800">
               <span>Total</span>
               <span className="text-gray-900">{`$${total}`}</span>
             </div>
