@@ -618,7 +618,7 @@ export default function DesignerCanvas({
           ctx.beginPath()
           ctx.arc(0, 0, size / 2, 0, Math.PI * 2)
           ctx.fill()
-          ctx.fillStyle = '#000'
+          ctx.fillStyle = '#fff'
           ctx.font = `bold ${size * 0.45}px sans-serif`
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
@@ -1241,7 +1241,7 @@ export default function DesignerCanvas({
         const shirtSrc = shirtImgRef.current?.src
         if (shirtSrc && !shirtSrc.startsWith('data:')) {
           try {
-            const proxyRes = await fetch(`/api/preview?shirt=${encodeURIComponent(shirtSrc)}&design=x`)
+            const proxyRes = await fetch(`/api/preview?shirt=${encodeURIComponent(shirtSrc)}`)
             if (proxyRes.ok) {
               const { shirt } = await proxyRes.json()
               await new Promise<void>(r => {
@@ -1504,7 +1504,7 @@ export default function DesignerCanvas({
                             : 'border-gray-200 bg-gray-100 hover:border-[#444]'
                         }`}>
                         <div className="text-xs text-gray-400 font-mono mb-0.5">{f.label}</div>
-                        <div style={{ fontFamily: f.value, fontSize: '18px', color: '#fff', lineHeight: 1.2 }}>
+                        <div style={{ fontFamily: f.value, fontSize: '18px', color: '#161616', lineHeight: 1.2 }}>
                           {selectedTextPreview || textInput || 'Preview Text'}
                         </div>
                       </button>
@@ -1616,7 +1616,25 @@ export default function DesignerCanvas({
                             ? 'bg-[#dd3333] text-white border-[#dd3333]'
                             : 'bg-white text-gray-500 border-gray-200 hover:border-[#dd3333]'
                         }`}>
-                        {align === 'left' ? '⬛◻◻' : align === 'center' ? '◻⬛◻' : '◻◻⬛'}
+                        {align === 'left' ? (
+                          <svg width="14" height="12" viewBox="0 0 14 12" fill="currentColor">
+                            <rect x="0" y="0" width="14" height="2"/>
+                            <rect x="0" y="5" width="10" height="2"/>
+                            <rect x="0" y="10" width="12" height="2"/>
+                          </svg>
+                        ) : align === 'center' ? (
+                          <svg width="14" height="12" viewBox="0 0 14 12" fill="currentColor">
+                            <rect x="0" y="0" width="14" height="2"/>
+                            <rect x="2" y="5" width="10" height="2"/>
+                            <rect x="1" y="10" width="12" height="2"/>
+                          </svg>
+                        ) : (
+                          <svg width="14" height="12" viewBox="0 0 14 12" fill="currentColor">
+                            <rect x="0" y="0" width="14" height="2"/>
+                            <rect x="4" y="5" width="10" height="2"/>
+                            <rect x="2" y="10" width="12" height="2"/>
+                          </svg>
+                        )}
                       </button>
                     ))}
                   </div>

@@ -104,7 +104,7 @@ export default function OrdersAdmin() {
       {/* Header */}
       <header className="flex items-center justify-between px-6 h-14 bg-[#161616] border-b border-[#2a2a2a]">
         <div className="font-black text-xl tracking-widest">
-          TEE<span className="text-[#e8ff47]">STUDIO</span>
+          TEE<span className="text-[#dd3333]">STUDIO</span>
           <span className="text-gray-500 font-mono text-sm ml-3">/ Orders</span>
         </div>
         <div className="flex gap-2">
@@ -120,7 +120,7 @@ export default function OrdersAdmin() {
           <div className="p-4 border-b border-[#2a2a2a] flex flex-col gap-3">
             <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Search by name, email, order #..."
-              className="w-full bg-[#111] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#e8ff47] font-mono placeholder-gray-600" />
+              className="w-full bg-[#111] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#dd3333] font-mono placeholder-gray-600" />
             <div className="flex gap-1 flex-wrap">
               {[
                 { key: 'all', label: `All (${orderCounts.all})` },
@@ -130,7 +130,7 @@ export default function OrdersAdmin() {
               ].map(({ key, label }) => (
                 <button key={key} onClick={() => setFilter(key)}
                   className={`px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wide transition-all ${
-                    filter === key ? 'bg-[#e8ff47] text-black font-bold' : 'bg-[#1e1e1e] text-gray-400 hover:text-white border border-[#2a2a2a]'
+                    filter === key ? 'bg-[#dd3333] text-white font-bold' : 'bg-[#1e1e1e] text-gray-400 hover:text-white border border-[#2a2a2a]'
                   }`}>
                   {label}
                 </button>
@@ -146,7 +146,7 @@ export default function OrdersAdmin() {
             ) : filtered.map(order => (
               <div key={order.id} onClick={() => setSelected(order)}
                 className={`flex gap-3 p-4 border-b border-[#1a1a1a] cursor-pointer transition-all hover:bg-[#111] ${
-                  selected?.id === order.id ? 'bg-[#161616] border-l-2 border-l-[#e8ff47]' : ''
+                  selected?.id === order.id ? 'bg-[#161616] border-l-2 border-l-[#dd3333]' : ''
                 }`}>
                 <div className="w-14 h-14 rounded-lg overflow-hidden bg-[#1e1e1e] shrink-0 border border-[#2a2a2a]">
                   {order.canvas_png_front ? (
@@ -158,7 +158,7 @@ export default function OrdersAdmin() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1 mb-0.5">
                     {order.shopify_order_number ? (
-                      <span className="text-xs font-black text-[#e8ff47]">#{order.shopify_order_number}</span>
+                      <span className="text-xs font-black text-[#dd3333]">#{order.shopify_order_number}</span>
                     ) : (
                       <span className="text-[10px] font-mono text-gray-600">{order.id.split('-')[0]}...</span>
                     )}
@@ -211,7 +211,7 @@ export default function OrdersAdmin() {
                   </span>
                   {selected.shopify_cart_url && (
                     <a href={selected.shopify_cart_url} target="_blank" rel="noreferrer"
-                      className="px-3 py-1.5 rounded-full text-xs font-mono bg-[#1e1e1e] border border-[#2a2a2a] text-gray-400 hover:border-[#e8ff47] hover:text-white transition-all">
+                      className="px-3 py-1.5 rounded-full text-xs font-mono bg-[#1e1e1e] border border-[#2a2a2a] text-gray-400 hover:border-[#dd3333] hover:text-white transition-all">
                       View Cart ↗
                     </a>
                   )}
@@ -229,7 +229,7 @@ export default function OrdersAdmin() {
                       )}
                       {selected.customer_email && (
                         <div className="flex justify-between"><span className="text-gray-400">Email</span>
-                          <a href={`mailto:${selected.customer_email}`} className="text-[#e8ff47] hover:underline">{selected.customer_email}</a>
+                          <a href={`mailto:${selected.customer_email}`} className="text-[#dd3333] hover:underline">{selected.customer_email}</a>
                         </div>
                       )}
                       {selected.customer_phone && (
@@ -258,7 +258,7 @@ export default function OrdersAdmin() {
                     <div className="flex justify-between"><span className="text-gray-400">Print</span><span>{selected.print_method?.replace('_', ' ')}</span></div>
                     <div className="flex justify-between"><span className="text-gray-400">Sides</span><span>{selected.sides_designed}</span></div>
                     <div className="border-t border-[#2a2a2a] pt-2 flex justify-between"><span className="text-gray-400">Blank + Print</span><span>${selected.unit_price} + ${selected.print_charge}</span></div>
-                    <div className="flex justify-between font-bold"><span>Total ({selected.total_qty} items)</span><span className="text-[#e8ff47]">${selected.total_price}</span></div>
+                    <div className="flex justify-between font-bold"><span>Total ({selected.total_qty} items)</span><span className="text-[#dd3333]">${selected.total_price}</span></div>
                   </div>
                 </div>
               </div>
@@ -271,7 +271,7 @@ export default function OrdersAdmin() {
                     {Object.entries(selected.quantities).filter(([,qty]) => qty > 0).map(([size, qty]) => (
                       <div key={size} className="bg-[#1e1e1e] border border-[#2a2a2a] rounded-lg px-4 py-2 text-center min-w-[60px]">
                         <p className="text-xs font-mono text-gray-400">{size}</p>
-                        <p className="text-2xl font-black text-[#e8ff47]">{qty}</p>
+                        <p className="text-2xl font-black text-[#dd3333]">{qty}</p>
                       </div>
                     ))}
                   </div>
@@ -291,12 +291,12 @@ export default function OrdersAdmin() {
                       </div>
                       <div className="flex gap-2">
                         <button onClick={() => downloadFile(selected.canvas_png_front!, `order-${selected.shopify_order_number || selected.id.split('-')[0]}-front.png`)}
-                          className="flex-1 py-1.5 rounded text-xs font-mono bg-[#1e1e1e] border border-[#2a2a2a] text-gray-400 hover:border-[#e8ff47] hover:text-white transition-all text-center">
+                          className="flex-1 py-1.5 rounded text-xs font-mono bg-[#1e1e1e] border border-[#2a2a2a] text-gray-400 hover:border-[#dd3333] hover:text-white transition-all text-center">
                           {downloading?.includes('front.png') ? '...' : '↓ PNG'}
                         </button>
                         {selected.canvas_svg_front && (
                           <button onClick={() => downloadFile(selected.canvas_svg_front!, `order-${selected.shopify_order_number || selected.id.split('-')[0]}-front.svg`)}
-                            className="flex-1 py-1.5 rounded text-xs font-mono bg-[#1e1e1e] border border-[#2a2a2a] text-gray-400 hover:border-[#e8ff47] hover:text-white transition-all text-center">
+                            className="flex-1 py-1.5 rounded text-xs font-mono bg-[#1e1e1e] border border-[#2a2a2a] text-gray-400 hover:border-[#dd3333] hover:text-white transition-all text-center">
                             {downloading?.includes('front.svg') ? '...' : '↓ SVG'}
                           </button>
                         )}
@@ -312,12 +312,12 @@ export default function OrdersAdmin() {
                       </div>
                       <div className="flex gap-2">
                         <button onClick={() => downloadFile(selected.canvas_png_back!, `order-${selected.shopify_order_number || selected.id.split('-')[0]}-back.png`)}
-                          className="flex-1 py-1.5 rounded text-xs font-mono bg-[#1e1e1e] border border-[#2a2a2a] text-gray-400 hover:border-[#e8ff47] hover:text-white transition-all text-center">
+                          className="flex-1 py-1.5 rounded text-xs font-mono bg-[#1e1e1e] border border-[#2a2a2a] text-gray-400 hover:border-[#dd3333] hover:text-white transition-all text-center">
                           ↓ PNG
                         </button>
                         {selected.canvas_svg_back && (
                           <button onClick={() => downloadFile(selected.canvas_svg_back!, `order-${selected.shopify_order_number || selected.id.split('-')[0]}-back.svg`)}
-                            className="flex-1 py-1.5 rounded text-xs font-mono bg-[#1e1e1e] border border-[#2a2a2a] text-gray-400 hover:border-[#e8ff47] hover:text-white transition-all text-center">
+                            className="flex-1 py-1.5 rounded text-xs font-mono bg-[#1e1e1e] border border-[#2a2a2a] text-gray-400 hover:border-[#dd3333] hover:text-white transition-all text-center">
                             ↓ SVG
                           </button>
                         )}
@@ -342,7 +342,7 @@ export default function OrdersAdmin() {
                           </div>
                         </div>
                         <button onClick={() => downloadFile(f.url, f.name)}
-                          className="px-3 py-1.5 rounded text-xs font-mono bg-[#1e1e1e] border border-[#2a2a2a] text-gray-400 hover:border-[#e8ff47] hover:text-white transition-all">
+                          className="px-3 py-1.5 rounded text-xs font-mono bg-[#1e1e1e] border border-[#2a2a2a] text-gray-400 hover:border-[#dd3333] hover:text-white transition-all">
                           {downloading === f.name ? 'Downloading...' : '↓ Download'}
                         </button>
                       </div>

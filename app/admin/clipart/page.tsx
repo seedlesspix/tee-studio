@@ -185,12 +185,12 @@ export default function ClipartAdmin() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-mono font-bold text-[#e8ff47]">Clipart Admin</h1>
+            <h1 className="text-2xl font-mono font-bold text-[#dd3333]">Clipart Admin</h1>
             <p className="text-gray-500 text-sm font-mono mt-1">Manage clipart, tags, and uploads</p>
           </div>
           <div className="flex gap-2">
             <a href="/designer?product_id=10043960623420&variant_id=51740953837884&title=Unisex+Heavyweight+T&price=2400"
-              className="px-4 py-2 rounded text-xs font-mono bg-[#1e1e1e] border border-[#2a2a2a] text-gray-400 hover:border-[#e8ff47] hover:text-white transition-all">
+              className="px-4 py-2 rounded text-xs font-mono bg-[#1e1e1e] border border-[#2a2a2a] text-gray-400 hover:border-[#dd3333] hover:text-white transition-all">
               ← Back to Designer
             </a>
             <button onClick={async () => {
@@ -206,7 +206,7 @@ export default function ClipartAdmin() {
         {/* Message toast */}
         {message && (
           <div className={`fixed top-6 right-6 px-4 py-3 rounded font-mono text-sm z-50 ${
-            message.type === 'success' ? 'bg-[#e8ff47] text-black' : 'bg-red-500 text-white'
+            message.type === 'success' ? 'bg-[#dd3333] text-black' : 'bg-red-500 text-white'
           }`}>
             {message.text}
           </div>
@@ -219,7 +219,7 @@ export default function ClipartAdmin() {
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-xs font-mono uppercase tracking-widest text-gray-500">Categories</h2>
               <button onClick={() => setShowNewCategory(!showNewCategory)}
-                className="text-xs text-[#e8ff47] font-mono hover:text-white transition-all">+ New</button>
+                className="text-xs text-[#dd3333] font-mono hover:text-white transition-all">+ New</button>
             </div>
 
             {showNewCategory && (
@@ -229,10 +229,10 @@ export default function ClipartAdmin() {
                   onChange={e => setNewCategoryName(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && createCategory()}
                   placeholder="Category name..."
-                  className="flex-1 bg-[#1e1e1e] border border-[#e8ff47] rounded px-2 py-1 text-xs text-white outline-none font-mono"
+                  className="flex-1 bg-[#1e1e1e] border border-[#dd3333] rounded px-2 py-1 text-xs text-white outline-none font-mono"
                 />
                 <button onClick={createCategory}
-                  className="px-2 py-1 bg-[#e8ff47] text-black rounded text-xs font-mono font-bold">
+                  className="px-2 py-1 bg-[#dd3333] text-black rounded text-xs font-mono font-bold">
                   Add
                 </button>
               </div>
@@ -243,7 +243,7 @@ export default function ClipartAdmin() {
                 <button key={cat.id} onClick={() => setSelectedCategory(cat.id)}
                   className={`text-left px-3 py-2 rounded text-xs font-mono transition-all ${
                     selectedCategory === cat.id
-                      ? 'bg-[#e8ff47] text-black font-bold'
+                      ? 'bg-[#dd3333] text-white font-bold'
                       : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#222] hover:text-white'
                   }`}>
                   {cat.name}
@@ -263,7 +263,7 @@ export default function ClipartAdmin() {
               onDragOver={e => e.preventDefault()}
               onDrop={e => { e.preventDefault(); handleUpload(e.dataTransfer.files) }}
               onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-[#2a2a2a] rounded-lg p-6 mb-6 text-center cursor-pointer hover:border-[#e8ff47] transition-all group">
+              className="border-2 border-dashed border-[#2a2a2a] rounded-lg p-6 mb-6 text-center cursor-pointer hover:border-[#dd3333] transition-all group">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -273,7 +273,7 @@ export default function ClipartAdmin() {
                 onChange={e => handleUpload(e.target.files)}
               />
               {uploading ? (
-                <p className="text-[#e8ff47] font-mono text-sm">Uploading...</p>
+                <p className="text-[#dd3333] font-mono text-sm">Uploading...</p>
               ) : (
                 <>
                   <p className="text-gray-400 font-mono text-sm group-hover:text-white transition-all">
@@ -310,13 +310,13 @@ export default function ClipartAdmin() {
                       onChange={e => setTagInputs(prev => ({ ...prev, [item.id]: e.target.value }))}
                       onKeyDown={e => e.key === 'Enter' && saveTags(item.id)}
                       placeholder="tags, comma, separated"
-                      className="w-full bg-[#0a0a0a] border border-[#333] rounded px-2 py-1 text-[10px] text-gray-400 outline-none focus:border-[#e8ff47] font-mono"
+                      className="w-full bg-[#0a0a0a] border border-[#333] rounded px-2 py-1 text-[10px] text-gray-400 outline-none focus:border-[#dd3333] font-mono"
                     />
 
                     {/* Actions */}
                     <div className="flex gap-1">
                       <button onClick={() => saveTags(item.id)}
-                        className="flex-1 py-1 rounded text-[10px] font-mono bg-[#e8ff47] text-black hover:bg-yellow-300 transition-all">
+                        className="flex-1 py-1 rounded text-[10px] font-mono bg-[#dd3333] text-black hover:bg-yellow-300 transition-all">
                         {saving === item.id ? '...' : 'Save'}
                       </button>
                       <button onClick={() => toggleActive(item)}

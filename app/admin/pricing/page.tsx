@@ -75,17 +75,17 @@ export default function PricingAdmin() {
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-mono font-bold text-[#e8ff47]">Print Pricing</h1>
+            <h1 className="text-2xl font-mono font-bold text-[#dd3333]">Print Pricing</h1>
             <p className="text-gray-500 text-sm font-mono mt-1">Set print charges added to the blank product price</p>
           </div>
           <div className="flex gap-2">
-            <a href="/admin/clipart" className="px-4 py-2 rounded text-xs font-mono bg-[#1e1e1e] border border-[#2a2a2a] text-gray-400 hover:border-[#e8ff47] hover:text-white transition-all">Clipart Admin</a>
-            <a href="/designer?product_id=10043960623420&variant_id=51740953837884&title=Unisex+Heavyweight+T&price=2400" className="px-4 py-2 rounded text-xs font-mono bg-[#1e1e1e] border border-[#2a2a2a] text-gray-400 hover:border-[#e8ff47] hover:text-white transition-all">← Designer</a>
+            <a href="/admin/clipart" className="px-4 py-2 rounded text-xs font-mono bg-[#1e1e1e] border border-[#2a2a2a] text-gray-400 hover:border-[#dd3333] hover:text-white transition-all">Clipart Admin</a>
+            <a href="/designer?product_id=10043960623420&variant_id=51740953837884&title=Unisex+Heavyweight+T&price=2400" className="px-4 py-2 rounded text-xs font-mono bg-[#1e1e1e] border border-[#2a2a2a] text-gray-400 hover:border-[#dd3333] hover:text-white transition-all">← Designer</a>
           </div>
         </div>
 
         {message && (
-          <div className={`fixed top-6 right-6 px-4 py-3 rounded font-mono text-sm z-50 ${message.type === 'success' ? 'bg-[#e8ff47] text-black' : 'bg-red-500 text-white'}`}>
+          <div className={`fixed top-6 right-6 px-4 py-3 rounded font-mono text-sm z-50 ${message.type === 'success' ? 'bg-[#dd3333] text-black' : 'bg-red-500 text-white'}`}>
             {message.text}
           </div>
         )}
@@ -94,7 +94,7 @@ export default function PricingAdmin() {
           <h2 className="text-xs font-mono uppercase tracking-widest text-gray-500 mb-2">How it works</h2>
           <p className="text-sm text-gray-400 font-mono">
             Print charge is added to the blank product price per item.<br />
-            Example: $22.00 blank + $12.00 print (1 side) = <span className="text-[#e8ff47]">$34.00 per item</span>
+            Example: $22.00 blank + $12.00 print (1 side) = <span className="text-[#dd3333]">$34.00 per item</span>
           </p>
         </div>
 
@@ -104,13 +104,13 @@ export default function PricingAdmin() {
           <div className="flex flex-col gap-8">
             {Object.entries(grouped).map(([method, rows]) => (
               <div key={method}>
-                <h2 className="text-sm font-mono uppercase tracking-widest text-[#e8ff47] mb-3">{method.replace('_', ' ')}</h2>
+                <h2 className="text-sm font-mono uppercase tracking-widest text-[#dd3333] mb-3">{method.replace('_', ' ')}</h2>
                 <div className="flex flex-col gap-3">
                   {rows.map(row => (
                     <div key={row.id} className={`bg-[#111] border rounded-lg p-4 ${row.is_active ? 'border-[#2a2a2a]' : 'border-red-900 opacity-60'}`}>
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-lg bg-[#1e1e1e] flex flex-col items-center justify-center shrink-0">
-                          <span className="text-xl font-black text-[#e8ff47]">{row.sides}</span>
+                          <span className="text-xl font-black text-[#dd3333]">{row.sides}</span>
                           <span className="text-[9px] text-gray-500 font-mono">side{row.sides > 1 ? 's' : ''}</span>
                         </div>
                         <div className="flex-1">
@@ -118,7 +118,7 @@ export default function PricingAdmin() {
                           <input
                             value={editValues[row.id]?.label || ''}
                             onChange={e => setEditValues(prev => ({ ...prev, [row.id]: { ...prev[row.id], label: e.target.value } }))}
-                            className="w-full bg-[#0a0a0a] border border-[#333] rounded px-2 py-1 text-sm text-white outline-none focus:border-[#e8ff47] font-mono mt-1"
+                            className="w-full bg-[#0a0a0a] border border-[#333] rounded px-2 py-1 text-sm text-white outline-none focus:border-[#dd3333] font-mono mt-1"
                           />
                         </div>
                         <div className="w-28">
@@ -129,12 +129,12 @@ export default function PricingAdmin() {
                               type="number" step="0.01" min="0"
                               value={editValues[row.id]?.price_add || ''}
                               onChange={e => setEditValues(prev => ({ ...prev, [row.id]: { ...prev[row.id], price_add: e.target.value } }))}
-                              className="w-full bg-[#0a0a0a] border border-[#333] rounded px-2 py-1 text-sm text-white outline-none focus:border-[#e8ff47] font-mono"
+                              className="w-full bg-[#0a0a0a] border border-[#333] rounded px-2 py-1 text-sm text-white outline-none focus:border-[#dd3333] font-mono"
                             />
                           </div>
                         </div>
                         <div className="flex gap-2">
-                          <button onClick={() => saveRow(row)} className="px-3 py-2 rounded text-xs font-mono bg-[#e8ff47] text-black hover:bg-yellow-300 transition-all">
+                          <button onClick={() => saveRow(row)} className="px-3 py-2 rounded text-xs font-mono bg-[#dd3333] text-black hover:bg-yellow-300 transition-all">
                             {saving === row.id ? '...' : 'Save'}
                           </button>
                           <button onClick={() => toggleActive(row)} className={`px-3 py-2 rounded text-xs font-mono transition-all ${row.is_active ? 'bg-[#1e1e1e] text-green-400 border border-[#2a2a2a]' : 'bg-red-900 text-red-300'}`}>
