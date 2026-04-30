@@ -1,18 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
-import { createClient } from '@supabase/supabase-js'
+import { createClient as createSupabaseAdmin } from '@supabase/supabase-js'
+import { createClient } from '../../lib/supabase/server'
 
-// Use anon key for storage (bucket is now public) + service role for DB insert
-const anonClient = createClient(
+const anonClient = createSupabaseAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   { auth: { persistSession: false } }
 )
 
+function getAllowedEmails(): string[] {
+  return (process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map(e => e.trim().toLowerCase())
+    .filter(Boolean)
+}
+
 export async function POST(request: NextRequest) {
-  const cookieStore = await cookies()
-  const auth = cookieStore.get('admin_auth')
-  if (auth?.value !== process.env.ADMIN_PASSWORD) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user?.email || !getAllowedEmails().includes(user.email.toLowerCase())) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -32,7 +39,6 @@ export async function POST(request: NextRequest) {
   const path = `${categoryName}/${safeName}_${Date.now()}.${ext}`
   const buffer = await file.arrayBuffer()
 
-  // Upload to storage using anon key (bucket policies allow this)
   const { error: uploadError } = await anonClient.storage
     .from('clipart')
     .upload(path, buffer, { contentType: file.type, upsert: true })
@@ -43,7 +49,6 @@ export async function POST(request: NextRequest) {
 
   const { data: urlData } = anonClient.storage.from('clipart').getPublicUrl(path)
 
-  // Insert into DB (RLS disabled on clipart_items)
   const { data: newItem, error: insertError } = await anonClient
     .from('clipart_items')
     .insert({
