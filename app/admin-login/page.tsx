@@ -55,15 +55,21 @@ function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
-      <div className="bg-[#111] border border-[#2a2a2a] rounded-xl p-8 w-full max-w-sm">
-        <h1 className="text-xl font-mono font-bold text-[#e8ff47] mb-1">Admin Access</h1>
-        <p className="text-gray-500 text-xs font-mono mb-6">T-Shirt Deli Designer Admin</p>
+    <div className="min-h-screen bg-white flex items-center justify-center p-6">
+      <div className="bg-white border border-gray-200 rounded-xl p-8 w-full max-w-sm shadow-sm">
+        <div className="mb-6">
+          <span className="font-black text-lg tracking-widest text-black">
+            TEE<span className="text-[#dd3333]">STUDIO</span>
+            <span className="text-gray-500 font-mono text-xs ml-2">/ ADMIN</span>
+          </span>
+        </div>
+        <h1 className="text-xl font-mono font-bold text-black mb-1">Admin Access</h1>
+        <p className="text-gray-600 text-xs font-mono mb-6">T-Shirt Deli Designer Admin</p>
 
         {step === 'email' ? (
           <form onSubmit={handleSendCode} className="flex flex-col gap-4">
             <div>
-              <label className="text-xs font-mono text-gray-500 uppercase tracking-widest block mb-1">Email</label>
+              <label className="text-xs font-mono text-gray-600 uppercase tracking-widest block mb-1">Email</label>
               <input
                 type="email"
                 value={email}
@@ -71,22 +77,22 @@ function LoginForm() {
                 placeholder="you@example.com"
                 autoFocus
                 required
-                className="w-full bg-[#0a0a0a] border border-[#333] rounded px-3 py-2 text-sm text-white outline-none focus:border-[#e8ff47] font-mono"
+                className="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm text-black outline-none focus:border-[#dd3333] font-mono placeholder-gray-400"
               />
             </div>
-            {error && <p className="text-red-400 text-xs font-mono">{error}</p>}
+            {error && <p className="text-red-600 text-xs font-mono">{error}</p>}
             <button type="submit" disabled={loading || !email}
-              className="w-full py-2.5 rounded bg-[#e8ff47] text-black font-mono font-bold text-sm hover:bg-yellow-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+              className="w-full py-2.5 rounded bg-[#dd3333] text-white font-mono font-bold text-sm hover:bg-red-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
               {loading ? 'Sending...' : 'Send sign-in code'}
             </button>
           </form>
         ) : (
           <form onSubmit={handleVerifyCode} className="flex flex-col gap-4">
-            <p className="text-sm font-mono text-gray-300">
-              Code sent to <span className="text-white">{email}</span>
+            <p className="text-sm font-mono text-black">
+              Code sent to <span className="font-bold">{email}</span>
             </p>
             <div>
-              <label className="text-xs font-mono text-gray-500 uppercase tracking-widest block mb-1">Sign-in code</label>
+              <label className="text-xs font-mono text-gray-600 uppercase tracking-widest block mb-1">Sign-in code</label>
               <input
                 type="text"
                 value={code}
@@ -97,17 +103,17 @@ function LoginForm() {
                 autoFocus
                 maxLength={8}
                 required
-                className="w-full bg-[#0a0a0a] border border-[#333] rounded px-3 py-2 text-2xl text-white outline-none focus:border-[#e8ff47] font-mono tracking-[0.4em] text-center"
+                className="w-full bg-white border border-gray-300 rounded px-3 py-2 text-2xl text-black outline-none focus:border-[#dd3333] font-mono tracking-[0.4em] text-center placeholder-gray-300"
               />
             </div>
-            {error && <p className="text-red-400 text-xs font-mono">{error}</p>}
+            {error && <p className="text-red-600 text-xs font-mono">{error}</p>}
             <button type="submit" disabled={loading || code.length < 6}
-              className="w-full py-2.5 rounded bg-[#e8ff47] text-black font-mono font-bold text-sm hover:bg-yellow-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+              className="w-full py-2.5 rounded bg-[#dd3333] text-white font-mono font-bold text-sm hover:bg-red-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
               {loading ? 'Signing in...' : 'Sign in'}
             </button>
             <button type="button"
               onClick={() => { setStep('email'); setCode(''); setError('') }}
-              className="text-xs underline text-gray-500 hover:text-gray-300 self-start">
+              className="text-xs underline text-gray-600 hover:text-black self-start">
               Use a different email
             </button>
           </form>

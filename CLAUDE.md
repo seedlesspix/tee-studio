@@ -23,6 +23,8 @@
 
 ```
 tee-studio/
+├── middleware.ts                     # Root middleware — refreshes Supabase session per request
+│
 ├── app/
 │   ├── layout.tsx                    # Root layout with custom fonts
 │   ├── page.tsx                      # Landing page (boilerplate)
@@ -36,24 +38,32 @@ tee-studio/
 │   │   └── ClipartPanel.tsx          # Clipart browser sidebar
 │   │
 │   ├── lib/
-│   │   ├── supabase.ts               # Supabase client
+│   │   ├── supabase.ts               # Singleton browser client (@supabase/ssr) — used by designer + admin
+│   │   ├── supabase/
+│   │   │   ├── browser.ts            # createBrowserClient factory (used by login page)
+│   │   │   ├── server.ts             # createServerClient factory (server components, route handlers)
+│   │   │   └── middleware.ts         # updateSession helper for root middleware
 │   │   └── shopify.ts                # Shopify Storefront API client
 │   │
 │   ├── api/
 │   │   ├── product/route.ts          # GET product data from Shopify
 │   │   ├── preview/route.ts          # CORS proxy for shirt images
-│   │   ├── admin-upload/route.ts     # POST clipart to Supabase
-│   │   ├── admin-auth/route.ts       # Admin password authentication
-│   │   └── shopify-webhook/route.ts  # (Webhook endpoint - TBD)
+│   │   ├── admin-upload/route.ts     # POST clipart (auth-gated by Supabase session + ADMIN_EMAILS)
+│   │   └── shopify-webhook/route.ts  # Updates design_orders on Shopify order completion (service role)
+│   │
+│   ├── auth/
+│   │   └── callback/route.ts         # Magic-link callback (still wired as fallback)
 │   │
 │   ├── admin/
-│   │   ├── layout.tsx                # Auth guard for admin routes
+│   │   ├── layout.tsx                # Auth gate (Supabase session + email allowlist) + shared header
+│   │   ├── AdminTabs.tsx             # Active-tab nav (Clipart / Orders / Pricing)
+│   │   ├── SignOutButton.tsx         # Calls supabase.auth.signOut()
 │   │   ├── clipart/page.tsx          # Clipart management
 │   │   ├── orders/page.tsx           # Design orders history
 │   │   └── pricing/page.tsx          # Pricing configuration
 │   │
 │   ├── admin-login/
-│   │   └── page.tsx                  # Admin password entry
+│   │   └── page.tsx                  # OTP code login (8-digit code via email)
 │   │
 │   ├── order/
 │   │   └── page.tsx                  # Order summary & Shopify cart creation
@@ -83,14 +93,24 @@ tee-studio/
 
 ## Database Schema (Supabase)
 
-Inferred from code usage:
+All public tables have **RLS enabled**. Admin DB writes are gated by `app_metadata.is_admin = true` on the user's `auth.users` row, checked via the `public.is_admin()` SQL function from policies.
 
-- **clipart_categories** - Category groupings for clipart (with `is_active`, `sort_order`, `print_method_key`)
-- **clipart_items** - Individual clipart files (with `file_url`, `file_type`, `tags`, `is_active`, `sort_order`)
-- **designer_fonts** - Font library per print method (label, value, `is_active`, `print_method_key`)
-- **designer_colors** - Color palette per print method (hex, `is_active`, `print_method_key`)
-- **design_orders** - User designs (product/variant IDs, canvas PNGs, quantities, totals, status tracking)
-- **clipart_storage** - Supabase Storage bucket for file uploads
+Active tables:
+- **clipart_categories** - Category groupings for clipart (`is_active`, `sort_order`, `print_method_key`). Public read.
+- **clipart_items** - Individual clipart files (`file_url`, `file_type`, `tags`, `is_active`, `sort_order`). Public read of active items; admin full CRUD.
+- **designer_print_methods** - Print method registry (e.g. `screen_print`). Public read.
+- **designer_fonts** - Font library per print method. Public read.
+- **designer_colors** - Color palette per print method. Public read.
+- **designer_pricing** - Print charges per method × sides. Public read of active rows; admin full CRUD.
+- **design_orders** - Anonymous design + order records. Public read/insert/update for non-completed orders; once `status='completed'` (set by Shopify webhook), only admin + service role can touch the row. PII (customer email/phone/address) is only present on completed orders.
+
+Scaffolding (unused by current app, but RLS-policied for future "customer accounts" feature):
+- **profiles** - User profile rows. Auto-created by `on_auth_user_created` trigger when `auth.users` row is inserted.
+- **designs** - Saved designs tied to `user_id`.
+- **orders** - Orders tied to `user_id`.
+
+Storage:
+- **clipart** bucket - Public-readable, used for clipart file uploads
 
 ## Code Patterns & Conventions
 
@@ -106,9 +126,10 @@ Inferred from code usage:
 - Module-level variables for persistence across re-renders (e.g., `_activeObj`)
 
 ### Styling
-- **Tailwind classes** with dark mode support (`dark:bg-black`)
-- Custom color palette: `#0d0d0d`, `#1e1e1e`, `#2a2a2a` (dark UI)
-- Accent colors: `#e8ff47` (yellow), `#dd3333` (red)
+- **Tailwind classes** throughout
+- **Designer / main app**: dark UI palette (`#0d0d0d`, `#1e1e1e`, `#2a2a2a` surfaces)
+- **Admin + admin-login**: light UI palette (white surfaces, gray-100/200/300, black text)
+- Accent: `#dd3333` (red) — primary buttons everywhere are red bg with white text
 - Responsive breakpoints: `sm:`, `md:` prefixes
 
 ### TypeScript Usage
@@ -135,17 +156,18 @@ Inferred from code usage:
 - **No error boundaries**: Canvas operations could crash the app without recovery UI
 - **Module-level global state**: `_activeObj` persists across re-renders — should use proper React patterns
 
-### Authentication & Security
-- **Basic password auth**: Admin login uses simple environment variable comparison; not suitable for production
-- **No CSRF protection**: Admin upload endpoint lacks CSRF tokens
-- **Credentials in cookies**: `admin_auth` cookie stores password directly (should use secure tokens/sessions)
+### Authentication & Security (current state — addressed 2026-04-30)
+- **Admin auth**: Supabase Auth with OTP code flow (8-digit emailed code). Email allowlist via `ADMIN_EMAILS` env var enforced in `app/admin/layout.tsx` and `app/api/admin-upload/route.ts`. SMTP routed through Resend (`noreply@auth.tshirtdeli.com`).
+- **Admin DB role**: orthogonal to the env-var allowlist — `auth.users.app_metadata.is_admin = true` controls RLS write access. New admins must have BOTH the env var entry AND the `is_admin` flag set, then sign out/in to mint a fresh JWT.
+- **RLS**: enabled on all 10 public tables. `design_orders` has the only nuanced policy — public can read/write non-completed rows; completed rows are admin/service-role only (PII protection).
+- **Open URL-as-key model on draft orders**: anyone with a `design_orders.id` UUID can read/modify a draft. Acceptable given UUIDs are unguessable; "real" fix is the deferred customer-accounts feature (the empty `profiles`/`designs`/`orders` tables).
 
 ### Missing Infrastructure
 - **Empty types directory**: No shared types or interfaces
 - **Boilerplate landing page**: `app/page.tsx` still shows default Next.js template
 - **No environment validation**: Missing `.env.local` documentation or runtime validation
 - **No testing setup**: No Jest, Vitest, or testing libraries configured
-- **No migration files**: Supabase schema not version-controlled
+- **Partial migration history**: Supabase migrations exist for the 2026-04-30 RLS lockdown (applied via Supabase MCP), but earlier schema is not in git. New schema changes should go through `apply_migration` so they're tracked.
 
 ### Code Quality
 - **Inconsistent naming**: Snake_case in database, camelCase in components
@@ -166,7 +188,7 @@ Inferred from code usage:
 - **No undo/redo**: Canvas doesn't track action history
 - **No save drafts**: Designs only saved at checkout
 - **No design sharing**: No public gallery or social sharing
-- **Webhook incomplete**: `shopify-webhook/route.ts` exists but empty
+- **Webhook**: `shopify-webhook/route.ts` updates `design_orders` on Shopify `order/paid` — sets `status='completed'`, customer info, shipping. Not pointed at by Shopify yet — register the webhook URL in Shopify admin to activate.
 
 ### Documentation
 - **No API docs**: Endpoint parameters and responses undocumented
@@ -177,7 +199,7 @@ Inferred from code usage:
 ### Dependencies
 - **Next.js 16.2.4** is very recent; may have stability or compatibility issues
 - **React 19.2.4** (RC/beta at training cutoff) — consider pinning if issues arise
-- **Supabase auth-helpers**: Version 0.15.0 is older; may be outdated
+- **Supabase clients**: Now using `@supabase/ssr` for SSR-aware browser/server clients. Legacy `@supabase/auth-helpers-nextjs` is still in `package.json` but unused — safe to remove.
 
 ## Quick Start
 
