@@ -1,23 +1,10 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
+import type { Tables } from '@/types/database'
 
-interface Category {
-  id: string
-  name: string
-  print_method_key: string
-}
-
-interface ClipartItem {
-  id: string
-  name: string
-  file_url: string
-  file_type: string
-  category_id: string
-  tags: string[]
-  is_active: boolean
-  sort_order: number
-}
+type Category = Tables<'clipart_categories'>
+type ClipartItem = Tables<'clipart_items'>
 
 export default function ClipartAdmin() {
   const [categories, setCategories] = useState<Category[]>([])
@@ -40,7 +27,7 @@ export default function ClipartAdmin() {
   useEffect(() => {
     supabase
       .from('clipart_categories')
-      .select('id, name, print_method_key')
+      .select('*')
       .order('name')
       .then(({ data }) => {
         if (data) {
@@ -55,7 +42,7 @@ export default function ClipartAdmin() {
     setLoading(true)
     supabase
       .from('clipart_items')
-      .select('id, name, file_url, file_type, category_id, tags, is_active, sort_order')
+      .select('*')
       .eq('category_id', selectedCategory)
       .order('sort_order')
       .then(({ data }) => {

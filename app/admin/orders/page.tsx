@@ -1,32 +1,22 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import type { Tables } from '@/types/database'
 
-interface Order {
-  id: string
-  product_title: string
-  selected_color: string
-  print_method: string
-  sides_designed: number
-  status: string
-  total_qty: number
-  total_price: string
-  unit_price: string
-  print_charge: string
-  shopify_order_id: string | null
-  shopify_order_number: string | null
-  shopify_cart_url: string | null
-  customer_name: string | null
-  customer_email: string | null
-  customer_phone: string | null
-  shipping_address: any
-  canvas_png_front: string | null
-  canvas_png_back: string | null
-  canvas_svg_front: string | null
-  canvas_svg_back: string | null
-  uploaded_files: any[]
-  quantities: Record<string, number>
-  created_at: string
+type ShippingAddress = {
+  address1?: string
+  city?: string
+  province?: string
+  zip?: string
+  country?: string
+}
+
+type UploadedFile = { name: string; type: string; url: string }
+
+type Order = Omit<Tables<'design_orders'>, 'quantities' | 'uploaded_files' | 'shipping_address'> & {
+  quantities: Record<string, number> | null
+  uploaded_files: UploadedFile[] | null
+  shipping_address: ShippingAddress | null
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -51,24 +41,26 @@ export default function OrdersAdmin() {
       .select('*')
       .order('created_at', { ascending: false })
       .then(({ data }) => {
-        if (data) setOrders(data)
+        if (data) setOrders(data as Order[])
         setLoading(false)
       })
   }, [])
 
   const filtered = orders.filter(o => {
     const matchStatus = filter === 'all' || o.status === filter
+    const q = search.toLowerCase()
     const matchSearch = !search ||
-      o.product_title?.toLowerCase().includes(search.toLowerCase()) ||
-      o.selected_color?.toLowerCase().includes(search.toLowerCase()) ||
-      o.customer_name?.toLowerCase().includes(search.toLowerCase()) ||
-      o.customer_email?.toLowerCase().includes(search.toLowerCase()) ||
-      o.shopify_order_number?.includes(search) ||
+      (o.product_title?.toLowerCase().includes(q) ?? false) ||
+      (o.selected_color?.toLowerCase().includes(q) ?? false) ||
+      (o.customer_name?.toLowerCase().includes(q) ?? false) ||
+      (o.customer_email?.toLowerCase().includes(q) ?? false) ||
+      (o.shopify_order_number?.includes(search) ?? false) ||
       o.id.includes(search)
     return matchStatus && matchSearch
   })
 
-  const formatDate = (str: string) => {
+  const formatDate = (str: string | null) => {
+    if (!str) return ''
     const d = new Date(str)
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
   }
@@ -149,7 +141,7 @@ export default function OrdersAdmin() {
                   ) : (
                     <span className="text-[10px] font-mono text-gray-500">{order.id.split('-')[0]}...</span>
                   )}
-                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono uppercase shrink-0 ${STATUS_COLORS[order.status] || 'bg-gray-200 text-gray-800'}`}>
+                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono uppercase shrink-0 ${STATUS_COLORS[order.status ?? 'draft'] || 'bg-gray-200 text-gray-800'}`}>
                     {order.status === 'cart_created' ? 'in cart' : order.status}
                   </span>
                 </div>
@@ -193,7 +185,7 @@ export default function OrdersAdmin() {
                 <p className="text-xs text-gray-500 mt-0.5">{formatDate(selected.created_at)}</p>
               </div>
               <div className="flex gap-2 items-center">
-                <span className={`px-3 py-1.5 rounded-full text-xs font-mono uppercase font-bold ${STATUS_COLORS[selected.status] || 'bg-gray-200 text-gray-800'}`}>
+                <span className={`px-3 py-1.5 rounded-full text-xs font-mono uppercase font-bold ${STATUS_COLORS[selected.status ?? 'draft'] || 'bg-gray-200 text-gray-800'}`}>
                   {selected.status === 'cart_created' ? 'In Cart' : selected.status}
                 </span>
                 {selected.shopify_cart_url && (
@@ -313,11 +305,11 @@ export default function OrdersAdmin() {
             </div>
 
             {/* Customer uploaded files */}
-            {selected.uploaded_files?.length > 0 && (
+            {selected.uploaded_files && selected.uploaded_files.length > 0 && (
               <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
                 <p className="text-xs font-mono text-gray-600 uppercase tracking-widest mb-3">Customer Uploaded Files</p>
                 <div className="flex flex-col gap-2">
-                  {selected.uploaded_files.map((f: any, i: number) => (
+                  {selected.uploaded_files.map((f, i) => (
                     <div key={i} className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-3 py-2">
                       <div className="flex items-center gap-2">
                         <span className="text-lg">📎</span>

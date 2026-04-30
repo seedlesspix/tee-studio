@@ -112,6 +112,38 @@ Scaffolding (unused by current app, but RLS-policied for future "customer accoun
 Storage:
 - **clipart** bucket - Public-readable, used for clipart file uploads
 
+### Database TypeScript types
+
+Generated from the live schema and committed at **`types/database.ts`**. The four Supabase clients in `app/lib/supabase.ts` and `app/lib/supabase/{browser,server,middleware}.ts` are typed with `<Database>`, so `supabase.from(...)` calls have full autocomplete and type-checking.
+
+Use the generated types directly in components:
+
+```ts
+import type { Tables, TablesInsert, TablesUpdate } from '@/types/database'
+
+type ClipartItem = Tables<'clipart_items'>            // SELECT shape
+type NewItem = TablesInsert<'clipart_items'>          // INSERT shape
+type ItemPatch = TablesUpdate<'clipart_items'>        // UPDATE shape
+```
+
+JSON columns (`quantities`, `uploaded_files`, `shipping_address`) come back as the broad `Json` type. When a component knows the actual shape, override with `Omit<...> & {...}`:
+
+```ts
+type Order = Omit<Tables<'design_orders'>, 'quantities'> & {
+  quantities: Record<string, number> | null
+}
+```
+
+**Regenerating after schema changes:**
+
+The types file is a snapshot. Whenever the schema changes (migration applied, column added/dropped/altered, table created), regenerate with:
+
+```bash
+npx supabase gen types typescript --project-id yatiairlyensmcwbpldx > types/database.ts
+```
+
+Or ask Claude in any session — the Supabase MCP has `generate_typescript_types` wired up. After regenerating, run `npx tsc --noEmit` to surface any code that no longer matches the schema.
+
 ## Code Patterns & Conventions
 
 ### Component Architecture

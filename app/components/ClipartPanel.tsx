@@ -1,20 +1,10 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import type { Tables } from '@/types/database'
 
-interface Category {
-  id: string
-  name: string
-}
-
-interface ClipartItem {
-  id: string
-  name: string
-  file_url: string
-  file_type: string
-  category_id: string
-  tags?: string[]
-}
+type Category = Pick<Tables<'clipart_categories'>, 'id' | 'name'>
+type ClipartItem = Pick<Tables<'clipart_items'>, 'id' | 'name' | 'file_url' | 'file_type' | 'category_id' | 'tags'>
 
 interface Props {
   printMethod: string
@@ -128,7 +118,7 @@ export default function ClipartPanel({ printMethod, onSelect }: Props) {
           {filtered.map(item => (
             <button
               key={item.id}
-              onClick={() => onSelect(item.file_url, item.file_type)}
+              onClick={() => onSelect(item.file_url, item.file_type ?? 'image')}
               title={item.name}
               className="bg-white border border-gray-200 rounded-lg p-2 hover:border-[#dd3333] transition-all flex flex-col items-center gap-1"
             >

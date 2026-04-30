@@ -3,24 +3,12 @@ import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '../lib/supabase'
 import { createShopifyCart } from '../lib/shopify'
+import type { Tables } from '@/types/database'
 
 const ALL_SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL']
 
-interface DesignOrder {
-  id: string
-  product_title: string
-  selected_color: string
-  shopify_variant_id: string
-  shopify_product_id: string
-  canvas_png_front: string
-  canvas_png_back: string | null
-  unit_price: number
-  print_charge: number
-  price_per_item: number
-  sides_designed: number
-  print_method: string
-  quantities: Record<string, number>
-  available_sizes: string[]
+type DesignOrder = Omit<Tables<'design_orders'>, 'quantities'> & {
+  quantities: Record<string, number> | null
 }
 
 function OrderPage() {
@@ -37,15 +25,18 @@ function OrderPage() {
     supabase.from('design_orders').select('*').eq('id', designId).single()
       .then(({ data, error }) => {
         if (error || !data) { setError('Design not found'); setLoading(false); return }
-        setDesign(data)
+        const order = data as DesignOrder
+        setDesign(order)
         const initQty: Record<string, number> = {}
+        const savedQuantities = order.quantities ?? {}
         // Use available_sizes from product, or fall back to saved quantities
-        const sizesToUse = (data.available_sizes?.length > 0)
-          ? data.available_sizes
-          : Object.keys(data.quantities || {}).length > 0
-            ? Object.keys(data.quantities)
-            : ALL_SIZES
-        sizesToUse.forEach((s: string) => initQty[s] = data.quantities?.[s] || 0)
+        const sizesToUse: string[] =
+          (order.available_sizes?.length ?? 0) > 0
+            ? order.available_sizes!
+            : Object.keys(savedQuantities).length > 0
+              ? Object.keys(savedQuantities)
+              : ALL_SIZES
+        sizesToUse.forEach((s) => { initQty[s] = savedQuantities[s] ?? 0 })
         setQuantities(initQty)
         setLoading(false)
       })
@@ -56,7 +47,7 @@ function OrderPage() {
     (a, b) => SIZE_ORDER.indexOf(a) - SIZE_ORDER.indexOf(b)
   )
   const totalQty = Object.values(quantities).reduce((a, b) => a + b, 0)
-  const pricePerItem = design ? (design.unit_price + design.print_charge) : 0
+  const pricePerItem = design ? ((design.unit_price ?? 0) + (design.print_charge ?? 0)) : 0
   const discount = totalQty >= 24 ? 0.20 : totalQty >= 12 ? 0.15 : totalQty >= 6 ? 0.10 : 0
   const total = (totalQty * pricePerItem * (1 - discount)).toFixed(2)
 
@@ -79,8 +70,8 @@ function OrderPage() {
       variantId,
       quantities,
       design.id,
-      design.print_charge,
-      design.selected_color
+      design.print_charge ?? 0,
+      design.selected_color ?? ''
     )
 
     if (cart?.checkoutUrl) {
