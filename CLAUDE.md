@@ -142,6 +142,36 @@ npx supabase gen types typescript --project-id yatiairlyensmcwbpldx > types/data
 
 Or ask Claude in any session — the Supabase MCP has `generate_typescript_types` wired up. After regenerating, run `npx tsc --noEmit` to surface any code that no longer matches the schema.
 
+### Database migrations
+
+> **🚨 HARD RULE — DO NOT SKIP, EVEN FOR "TRIVIAL" CHANGES 🚨**
+>
+> **Before applying any migration via the Supabase MCP `apply_migration` tool, the SQL must be shown to the user in plain language with a clear explanation of what it does, and explicit approval must be received. Never apply a migration without this step, even for changes that seem trivial.**
+>
+> "Trivial" includes: adding a column, dropping a column, changing a default, renaming, adding/removing an index, changing an RLS policy, seeding data, granting permissions. All of them require the show-and-approve step. No exceptions.
+>
+> The user is non-technical. "Plain language" means: name the table, describe what's changing in everyday terms, and call out anything irreversible (dropped columns, deleted rows, policy changes that affect access).
+
+**Where migration files live:**
+
+```
+supabase/migrations/<YYYYMMDDHHMMSS>_<snake_case_name>.sql
+```
+
+The folder is the canonical record of the schema. The 9 pre-existing migrations were backfilled from the Supabase server on 2026-05-01 by reading `supabase_migrations.schema_migrations.statements`.
+
+**Workflow for a new schema change (always all five steps, in order):**
+
+1. **Show the user the SQL** in plain language with a clear explanation. Wait for explicit approval.
+2. **Apply via MCP** `apply_migration` — Supabase records it server-side and assigns a timestamp version.
+3. **Write the SQL to a file** at `supabase/migrations/<version>_<name>.sql` so git captures it. Use the same `<version>` and `<name>` you passed to `apply_migration` so the file matches the server's migration history exactly.
+4. **Regenerate types** at `types/database.ts` (see "Regenerating after schema changes" above) and run `npx tsc --noEmit`.
+5. **Commit** the migration file + regenerated types + any code changes together, in one commit, so the schema and the code that depends on it stay in lockstep.
+
+**Verifying the repo and the live DB are in sync:**
+
+Compare versions in `supabase/migrations/` filenames against the output of MCP `list_migrations`. If a row exists on the server with no matching file (or vice versa), there's drift — investigate before doing anything else.
+
 ## Code Patterns & Conventions
 
 ### Component Architecture
@@ -197,7 +227,7 @@ Or ask Claude in any session — the Supabase MCP has `generate_typescript_types
 - **Boilerplate landing page**: `app/page.tsx` still shows default Next.js template
 - **No environment validation**: Missing `.env.local` documentation or runtime validation
 - **No testing setup**: No Jest, Vitest, or testing libraries configured
-- **Partial migration history**: Supabase migrations exist for the 2026-04-30 RLS lockdown (applied via Supabase MCP), but earlier schema is not in git. New schema changes should go through `apply_migration` so they're tracked.
+- ~~**Partial migration history**~~: ✅ Resolved 2026-05-01 — all 9 prior migrations backfilled from `supabase_migrations.schema_migrations` into `supabase/migrations/`. Going-forward workflow + hard approval rule documented in the "Database migrations" section above.
 
 ### Code Quality
 - **Inconsistent naming**: Snake_case in database, camelCase in components
