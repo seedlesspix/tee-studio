@@ -63,67 +63,68 @@ export async function getProduct(productId: string) {
   return data?.product
 }
 
-export async function createShopifyCart(
-  variantId: string,
-  quantities: Record<string, number>,
-  designOrderId: string,
-  printCharge: number,
-  selectedColor: string,
-  canvasPngFront?: string | null,
-  canvasPngBack?: string | null,
-) {
-  const previewAttrs: { key: string; value: string }[] = []
-  if (canvasPngFront) previewAttrs.push({ key: '_design_preview_front', value: canvasPngFront })
-  if (canvasPngBack)  previewAttrs.push({ key: '_design_preview_back',  value: canvasPngBack })
+export type CartItem = {
+  variantId: string
+  quantity: number
+  properties: Record<string, string>
+}
 
-  // Build line items - one per size with quantity > 0
-  const lines = Object.entries(quantities)
-    .filter(([_, qty]) => qty > 0)
-    .map(([size, qty]) => ({
-      merchandiseId: `gid://shopify/ProductVariant/${variantId}`,
-      quantity: qty,
-      attributes: [
-        { key: '_design_order_id', value: designOrderId },
-        { key: '_size', value: size },
-        { key: '_print_charge', value: `$${printCharge.toFixed(2)}` },
-        { key: '_color', value: selectedColor },
-        { key: 'Custom Design', value: 'Yes' },
-        ...previewAttrs,
-      ]
-    }))
+export type CartAddResult =
+  | { ok: true }
+  | { ok: false; error: string }
 
-  if (lines.length === 0) return null
+// Returns the configured store origin (e.g. "https://tshirtdeli.com") with no trailing slash.
+// Throws if the env var is missing — caller should surface the error to the user.
+export function getStoreOrigin(): string {
+  const raw = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN
+  if (!raw) throw new Error('NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN is not configured')
+  return raw.replace(/\/$/, '')
+}
 
-  const mutation = `
-    mutation CreateCart($lines: [CartLineInput!]!) {
-      cartCreate(input: { lines: $lines }) {
-        cart {
-          id
-          checkoutUrl
-          lines(first: 1) {
-            edges {
-              node {
-                id
-              }
-            }
-          }
-        }
-        userErrors {
-          field
-          message
-        }
-      }
-    }
-  `
+// Adds line items to the customer's Shopify session cart via /cart/add.js.
+// Relies on cookies for the Shopify domain — only works when the calling
+// page is same-site as the storefront (e.g. create.tshirtdeli.com → tshirtdeli.com).
+export async function addItemsToShopifyCart(items: CartItem[]): Promise<CartAddResult> {
+  if (items.length === 0) return { ok: false, error: 'No items to add' }
 
-  const { data, errors } = await shopifyClient.request(mutation, {
-    variables: { lines }
-  })
-
-  if (errors || data?.cartCreate?.userErrors?.length > 0) {
-    console.error('Cart creation errors:', errors || data?.cartCreate?.userErrors)
-    return null
+  let storeOrigin: string
+  try {
+    storeOrigin = getStoreOrigin()
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Store domain not configured' }
   }
 
-  return data?.cartCreate?.cart
+  // Batch endpoint: one request adds N line items atomically.
+  const body = {
+    items: items.map(item => ({
+      id: Number(item.variantId),
+      quantity: item.quantity,
+      properties: item.properties,
+    })),
+  }
+
+  try {
+    const res = await fetch(`${storeOrigin}/cart/add.js`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => null)
+      const message = errBody?.description || errBody?.message || `Shopify returned HTTP ${res.status}`
+      return { ok: false, error: message }
+    }
+
+    return { ok: true }
+  } catch (err) {
+    // Network error or CORS block (browser refuses to expose the response).
+    return {
+      ok: false,
+      error: err instanceof Error
+        ? `Could not reach Shopify (${err.message})`
+        : 'Could not reach Shopify',
+    }
+  }
 }

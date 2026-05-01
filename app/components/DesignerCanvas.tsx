@@ -1393,27 +1393,9 @@ export default function DesignerCanvas({
       if (error) { console.error('Order save error:', error); return null }
       console.log('Design saved:', orderId)
 
-      // Create Shopify cart and get checkout URL
-      const { createShopifyCart } = await import('../lib/shopify')
-      const variantNumericId = selectedVariant?.id?.split('/').pop() || ''
-      const cart = await createShopifyCart(
-        variantNumericId,
-        quantities,
-        orderId,
-        printCharge,
-        selectedColor
-      )
-
-      if (cart?.checkoutUrl) {
-        // Save cart URL to order
-        await supabase.from('design_orders').update({
-          shopify_cart_url: cart.checkoutUrl,
-          status: 'cart_created'
-        }).eq('id', orderId)
-        return { orderId, checkoutUrl: cart.checkoutUrl }
-      }
-
-      return { orderId, checkoutUrl: null }
+      // Cart creation happens on the order page (/order), where the customer
+      // picks sizes and quantities. Nothing more to do here.
+      return { orderId }
     } catch (err) {
       console.error('Save design error:', err)
       return null

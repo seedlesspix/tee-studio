@@ -2,7 +2,7 @@
 import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '../lib/supabase'
-import { createShopifyCart } from '../lib/shopify'
+import { addItemsToShopifyCart, getStoreOrigin } from '../lib/shopify'
 import type { Tables } from '@/types/database'
 
 const ALL_SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL']
@@ -56,39 +56,59 @@ function OrderPage() {
     setAdding(true)
     setError('')
 
-    // Update design order with final quantities
+    // 1. Persist the chosen quantities and total to design_orders (status: ordering)
     await supabase.from('design_orders').update({
       quantities,
       total_qty: totalQty,
       total_price: parseFloat(total),
-      status: 'ordering'
-      }).eq('id', design.id)
+      status: 'ordering',
+    }).eq('id', design.id)
 
-    // Create Shopify cart
+    // 2. Build line items for Shopify — one per non-zero size
     const variantId = design.shopify_variant_id?.split('/').pop() || ''
-    const cart = await createShopifyCart(
-      variantId,
-      quantities,
-      design.id,
-      design.print_charge ?? 0,
-      design.selected_color ?? '',
-      design.canvas_png_front,
-      design.canvas_png_back,
-    )
-
-    if (cart?.checkoutUrl) {
-      await supabase.from('design_orders').update({
-        shopify_cart_url: cart.checkoutUrl,
-        status: 'cart_created'
-      }).eq('id', design.id)
-      // Go to cart page not checkout - use checkoutUrl as-is
-      // Shopify checkoutUrl format: https://tshirtdeli.com/cart/c/TOKEN
-      // which already shows the cart, not checkout
-      window.location.href = cart.checkoutUrl
-    } else {
-      setError('Failed to create cart. Please try again.')
-      setAdding(false)
+    const baseProps: Record<string, string> = {
+      _design_order_id: design.id,
+      _print_charge: `$${(design.print_charge ?? 0).toFixed(2)}`,
+      _color: design.selected_color ?? '',
+      'Custom Design': 'Yes',
     }
+    if (design.canvas_png_front) baseProps._design_preview_front = design.canvas_png_front
+    if (design.canvas_png_back)  baseProps._design_preview_back  = design.canvas_png_back
+
+    const items = Object.entries(quantities)
+      .filter(([_, qty]) => qty > 0)
+      .map(([size, qty]) => ({
+        variantId,
+        quantity: qty,
+        properties: { ...baseProps, _size: size },
+      }))
+
+    // 3. Add to the customer's Shopify session cart via /cart/add.js
+    const result = await addItemsToShopifyCart(items)
+
+    if (!result.ok) {
+      setError(`Could not add to cart: ${result.error}`)
+      setAdding(false)
+      return
+    }
+
+    // 4. Mark order as cart_created. shopify_cart_url is now NULL — the AJAX
+    //    endpoint doesn't give us a per-cart URL; the cart lives in cookies.
+    await supabase.from('design_orders').update({
+      status: 'cart_created',
+      shopify_cart_url: null,
+    }).eq('id', design.id)
+
+    // 5. Redirect to the storefront cart page
+    let storeOrigin: string
+    try {
+      storeOrigin = getStoreOrigin()
+    } catch {
+      // We just succeeded with addItemsToShopifyCart, so this shouldn't fire,
+      // but fall back to the bare /cart path rather than crashing.
+      storeOrigin = ''
+    }
+    window.location.href = `${storeOrigin}/cart`
   }
 
   if (loading) return (
