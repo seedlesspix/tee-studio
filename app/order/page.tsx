@@ -71,7 +71,9 @@ function OrderPage() {
       quantities,
       design.id,
       design.print_charge ?? 0,
-      design.selected_color ?? ''
+      design.selected_color ?? '',
+      design.canvas_png_front,
+      design.canvas_png_back,
     )
 
     if (cart?.checkoutUrl) {

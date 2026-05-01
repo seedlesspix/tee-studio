@@ -68,8 +68,14 @@ export async function createShopifyCart(
   quantities: Record<string, number>,
   designOrderId: string,
   printCharge: number,
-  selectedColor: string
+  selectedColor: string,
+  canvasPngFront?: string | null,
+  canvasPngBack?: string | null,
 ) {
+  const previewAttrs: { key: string; value: string }[] = []
+  if (canvasPngFront) previewAttrs.push({ key: '_design_preview_front', value: canvasPngFront })
+  if (canvasPngBack)  previewAttrs.push({ key: '_design_preview_back',  value: canvasPngBack })
+
   // Build line items - one per size with quantity > 0
   const lines = Object.entries(quantities)
     .filter(([_, qty]) => qty > 0)
@@ -82,6 +88,7 @@ export async function createShopifyCart(
         { key: '_print_charge', value: `$${printCharge.toFixed(2)}` },
         { key: '_color', value: selectedColor },
         { key: 'Custom Design', value: 'Yes' },
+        ...previewAttrs,
       ]
     }))
 
