@@ -86,9 +86,7 @@ tee-studio/
 ├── README.md                         # Default Next.js README
 │
 └── Utility Scripts (local development)
-    ├── bulk-clipart.mjs              # Bulk upload clipart to Supabase
-    ├── fix_text.py                   # (Deprecated?) Component modification script
-    └── update_designer.py            # (Deprecated?) Component modification script
+    └── bulk-clipart.mjs              # Bulk upload clipart to Supabase
 ```
 
 ## Database Schema (Supabase)
@@ -205,7 +203,6 @@ Or ask Claude in any session — the Supabase MCP has `generate_typescript_types
 - **Inconsistent naming**: Snake_case in database, camelCase in components
 - **Hardcoded values**: Color maps, sizes (`SIZES = ['S', 'M', 'L', ...]`), pricing scattered throughout
 - **Magic numbers**: Font sizes, canvas constraints, percentage calculations
-- **Python automation scripts**: `fix_text.py` and `update_designer.py` modify TSX files directly — fragile and hard to maintain
 
 ### Performance & Optimization
 - **Large bundle size**: All fonts loaded upfront (Google Fonts + local fonts)
