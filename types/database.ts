@@ -109,6 +109,7 @@ export type Database = {
       design_orders: {
         Row: {
           available_sizes: string[] | null
+          billing_address: Json | null
           canvas_json_back: string | null
           canvas_json_front: string | null
           canvas_png_back: string | null
@@ -142,6 +143,7 @@ export type Database = {
         }
         Insert: {
           available_sizes?: string[] | null
+          billing_address?: Json | null
           canvas_json_back?: string | null
           canvas_json_front?: string | null
           canvas_png_back?: string | null
@@ -175,6 +177,7 @@ export type Database = {
         }
         Update: {
           available_sizes?: string[] | null
+          billing_address?: Json | null
           canvas_json_back?: string | null
           canvas_json_front?: string | null
           canvas_png_back?: string | null
