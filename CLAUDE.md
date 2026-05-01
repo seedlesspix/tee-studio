@@ -23,7 +23,7 @@
 
 ```
 tee-studio/
-├── middleware.ts                     # Root middleware — refreshes Supabase session per request
+├── proxy.ts                          # Root proxy (Next.js 16 — formerly middleware.ts) — refreshes Supabase session per request
 │
 ├── app/
 │   ├── layout.tsx                    # Root layout with custom fonts
@@ -42,7 +42,7 @@ tee-studio/
 │   │   ├── supabase/
 │   │   │   ├── browser.ts            # createBrowserClient factory (used by login page)
 │   │   │   ├── server.ts             # createServerClient factory (server components, route handlers)
-│   │   │   └── middleware.ts         # updateSession helper for root middleware
+│   │   │   └── middleware.ts         # updateSession helper for root proxy.ts
 │   │   └── shopify.ts                # Shopify Storefront API client
 │   │
 │   ├── api/
