@@ -78,7 +78,12 @@ export type CartAddResult =
 export function getStoreOrigin(): string {
   const raw = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN
   if (!raw) throw new Error('NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN is not configured')
-  return raw.replace(/\/$/, '')
+  // Normalize: always return https://<host>, regardless of what the env var
+  // contains. Strip any http:// or https:// prefix, strip trailing slash,
+  // then force https:// — Shopify session cookies are Secure-only so http
+  // would never work anyway.
+  const host = raw.trim().replace(/^https?:\/\//, '').replace(/\/$/, '')
+  return `https://${host}`
 }
 
 // Adds line items to the customer's Shopify session cart via /cart/add.js.
