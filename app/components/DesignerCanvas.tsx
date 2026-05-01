@@ -1387,7 +1387,7 @@ export default function DesignerCanvas({
         price_per_item: pricePerItem,
         total_qty: totalQty,
         total_price: parseFloat(total),
-        status: 'pending'
+        status: 'draft'
       }).select().single()
 
       if (error) { console.error('Order save error:', error); return null }
