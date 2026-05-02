@@ -6,6 +6,45 @@ import { getStoreOrigin } from '../../lib/shopify'
 // and we don't need the perf benefit here.
 export const runtime = 'nodejs'
 
+// Strip duplicate `cart=` entries, keeping the first occurrence. Browsers
+// typically send broadcast (older) cookies before host-only (newer) ones
+// when paths are equal, so the first cart= is the cart the customer's
+// other pages are bound to. Belt-and-suspenders alongside the response-side
+// Domain rewrite — once orphans are cleaned up there should only ever be
+// one cart= cookie anyway.
+function dedupeCartCookie(cookieHeader: string): string {
+  let seenCart = false
+  return cookieHeader
+    .split(';')
+    .map(c => c.trim())
+    .filter(entry => {
+      if (!entry) return false
+      const name = entry.split('=')[0]
+      if (name !== 'cart') return true
+      if (seenCart) return false
+      seenCart = true
+      return true
+    })
+    .join('; ')
+}
+
+// Derive the broadcast cookie domain from the store origin.
+// e.g., "https://tshirtdeli.com" → ".tshirtdeli.com"
+function getCookieDomain(storeOrigin: string): string {
+  const host = storeOrigin.replace(/^https?:\/\//, '').replace(/\/$/, '')
+  return `.${host}`
+}
+
+// If a Set-Cookie string from Shopify doesn't already have Domain=, append
+// Domain=<broadcast> so the browser stores it for the parent registrable
+// domain (visible to all subdomains) instead of host-only on whoever served
+// the response — which would be create.tshirtdeli.com — the bug that put
+// us here.
+function ensureCookieDomain(cookieString: string, domain: string): string {
+  if (/;\s*Domain=/i.test(cookieString)) return cookieString
+  return `${cookieString}; Domain=${domain}`
+}
+
 // Server-side proxy for Shopify's /cart/add.js. Lives at /api/cart-add so the
 // browser can call it same-origin (no CORS issue). The server-side fetch to
 // Shopify forwards the customer's session cookies (.tshirtdeli.com scope, so
@@ -34,6 +73,14 @@ export async function POST(request: NextRequest) {
   // Forward the customer's cookies (HttpOnly Shopify session cookies included —
   // server can read them even though browser JS can't).
   const cookieHeader = request.headers.get('cookie') ?? ''
+
+  // Dedupe `cart=` entries before forwarding to Shopify, so a leftover
+  // host-only orphan can't override the customer's broadcast cart.
+  const forwardCookieHeader = dedupeCartCookie(cookieHeader)
+
+  // Broadcast cookie domain (e.g. ".tshirtdeli.com") used to rewrite any
+  // Shopify Set-Cookie response that lacks a Domain attribute.
+  const cookieDomain = getCookieDomain(storeOrigin)
 
   // Form-encoded body, relayed verbatim. Shopify expects:
   // id=<n>&quantity=<n>&properties[<key>]=<value>...
@@ -86,7 +133,7 @@ export async function POST(request: NextRequest) {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'application/json',
-        'Cookie': cookieHeader,
+        'Cookie': forwardCookieHeader,
       },
       body,
     })
@@ -120,11 +167,20 @@ export async function POST(request: NextRequest) {
 
   // Forward Set-Cookie headers — critical for first-time visitors (Shopify
   // issues a fresh cart cookie which the browser must store) and session
-  // refreshes between sequential adds.
+  // refreshes between sequential adds. Rewrite any cookie that lacks a
+  // Domain attribute to use the broadcast domain — otherwise the browser
+  // would store it host-only on create.tshirtdeli.com (the bug we just fixed).
   const setCookies = shopifyRes.headers.getSetCookie?.() ?? []
   for (const cookie of setCookies) {
-    response.headers.append('set-cookie', cookie)
+    response.headers.append('set-cookie', ensureCookieDomain(cookie, cookieDomain))
   }
+
+  // Cleanup: delete any host-only `cart` cookie left on create.tshirtdeli.com
+  // from previous buggy proxy responses. The absence of a Domain attribute
+  // here means the browser scopes this delete to the response origin (i.e.,
+  // create.tshirtdeli.com host-only) — exactly where the orphan lives.
+  // Idempotent: once the orphan is gone, this is a no-op.
+  response.headers.append('set-cookie', 'cart=; Max-Age=0; Path=/; Secure; SameSite=Lax')
 
   return response
 }
