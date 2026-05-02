@@ -1,0 +1,79 @@
+# Tee Studio Build Plan — Path to Replacing ImprintNext
+
+Planning session completed: 2026-05-02. This document captures the full architecture decisions and phased build sequence. Update only after explicit planning conversations; don't drift from this without re-planning.
+
+## Architecture Decisions
+
+- **Customer journey**: Homepage → "Design Your Own" categories → product page → select color/size → "Design Now" → designer (with pre-population) → live pricing display → "Order Info" page → cart → standard Shopify checkout → standard "thanks" email + auto-generated print files in admin.
+- **Login model**: Optional throughout. Anonymous customers can design and order. Login required only when customer wants to save a design or access "My Designs." Login button available anywhere in designer; current design state preserved across login.
+- **Cart architecture**: Dynamic product creation per design via Shopify Admin API. Each customer cart-add creates a new hidden Shopify product (tagged `_design_product`, no collection, Online Store enabled so cart-add works). Variants per size, prices calculated from `designer_pricing` table, design preview as product image. Auto-cleanup job removes old design products.
+- **Pricing architecture**: Source of truth = `designer_pricing` database table (admin-editable). Designer reads it for live display. Order Options page reads it for totals. When creating dynamic Shopify product, calculated total is set as variant price. Shopify charges what's on the variant — no cart-time price overrides needed.
+- **Per-side pricing model**: $12 per printed side, no bundle. Front and back are independent surcharges. Hats and front-only products naturally get only the front surcharge.
+- **Embroidery**: Currently baked into base product price. Future activation possible via `designer_pricing` (already has dormant rows + dormant Shopify variant `53029191123260`).
+- **Volume discounts**: Removed from codebase. Reintroduce later via Shopify automatic discounts triggered by cart quantity.
+- **Cart line item display**: One line per size variant. Front + back design thumbnails (rendered on product color), size, quantity, total only (no breakdown), Remove button. No product name, no color text, no edit link.
+- **Checkout**: Standard Shopify; design preview shows naturally because it's the product image.
+- **Order email**: Existing setup; verify during testing rather than rebuild.
+- **Admin scope**: Tee Studio admin is a design-specific overlay additive to Shopify admin, not a replacement. 5 CRUD areas (pricing, fonts, color palettes, product templates, order management overlay). Customer management lives in Shopify.
+- **Shopify Plus**: Not pursued. Cost ($30k+/year) not justified by features needed for this build. Revisit if business outgrows standard plan.
+- **Print-ready files**: Format ports from ImprintNext's existing structure (sides/layers/original_image/preview folders, with element-level metadata for fonts/colors/thread). Generated automatically post-payment.
+
+## Phase Sequence
+
+### Phase 1: Foundation — Auth & Customer Identity (~1 week)
+
+- Item 2: Customer Account API integration + login-anywhere UI
+- Verify modern customer accounts setup at `account.tshirtdeli.com`
+- Session management, token refresh, login state across designer
+
+### Phase 2: Database & Admin Foundations (~1.5 weeks)
+
+- Item 16: Print pricing CRUD
+- Item 17: Fonts CRUD + storage
+- Item 18: Color palettes CRUD
+- Item 19: Product templates CRUD
+
+### Phase 3: Designer Polish & Customer Flow (~1.5 weeks)
+
+- Item 1: color/size pre-population from product page
+- Item 3: My Designs tab
+- Item 4: My Uploads session library
+- Item 5: Live pricing display per-side breakdown
+- Item 6: Order Options page polish
+
+### Phase 4: Cart Architecture Replacement (~2 weeks, heaviest)
+
+- Item 11: Dynamic product creation via Shopify Admin API
+- Item 10: Cart-add proxy modification
+- Item 12: Cleanup job
+- Item 7: Cart Liquid customization
+- Item 8: Checkout (verify defaults; no work)
+
+### Phase 5: Fulfillment Backend (~2-3 weeks)
+
+- Item 13: Print-ready file generation (port from ImprintNext)
+- Item 15: Color metadata capture
+- Item 20: Order management overlay in admin
+
+### Phase 6: Verification & Launch Prep (~1 week)
+
+- Item 9: Order email verification
+- End-to-end testing across products, sizes, devices
+- Side-by-side comparison with ImprintNext
+- Soft launch (single product/collection)
+- Monitoring setup
+- Cut over from ImprintNext
+
+## Total Estimate
+
+8-10 weeks of focused build work, calendar.
+
+## Deferred (V1.1)
+
+- Item 22: Cart-add idempotency for retry safety
+- Item 23: Customer name email-fallback handling
+- Item 24: Volume discount reintroduction (Shopify automatic discounts)
+
+## Notes on Today's Work
+
+Today's commit (Print Charge as separate line items + volume discount removal) represented an architectural direction we walked back from. The dynamic product approach is the architectural successor. That commit's code may need to be partially rolled back or evolved during Phase 4 — leaving in place for now since it doesn't actively break anything (and ImprintNext is still our live system).

@@ -4,6 +4,10 @@
 
 **Tee Studio** is a custom t-shirt design tool that integrates with Shopify for product management and checkout. Users can design t-shirts using a canvas-based interface with text, clipart, and image uploads, then add personalized designs to their cart.
 
+## Planning & Roadmap
+
+The current path-to-replacing-ImprintNext build plan lives in [BUILD_PLAN.md](BUILD_PLAN.md) — read it before starting work that touches cart, designer, pricing, or admin areas, since today's code may need to evolve to fit the documented architecture.
+
 ## Full Stack
 
 - **Frontend Framework**: Next.js 16.2.4 (App Router)
