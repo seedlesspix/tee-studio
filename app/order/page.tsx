@@ -2,7 +2,7 @@
 import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '../lib/supabase'
-import { addItemsToShopifyCart, getStoreOrigin } from '../lib/shopify'
+import { addItemsToShopifyCart, getStoreOrigin, resolvePrintChargeVariant, type CartItem } from '../lib/shopify'
 import type { Tables } from '@/types/database'
 
 const ALL_SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL']
@@ -48,8 +48,7 @@ function OrderPage() {
   )
   const totalQty = Object.values(quantities).reduce((a, b) => a + b, 0)
   const pricePerItem = design ? ((design.unit_price ?? 0) + (design.print_charge ?? 0)) : 0
-  const discount = totalQty >= 24 ? 0.20 : totalQty >= 12 ? 0.15 : totalQty >= 6 ? 0.10 : 0
-  const total = (totalQty * pricePerItem * (1 - discount)).toFixed(2)
+  const total = (totalQty * pricePerItem).toFixed(2)
 
   const handleAddToCart = async () => {
     if (!design || totalQty === 0) { setError('Please select at least one size and quantity.'); return }
@@ -75,7 +74,7 @@ function OrderPage() {
     if (design.canvas_png_front) baseProps._design_preview_front = design.canvas_png_front
     if (design.canvas_png_back)  baseProps._design_preview_back  = design.canvas_png_back
 
-    const items = Object.entries(quantities)
+    const items: CartItem[] = Object.entries(quantities)
       .filter(([_, qty]) => qty > 0)
       .map(([size, qty]) => ({
         variantId,
@@ -83,7 +82,44 @@ function OrderPage() {
         properties: { ...baseProps, _size: size },
       }))
 
-    // 3. Add to the customer's Shopify session cart via /cart/add.js
+    // 3. Add Print Charge line items for screen_print designs.
+    //    - Embroidery (and any non-screen_print method): skip entirely. The
+    //      surcharge is baked into the base product price for those today.
+    //      To activate: see CLAUDE.md "designer_pricing operational rules".
+    //    - One Print Charge per side that has rendered content
+    //      (canvas_png_front / canvas_png_back). Front-only products like
+    //      hats naturally only get a Front Print charge.
+    //    - Quantity = total shirts (the surcharge is per shirt, not per size).
+    //    - Resolve ALL variants before adding any line items so a missing
+    //      variant fails loud without leaving the cart half-populated.
+    if (design.print_method === 'screen_print') {
+      const printChargeProps: Record<string, string> = {
+        _design_order_id: design.id,
+        _for_design: design.product_title ?? '',
+      }
+
+      if (design.canvas_png_front) {
+        const front = await resolvePrintChargeVariant('screen_print', 1)
+        if (!front.ok) { setError(front.error); setAdding(false); return }
+        items.push({
+          variantId: front.variantId,
+          quantity: totalQty,
+          properties: { ...printChargeProps, _side: 'Front' },
+        })
+      }
+
+      if (design.canvas_png_back) {
+        const back = await resolvePrintChargeVariant('screen_print', 2)
+        if (!back.ok) { setError(back.error); setAdding(false); return }
+        items.push({
+          variantId: back.variantId,
+          quantity: totalQty,
+          properties: { ...printChargeProps, _side: 'Back' },
+        })
+      }
+    }
+
+    // 4. Add to the customer's Shopify session cart via /cart/add.js
     const result = await addItemsToShopifyCart(items)
 
     if (!result.ok) {
@@ -196,18 +232,6 @@ function OrderPage() {
                 <span className="text-gray-900 font-bold">Price per item</span>
                 <span className="text-[#dd3333]">${pricePerItem.toFixed(2)}</span>
               </div>
-              {discount > 0 && (
-                <div className="flex justify-between text-green-400 text-xs">
-                  <span>Volume discount ({(discount * 100).toFixed(0)}% off)</span>
-                  <span>-${(totalQty * pricePerItem * discount).toFixed(2)}</span>
-                </div>
-              )}
-            </div>
-            {/* Discount tiers */}
-            <div className="mt-3 bg-white rounded-lg p-3 text-[10px] font-mono text-gray-800 flex flex-col gap-1">
-              <div className={totalQty >= 6 ? 'text-[#dd3333]' : ''}>6+ shirts: 10% off</div>
-              <div className={totalQty >= 12 ? 'text-[#dd3333]' : ''}>12+ shirts: 15% off</div>
-              <div className={totalQty >= 24 ? 'text-[#dd3333]' : ''}>24+ shirts: 20% off</div>
             </div>
           </div>
 

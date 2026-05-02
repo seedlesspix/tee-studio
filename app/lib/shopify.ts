@@ -1,4 +1,5 @@
 import { createStorefrontApiClient } from '@shopify/storefront-api-client'
+import { supabase } from './supabase'
 
 export const shopifyClient = createStorefrontApiClient({
   storeDomain: process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN!,
@@ -128,4 +129,36 @@ export async function addItemsToShopifyCart(items: CartItem[]): Promise<CartAddR
   }
 
   return { ok: true }
+}
+
+export type PrintChargeVariantResult =
+  | { ok: true; variantId: string }
+  | { ok: false; error: string }
+
+// Looks up the Shopify Print Charge variant for a given (print_method, sides)
+// from designer_pricing. NULL shopify_variant_id is a configuration error —
+// fail loud rather than silently dropping the surcharge from the cart. See
+// CLAUDE.md "designer_pricing operational rules".
+export async function resolvePrintChargeVariant(
+  printMethodKey: string,
+  sides: 1 | 2,
+): Promise<PrintChargeVariantResult> {
+  const { data, error } = await supabase
+    .from('designer_pricing')
+    .select('shopify_variant_id, label')
+    .eq('print_method_key', printMethodKey)
+    .eq('sides', sides)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (error) {
+    return { ok: false, error: `Could not look up Print Charge (${error.message})` }
+  }
+  if (!data) {
+    return { ok: false, error: `No Print Charge configured for ${printMethodKey} (sides=${sides}) — please contact support` }
+  }
+  if (!data.shopify_variant_id) {
+    return { ok: false, error: `Print Charge "${data.label}" is missing its Shopify variant ID — please contact support` }
+  }
+  return { ok: true, variantId: data.shopify_variant_id }
 }

@@ -110,6 +110,21 @@ Scaffolding (unused by current app, but RLS-policied for future "customer accoun
 Storage:
 - **clipart** bucket - Public-readable, used for clipart file uploads
 
+### designer_pricing operational rules
+
+> **When adding a new row to `designer_pricing`, both `price_add` AND `shopify_variant_id` must be set, or cart-add will fail with a clear error message for that print method × sides combination.**
+
+The `shopify_variant_id` column points at a Shopify Print Charge product variant. When a customer adds a screen-print design to their cart, the cart-add flow looks up this variant per side that has rendered content (`canvas_png_front` → `(screen_print, sides=1)`; `canvas_png_back` → `(screen_print, sides=2)`) and adds a separate Print Charge line item with quantity equal to the total shirt count. A NULL `shopify_variant_id` is treated as a configuration error — the resolver in `app/lib/shopify.ts` aborts the entire cart-add (no partial cart state) and surfaces a "missing Shopify variant ID" message to the customer.
+
+**Embroidery is intentionally dormant.** The Shopify Print Charge product has a third variant for embroidery (variant ID `53029191123260`), but the embroidery rows in `designer_pricing` are left with `shopify_variant_id = NULL` on purpose. Embroidery products currently bake the embroidery cost into the base product price (a $32 polo includes embroidery, not $22 + $10 surcharge). Wiring up the embroidery variant would double-charge customers. The cart-add code path in `handleAddToCart` checks `print_method === 'screen_print'` and skips the Print Charge step entirely for any other method.
+
+**To switch embroidery to a surcharge model in the future:**
+1. Lower base product prices in Shopify by the embroidery cost (e.g., $32 polo → $22).
+2. Populate `shopify_variant_id` on the embroidery row(s) in `designer_pricing` (use `53029191123260` for the existing 1-side row, create a 2-side variant in Shopify if needed).
+3. Remove the `print_method === 'screen_print'` guard in `handleAddToCart` (in `app/order/page.tsx`).
+
+**Terminology note.** Customer-facing UI uses the word **"print"**; the internal database key in `designer_pricing.print_method_key` and `design_orders.print_method` remains `screen_print`. Cosmetic-only inconsistency, not functional. Rename later if it causes confusion.
+
 ### Database TypeScript types
 
 Generated from the live schema and committed at **`types/database.ts`**. The four Supabase clients in `app/lib/supabase.ts` and `app/lib/supabase/{browser,server,middleware}.ts` are typed with `<Database>`, so `supabase.from(...)` calls have full autocomplete and type-checking.
@@ -248,6 +263,7 @@ Compare versions in `supabase/migrations/` filenames against the output of MCP `
 - **No save drafts**: Designs only saved at checkout
 - **No design sharing**: No public gallery or social sharing
 - **Webhook**: `shopify-webhook/route.ts` updates `design_orders` on Shopify `order/paid` — sets `status='completed'`, customer info, shipping. Not pointed at by Shopify yet — register the webhook URL in Shopify admin to activate.
+- **Volume discount removed (2026-05-02)**: The order page UI used to apply 10/15/20% off at 6/12/24 shirts, but Shopify wasn't honoring it at checkout — the discount was UI-only math, never sent to Shopify. After Print Charges became real cart line items, the UI total would have undercharged customers visibly, so the discount feature was removed entirely from `app/order/page.tsx` and `app/components/DesignerCanvas.tsx`. **To reintroduce:** use Shopify automatic discounts (admin → Discounts → Automatic) keyed off cart quantity, not custom UI math. This avoids the UI/checkout pricing-mismatch bug.
 
 ### Documentation
 - **No API docs**: Endpoint parameters and responses undocumented

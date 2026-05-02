@@ -292,6 +292,7 @@ export type Database = {
           label: string
           price_add: number
           print_method_key: string
+          shopify_variant_id: string | null
           sides: number
           updated_at: string | null
         }
@@ -302,6 +303,7 @@ export type Database = {
           label?: string
           price_add?: number
           print_method_key: string
+          shopify_variant_id?: string | null
           sides: number
           updated_at?: string | null
         }
@@ -312,6 +314,7 @@ export type Database = {
           label?: string
           price_add?: number
           print_method_key?: string
+          shopify_variant_id?: string | null
           sides?: number
           updated_at?: string | null
         }

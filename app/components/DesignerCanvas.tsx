@@ -1412,7 +1412,6 @@ export default function DesignerCanvas({
     ? parseFloat(selectedVariant.price.amount)
     : productPrice || 18
   const totalQty = Object.values(quantities).reduce((a, b) => a + b, 0)
-  const discount = totalQty >= 24 ? 0.20 : totalQty >= 12 ? 0.15 : totalQty >= 6 ? 0.10 : 0
   // Count how many sides have design elements
   const sidesDesigned = (frontObjectsRef.current.length > 0 ? 1 : 0) +
     (backObjectsRef.current.length > 0 ? 1 : 0) +
@@ -1421,7 +1420,7 @@ export default function DesignerCanvas({
   const sidesCount = Math.min(Math.max(sidesDesigned, fabricCanvasRef.current?.getObjects()?.length > 0 ? 1 : 0), 2)
   const printCharge = sidesCount > 0 ? (printPricing[sidesCount] || (sidesCount === 1 ? 12 : 20)) : 0
   const pricePerItem = unitPrice + printCharge
-  const total = (totalQty * pricePerItem * (1 - discount)).toFixed(2)
+  const total = (totalQty * pricePerItem).toFixed(2)
 
   return (
     <div className="flex flex-col h-screen text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
@@ -1974,19 +1973,11 @@ export default function DesignerCanvas({
 
           <div className="h-px bg-gray-200" />
 
-          <div className="h-px bg-gray-200" />
-
           <div className="flex flex-col gap-1 text-sm">
             <div className="flex justify-between text-gray-800">
               <span>Total qty</span>
               <span className="text-gray-900">{totalQty}</span>
             </div>
-            {discount > 0 && (
-              <div className="flex justify-between text-gray-800">
-                <span>Discount</span>
-                <span className="text-[#dd3333]">{`-${(discount * totalQty * unitPrice).toFixed(2)}`}</span>
-              </div>
-            )}
             <div className="flex justify-between text-gray-800">
               <span>Total</span>
               <span className="text-gray-900">{`$${total}`}</span>
