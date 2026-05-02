@@ -99,37 +99,45 @@ export async function addItemsToShopifyCart(items: CartItem[]): Promise<CartAddR
     return { ok: false, error: err instanceof Error ? err.message : 'Store domain not configured' }
   }
 
-  // Batch endpoint: one request adds N line items atomically.
-  const body = {
-    items: items.map(item => ({
-      id: Number(item.variantId),
-      quantity: item.quantity,
-      properties: item.properties,
-    })),
-  }
-
-  try {
-    const res = await fetch(`${storeOrigin}/cart/add.js`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(body),
-    })
-
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => null)
-      const message = errBody?.description || errBody?.message || `Shopify returned HTTP ${res.status}`
-      return { ok: false, error: message }
+  // Form-encoded body keeps the request a CORS "simple request" — no preflight
+  // OPTIONS (which Shopify's /cart/add.js doesn't handle). Form encoding can't
+  // express arrays cleanly, so we POST one line item at a time. If any single
+  // add fails, stop and surface the error — Shopify's session cart accepts
+  // partial state and the customer can retry from where it failed.
+  for (const item of items) {
+    const body = new URLSearchParams()
+    body.set('id', item.variantId)
+    body.set('quantity', String(item.quantity))
+    for (const [key, value] of Object.entries(item.properties)) {
+      body.set(`properties[${key}]`, value)
     }
 
-    return { ok: true }
-  } catch (err) {
-    // Network error or CORS block (browser refuses to expose the response).
-    return {
-      ok: false,
-      error: err instanceof Error
-        ? `Could not reach Shopify (${err.message})`
-        : 'Could not reach Shopify',
+    try {
+      const res = await fetch(`${storeOrigin}/cart/add.js`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+        body: body.toString(),
+      })
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => null)
+        const message = errBody?.description || errBody?.message || `Shopify returned HTTP ${res.status}`
+        return { ok: false, error: message }
+      }
+    } catch (err) {
+      // Network error or CORS block (browser refuses to expose the response).
+      return {
+        ok: false,
+        error: err instanceof Error
+          ? `Could not reach Shopify (${err.message})`
+          : 'Could not reach Shopify',
+      }
     }
   }
+
+  return { ok: true }
 }
