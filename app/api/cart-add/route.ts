@@ -51,11 +51,33 @@ export async function POST(request: NextRequest) {
   // cart the customer's browser is bound to.
   const cartCookieValue = /(?:^|;\s*)cart=([^;]+)/.exec(cookieHeader)?.[1] ?? '(missing)'
 
+  // Full breakdown of incoming cookies. Show cart*/shopify* values in full
+  // (we need to see if there are duplicate `cart=` entries, which would
+  // indicate a token-mismatch source); other cookies just by name to cut
+  // noise from analytics/marketing cookies.
+  const allCookieEntries = cookieHeader
+    .split(';')
+    .map(c => c.trim())
+    .filter(Boolean)
+    .map(c => {
+      const eq = c.indexOf('=')
+      return eq === -1
+        ? { name: c, value: '' }
+        : { name: c.slice(0, eq), value: c.slice(eq + 1) }
+    })
+
+  const formattedCookies = allCookieEntries.map(({ name, value }) =>
+    name === 'cart' || name.startsWith('cart_') || name.startsWith('_shopify')
+      ? `${name}=${value}`
+      : `${name}=<truncated>`
+  )
+
   const targetUrl = `${storeOrigin}/cart/add.js`
   console.log(`[cart-add ${reqId}] →`, targetUrl)
   console.log(`[cart-add ${reqId}] body:`, body)
   console.log(`[cart-add ${reqId}] cookie names:`, cookieNames)
   console.log(`[cart-add ${reqId}] cart cookie value:`, cartCookieValue)
+  console.log(`[cart-add ${reqId}] all cookies (${allCookieEntries.length}):`, formattedCookies)
 
   let shopifyRes: Response
   try {
