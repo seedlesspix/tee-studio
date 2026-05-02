@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getStoreOrigin } from '../../lib/shopify'
 
@@ -17,10 +18,13 @@ export const runtime = 'nodejs'
 // item property, or (b) clearing the cart on the order page before each
 // attempt. Not blocking for launch.
 export async function POST(request: NextRequest) {
+  const reqId = randomUUID().slice(0, 8)
+
   let storeOrigin: string
   try {
     storeOrigin = getStoreOrigin()
   } catch (err) {
+    console.error(`[cart-add ${reqId}] store domain misconfigured:`, err)
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Store domain not configured' },
       { status: 500 }
@@ -35,9 +39,21 @@ export async function POST(request: NextRequest) {
   // id=<n>&quantity=<n>&properties[<key>]=<value>...
   const body = await request.text()
 
+  // Cookie names only (not values) — useful to confirm Shopify session
+  // cookies are reaching us without leaking anything sensitive to logs.
+  const cookieNames = cookieHeader
+    .split(';')
+    .map(c => c.trim().split('=')[0])
+    .filter(Boolean)
+
+  const targetUrl = `${storeOrigin}/cart/add.js`
+  console.log(`[cart-add ${reqId}] →`, targetUrl)
+  console.log(`[cart-add ${reqId}] body:`, body)
+  console.log(`[cart-add ${reqId}] cookie names:`, cookieNames)
+
   let shopifyRes: Response
   try {
-    shopifyRes = await fetch(`${storeOrigin}/cart/add.js`, {
+    shopifyRes = await fetch(targetUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -47,14 +63,26 @@ export async function POST(request: NextRequest) {
       body,
     })
   } catch (err) {
+    console.error(`[cart-add ${reqId}] fetch threw:`, err)
     return NextResponse.json(
       { error: err instanceof Error ? `Could not reach Shopify (${err.message})` : 'Could not reach Shopify' },
       { status: 502 }
     )
   }
 
+  // Crucial diagnostic: shopifyRes.url shows where we actually ended up
+  // after any redirects (fetch defaults to redirect: 'follow'). If this
+  // differs from targetUrl, Shopify redirected us — likely to /cart.
+  console.log(`[cart-add ${reqId}] ← status:`, shopifyRes.status)
+  console.log(`[cart-add ${reqId}] ← final url:`, shopifyRes.url)
+  console.log(`[cart-add ${reqId}] ← redirected:`, shopifyRes.redirected)
+  console.log(`[cart-add ${reqId}] ← content-type:`, shopifyRes.headers.get('content-type'))
+  console.log(`[cart-add ${reqId}] ← location:`, shopifyRes.headers.get('location'))
+
   // Relay Shopify's status, body, and content type back to the browser.
   const responseBody = await shopifyRes.text()
+  console.log(`[cart-add ${reqId}] ← body[0..200]:`, responseBody.slice(0, 200))
+
   const response = new NextResponse(responseBody, {
     status: shopifyRes.status,
     headers: {
