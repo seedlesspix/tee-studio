@@ -46,10 +46,16 @@ export async function POST(request: NextRequest) {
     .map(c => c.trim().split('=')[0])
     .filter(Boolean)
 
+  // Extract the `cart` cookie's value so we can compare against what the
+  // browser shows in DevTools — verifies whether we're modifying the same
+  // cart the customer's browser is bound to.
+  const cartCookieValue = /(?:^|;\s*)cart=([^;]+)/.exec(cookieHeader)?.[1] ?? '(missing)'
+
   const targetUrl = `${storeOrigin}/cart/add.js`
   console.log(`[cart-add ${reqId}] →`, targetUrl)
   console.log(`[cart-add ${reqId}] body:`, body)
   console.log(`[cart-add ${reqId}] cookie names:`, cookieNames)
+  console.log(`[cart-add ${reqId}] cart cookie value:`, cartCookieValue)
 
   let shopifyRes: Response
   try {
