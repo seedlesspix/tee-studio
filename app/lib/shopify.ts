@@ -86,24 +86,14 @@ export function getStoreOrigin(): string {
   return `https://${host}`
 }
 
-// Adds line items to the customer's Shopify session cart via /cart/add.js.
-// Relies on cookies for the Shopify domain — only works when the calling
-// page is same-site as the storefront (e.g. create.tshirtdeli.com → tshirtdeli.com).
+// Adds line items to the customer's Shopify session cart by POSTing to our
+// own /api/cart-add proxy route. Same-origin avoids the CORS issue that
+// blocks direct calls to Shopify's /cart/add.js; the proxy forwards to
+// Shopify with the customer's session cookies. Sequential adds (one item per
+// request) — stop on first failure, partial cart state is acceptable.
 export async function addItemsToShopifyCart(items: CartItem[]): Promise<CartAddResult> {
   if (items.length === 0) return { ok: false, error: 'No items to add' }
 
-  let storeOrigin: string
-  try {
-    storeOrigin = getStoreOrigin()
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : 'Store domain not configured' }
-  }
-
-  // Form-encoded body keeps the request a CORS "simple request" — no preflight
-  // OPTIONS (which Shopify's /cart/add.js doesn't handle). Form encoding can't
-  // express arrays cleanly, so we POST one line item at a time. If any single
-  // add fails, stop and surface the error — Shopify's session cart accepts
-  // partial state and the customer can retry from where it failed.
   for (const item of items) {
     const body = new URLSearchParams()
     body.set('id', item.variantId)
@@ -113,9 +103,8 @@ export async function addItemsToShopifyCart(items: CartItem[]): Promise<CartAddR
     }
 
     try {
-      const res = await fetch(`${storeOrigin}/cart/add.js`, {
+      const res = await fetch('/api/cart-add', {
         method: 'POST',
-        credentials: 'include',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json',
@@ -125,16 +114,15 @@ export async function addItemsToShopifyCart(items: CartItem[]): Promise<CartAddR
 
       if (!res.ok) {
         const errBody = await res.json().catch(() => null)
-        const message = errBody?.description || errBody?.message || `Shopify returned HTTP ${res.status}`
+        const message = errBody?.description || errBody?.message || errBody?.error || `Shopify returned HTTP ${res.status}`
         return { ok: false, error: message }
       }
     } catch (err) {
-      // Network error or CORS block (browser refuses to expose the response).
       return {
         ok: false,
         error: err instanceof Error
-          ? `Could not reach Shopify (${err.message})`
-          : 'Could not reach Shopify',
+          ? `Could not reach cart proxy (${err.message})`
+          : 'Could not reach cart proxy',
       }
     }
   }
