@@ -155,6 +155,10 @@ export async function exchangeCodeForTokens(
   body.set('code', code)
   body.set('redirect_uri', redirectUri)
   body.set('code_verifier', codeVerifier)
+  console.log('[exchangeCodeForTokens DEBUG] token_endpoint:', token_endpoint)
+  console.log('[exchangeCodeForTokens DEBUG] body:', body.toString())
+  console.log('[exchangeCodeForTokens DEBUG] auth header length:', buildClientAuthHeader().length)
+  console.log('[exchangeCodeForTokens DEBUG] auth header startsWith:', buildClientAuthHeader().slice(0, 20))
 
   const res = await fetch(token_endpoint, {
     method: 'POST',
