@@ -19,6 +19,7 @@
     "clsx": "^2.1.1",
     "fabric": "^7.3.1",
     "html2canvas": "^1.4.1",
+    "jose": "^6.2.3",
     "lucide-react": "^1.8.0",
     "next": "16.2.4",
     "pdfjs-dist": "^5.7.284",
