@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
+import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { createRemoteJWKSet, jwtVerify } from 'jose'
 
 // Subset of the OIDC discovery doc fields we use.
@@ -50,13 +50,6 @@ function b64url(buf: Buffer): string {
   return buf.toString('base64url')
 }
 
-// PKCE per RFC 7636: 256-bit random verifier, S256 challenge.
-export function generatePkce(): { verifier: string; challenge: string } {
-  const verifier = b64url(randomBytes(32))
-  const challenge = b64url(createHash('sha256').update(verifier).digest())
-  return { verifier, challenge }
-}
-
 // 256-bit random base64url. Used for OAuth `state` (CSRF) and OIDC `nonce`
 // (replay protection on the ID token).
 export function generateRandom(): string {
@@ -66,7 +59,6 @@ export function generateRandom(): string {
 export type AuthorizeParams = {
   state: string
   nonce: string
-  codeChallenge: string
   redirectUri: string
 }
 
@@ -85,8 +77,6 @@ export async function buildAuthorizeUrl(params: AuthorizeParams): Promise<string
   url.searchParams.set('scope', 'openid email customer-account-api:full')
   url.searchParams.set('state', params.state)
   url.searchParams.set('nonce', params.nonce)
-  url.searchParams.set('code_challenge', params.codeChallenge)
-  url.searchParams.set('code_challenge_method', 'S256')
   return url.toString()
 }
 
@@ -143,9 +133,12 @@ function buildClientAuthHeader(): string {
   return `Basic ${encoded}`
 }
 
+// We are a confidential client and authenticate via client_secret_basic.
+// PKCE is "public client only" per Shopify's Customer Account API docs —
+// including a code_verifier in the body alongside Basic auth makes the
+// token endpoint return invalid_client. So no code_verifier here.
 export async function exchangeCodeForTokens(
   code: string,
-  codeVerifier: string,
   redirectUri: string,
 ): Promise<TokenBundle> {
   const { token_endpoint } = await getDiscovery()
@@ -154,11 +147,6 @@ export async function exchangeCodeForTokens(
   body.set('grant_type', 'authorization_code')
   body.set('code', code)
   body.set('redirect_uri', redirectUri)
-  body.set('code_verifier', codeVerifier)
-  console.log('[exchangeCodeForTokens DEBUG] token_endpoint:', token_endpoint)
-  console.log('[exchangeCodeForTokens DEBUG] body:', body.toString())
-  console.log('[exchangeCodeForTokens DEBUG] auth header length:', buildClientAuthHeader().length)
-  console.log('[exchangeCodeForTokens DEBUG] auth header startsWith:', buildClientAuthHeader().slice(0, 20))
 
   const res = await fetch(token_endpoint, {
     method: 'POST',

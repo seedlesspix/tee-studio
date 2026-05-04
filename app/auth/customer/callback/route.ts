@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
   }
 
   const flow = readOAuthFlowCookies(request)
-  if (!flow.pkceVerifier || !flow.state || !flow.nonce) {
+  if (!flow.state || !flow.nonce) {
     return loginErrorRedirect(
       request,
       'missing_flow_cookies',
@@ -62,10 +62,7 @@ export async function GET(request: NextRequest) {
 
   let bundle: TokenBundle
   try {
-    console.log('[customer/callback DEBUG] code length:', code?.length)
-    console.log('[customer/callback DEBUG] pkceVerifier length:', flow.pkceVerifier?.length)
-    console.log('[customer/callback DEBUG] redirectUri:', getRedirectUri())
-    bundle = await exchangeCodeForTokens(code, flow.pkceVerifier, getRedirectUri())
+    bundle = await exchangeCodeForTokens(code, getRedirectUri())
   } catch (err) {
     console.error('[customer/callback] token exchange failed:', err)
     return loginErrorRedirect(request, 'token_exchange_failed', 'Could not complete login')

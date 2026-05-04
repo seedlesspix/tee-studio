@@ -12,9 +12,10 @@ const SESSION_COOKIE_NAMES = [
 ] as const
 
 // Short-lived OAuth-flow cookie names. Set by /api/customer/login,
-// consumed (and deleted) by /auth/customer/callback.
+// consumed (and deleted) by /auth/customer/callback. No PKCE verifier —
+// we're a confidential client and Shopify's token endpoint rejects PKCE
+// alongside client_secret_basic.
 const OAUTH_FLOW_COOKIE_NAMES = [
-  'cust_pkce_verifier',
   'cust_oauth_state',
   'cust_oauth_nonce',
   'cust_oauth_return_to',
@@ -31,7 +32,6 @@ const baseCookieOpts = {
 }
 
 export type OAuthFlowCookies = {
-  pkceVerifier: string | undefined
   state: string | undefined
   nonce: string | undefined
   returnTo: string | undefined
@@ -39,7 +39,6 @@ export type OAuthFlowCookies = {
 
 export function readOAuthFlowCookies(request: NextRequest): OAuthFlowCookies {
   return {
-    pkceVerifier: request.cookies.get('cust_pkce_verifier')?.value,
     state: request.cookies.get('cust_oauth_state')?.value,
     nonce: request.cookies.get('cust_oauth_nonce')?.value,
     returnTo: request.cookies.get('cust_oauth_return_to')?.value,
