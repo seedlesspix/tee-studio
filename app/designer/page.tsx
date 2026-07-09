@@ -11,6 +11,9 @@ function DesignerContent() {
   const variantId = searchParams.get('variant_id') || ''
   const price = searchParams.get('price') || '0'
   const designId = searchParams.get('design_id') || ''
+  // Set when returning from a Shopify login round-trip: the id of the draft
+  // snapshotted before the redirect, to rehydrate the canvas.
+  const restoreId = searchParams.get('restore') || ''
   
   // Safely decode title - handle any encoding issues
   let title = 'Custom Product'
@@ -29,6 +32,7 @@ function DesignerContent() {
         productTitle={title}
         productPrice={parseInt(price) / 100}
         designId={designId}
+        restoreId={restoreId}
       />
     </main>
   )

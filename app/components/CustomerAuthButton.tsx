@@ -3,17 +3,28 @@
 import { useEffect, useRef, useState } from 'react'
 import { useCustomerSession } from '../hooks/useCustomerSession'
 
+type Props = {
+  // Anon "Log in" styling. 'default' is the filled-red style used on its own;
+  // 'quiet' is a gray outline meant to sit next to a primary button (e.g. the
+  // designer's red "Next Step") without competing with it.
+  variant?: 'default' | 'quiet'
+  // Optional hook run when an anonymous user clicks "Log in", before the OAuth
+  // redirect. The host (the designer) uses it to snapshot in-progress work to a
+  // draft and return the path to come back to afterwards
+  // (e.g. "/designer?...&restore=<uuid>"). Return null to fall back to simply
+  // returning to the current URL. Absent → plain login, no snapshot.
+  onBeforeLogin?: () => Promise<string | null>
+}
+
 // Minimal customer auth button. Renders one of three states:
 //   - loading:  a subdued placeholder (avoids flicker between logged-out
 //               and logged-in on first paint).
-//   - anon:     a "Log in" link that kicks off the OAuth flow.
+//   - anon:     a "Log in" control that kicks off the OAuth flow.
 //   - logged in: "Hi, <firstName> ▾" with a dropdown containing Logout.
-//
-// Styling is deliberately minimal — Day 5 will restyle this when it gets
-// embedded in the designer's top bar.
-export function CustomerAuthButton() {
+export function CustomerAuthButton({ variant = 'default', onBeforeLogin }: Props) {
   const { loggedIn, customer, isLoading } = useCustomerSession()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
   const wrapperRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -35,6 +46,26 @@ export function CustomerAuthButton() {
     }
   }, [menuOpen])
 
+  // Kick off login. If a host provided onBeforeLogin (the designer), let it
+  // snapshot work and choose the return path; otherwise just come back to the
+  // current URL. Either way tokens are handled server-side by /api/customer/login.
+  const startLogin = async () => {
+    let returnTo: string | null = null
+    if (onBeforeLogin) {
+      setBusy(true)
+      try {
+        returnTo = await onBeforeLogin()
+      } catch {
+        returnTo = null
+      }
+      setBusy(false)
+    }
+    if (!returnTo) {
+      returnTo = window.location.pathname + window.location.search
+    }
+    window.location.href = `/api/customer/login?return_to=${encodeURIComponent(returnTo)}`
+  }
+
   if (isLoading) {
     return (
       <span
@@ -45,13 +76,19 @@ export function CustomerAuthButton() {
   }
 
   if (!loggedIn || !customer) {
+    const anonClass =
+      variant === 'quiet'
+        ? 'border border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
+        : 'bg-[#dd3333] text-white hover:bg-[#c22a2a]'
     return (
-      <a
-        href="/api/customer/login"
-        className="inline-flex h-8 items-center rounded bg-[#dd3333] px-3 text-sm font-medium text-white hover:bg-[#c22a2a]"
+      <button
+        type="button"
+        onClick={startLogin}
+        disabled={busy}
+        className={`inline-flex h-8 items-center rounded px-3 text-sm font-medium disabled:opacity-60 ${anonClass}`}
       >
-        Log in
-      </a>
+        {busy ? 'Saving…' : 'Log in'}
+      </button>
     )
   }
 

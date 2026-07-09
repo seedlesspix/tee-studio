@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import ClipartPanel from './ClipartPanel'
 import { getProduct } from '../lib/shopify'
+import { CustomerAuthButton } from './CustomerAuthButton'
 
 declare global {
   interface Window {
@@ -38,6 +39,7 @@ interface Props {
   productTitle: string
   productPrice: number
   designId?: string
+  restoreId?: string
 }
 
 const COLOR_HEX_MAP: Record<string, string> = {
@@ -128,7 +130,7 @@ function constrainObject(obj: any, bounds: { left: number; top: number; right: n
 }
 
 export default function DesignerCanvas({
-  productId, variantId, productTitle, productPrice, designId = ''
+  productId, variantId, productTitle, productPrice, designId = '', restoreId = ''
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const shirtImgRef = useRef<HTMLImageElement>(null)
@@ -342,6 +344,72 @@ export default function DesignerCanvas({
   useEffect(() => {
     fabricCanvasRef.current = fabricCanvas
   }, [fabricCanvas])
+
+  // Restore a design snapshotted before a Shopify login round-trip. Runs once,
+  // only after BOTH the fabric canvas and the product have loaded (so the draft
+  // values win over the color/quantity defaults the product fetch sets), then
+  // strips ?restore= from the URL so a refresh doesn't re-restore.
+  const restoredRef = useRef(false)
+  useEffect(() => {
+    if (!restoreId || restoredRef.current) return
+    if (!fabricCanvas || !product) return
+    restoredRef.current = true
+
+    const cleanUrl = () => {
+      try {
+        const url = new URL(window.location.href)
+        url.searchParams.delete('restore')
+        window.history.replaceState({}, '', url.pathname + url.search)
+      } catch { /* ignore */ }
+    }
+
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/designs/draft?id=${restoreId}`, { cache: 'no-store' })
+        if (!res.ok) return
+        const { state } = await res.json()
+        if (!state) return
+
+        const canvas = fabricCanvas
+        const { util } = await import('fabric')
+
+        // Front objects become the live canvas; back objects live in the ref so
+        // the Back toggle rehydrates them. We restore into the front view.
+        if (state.front) {
+          await canvas.loadFromJSON(state.front)
+        }
+        if (state.back?.objects?.length) {
+          backObjectsRef.current = (await util.enlivenObjects(state.back.objects)) as any[]
+        } else {
+          backObjectsRef.current = []
+        }
+        frontObjectsRef.current = []
+        canvas.discardActiveObject()
+        canvas.renderAll()
+
+        // Re-apply shirt color (image + hex + variant) without the quantity
+        // reset that handleColorSelect does, then restore quantities directly.
+        if (state.selectedColor) {
+          setSelectedColor(state.selectedColor)
+          setShirtHex(COLOR_HEX_MAP[state.selectedColor] || '#888')
+          const imgs = getColorImages(state.selectedColor, colorImageMap)
+          if (imgs?.front && shirtImgRef.current) shirtImgRef.current.src = imgs.front
+          const match = product.variants.edges.find(({ node }) =>
+            node.selectedOptions.some(o => o.name === 'Color' && o.value === state.selectedColor)
+          )
+          if (match) setSelectedVariant(match.node)
+        }
+        if (state.printMethod) setPrintMethod(state.printMethod)
+        if (state.quantities) setQuantities(state.quantities)
+        if (Array.isArray(state.uploadedFiles)) uploadedFilesRef.current = state.uploadedFiles
+        setShirtView('front')
+      } catch (err) {
+        console.error('[designer] restore failed:', err)
+      } finally {
+        cleanUrl()
+      }
+    })()
+  }, [restoreId, fabricCanvas, product, colorImageMap])
 
   useEffect(() => {
     const canvas = fabricCanvasRef.current
@@ -1422,6 +1490,71 @@ export default function DesignerCanvas({
   const pricePerItem = unitPrice + printCharge
   const total = (totalQty * pricePerItem).toFixed(2)
 
+  // Serialize enough of the current design to fully rebuild it after a login
+  // round-trip. The live canvas holds the current view's objects; the other
+  // view lives in its ref. Returns null when there's nothing worth saving.
+  const snapshotDesignState = () => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return null
+    // Custom props Fabric's default serializer drops but we rely on for editing
+    // affordances (SVG recolor, uppercase toggle, curved-text identity).
+    const CUSTOM_PROPS = ['_isSvg', '_originalText', '_currentColor', '_isCurvedText']
+    const liveJson = canvas.toObject(CUSTOM_PROPS)
+    const serializeRef = (objs: any[]) => ({
+      version: liveJson.version,
+      objects: objs.map((o: any) => (o.toObject ? o.toObject(CUSTOM_PROPS) : o)),
+    })
+
+    const front = shirtView === 'back' ? serializeRef(frontObjectsRef.current) : liveJson
+    const back = shirtView === 'back' ? liveJson : serializeRef(backObjectsRef.current)
+
+    const hasFront = (front.objects?.length || 0) > 0
+    const hasBack = (back.objects?.length || 0) > 0
+    if (!hasFront && !hasBack) return null
+
+    return {
+      schemaVersion: 1,
+      productId: product?.id || productId,
+      variantId: selectedVariant?.id || '',
+      productTitle,
+      productPrice,
+      selectedColor,
+      shirtView,
+      printMethod,
+      quantities,
+      sidesDesigned: sidesCount,
+      front,
+      back,
+      uploadedFiles: uploadedFilesRef.current,
+    }
+  }
+
+  // Called by CustomerAuthButton before it redirects to Shopify login. Writes a
+  // draft row and returns the path to come back to (this page + ?restore=<id>),
+  // so the customer's work is restored on return. null → button falls back to
+  // returning to the current URL with no restore (still logs in, no data lost
+  // beyond the unsaved canvas).
+  const prepareLoginRedirect = async (): Promise<string | null> => {
+    const state = snapshotDesignState()
+    if (!state) return null
+    try {
+      const res = await fetch('/api/designs/draft', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(state),
+      })
+      if (!res.ok) return null
+      const { draftId } = await res.json()
+      if (!draftId) return null
+      const params = new URLSearchParams(window.location.search)
+      params.set('restore', draftId)
+      return `${window.location.pathname}?${params.toString()}`
+    } catch (err) {
+      console.error('[designer] draft snapshot failed:', err)
+      return null
+    }
+  }
+
   return (
     <div className="flex flex-col h-screen text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
 
@@ -1431,30 +1564,33 @@ export default function DesignerCanvas({
           TEE<span className="text-[#dd3333]">STUDIO</span>
         </div>
         <div className="text-sm text-gray-800 truncate max-w-xs">{productTitle}</div>
-        <button
-          onClick={async () => {
-            const canvas = (window as any)._fabricCanvas
-            if (!canvas || canvas.getObjects().length === 0) {
-              alert('Please add a design before continuing. Add text, clipart, or upload an image.')
-              return
-            }
-            // Deselect all objects so handles don't show in preview
-            canvas.discardActiveObject()
-            canvas.renderAll()
-            const btn = document.querySelector('[data-cart-btn]') as HTMLButtonElement
-            if (btn) { btn.textContent = 'Saving...'; (btn as any).disabled = true }
-            const result = await saveDesignAndAddToCart()
-            if (btn) { btn.textContent = 'Next Step →'; (btn as any).disabled = false }
-            if (result && result.orderId) {
-              window.location.href = `/order?design_id=${result.orderId}`
-            } else {
-              alert('Error saving design. Please try again.')
-            }
-          }}
-          data-cart-btn
-          className="bg-[#dd3333] text-white px-5 py-2 rounded text-sm font-bold tracking-wide hover:opacity-80 transition-opacity">
-          Next Step →
-        </button>
+        <div className="flex items-center gap-3">
+          <CustomerAuthButton variant="quiet" onBeforeLogin={prepareLoginRedirect} />
+          <button
+            onClick={async () => {
+              const canvas = (window as any)._fabricCanvas
+              if (!canvas || canvas.getObjects().length === 0) {
+                alert('Please add a design before continuing. Add text, clipart, or upload an image.')
+                return
+              }
+              // Deselect all objects so handles don't show in preview
+              canvas.discardActiveObject()
+              canvas.renderAll()
+              const btn = document.querySelector('[data-cart-btn]') as HTMLButtonElement
+              if (btn) { btn.textContent = 'Saving...'; (btn as any).disabled = true }
+              const result = await saveDesignAndAddToCart()
+              if (btn) { btn.textContent = 'Next Step →'; (btn as any).disabled = false }
+              if (result && result.orderId) {
+                window.location.href = `/order?design_id=${result.orderId}`
+              } else {
+                alert('Error saving design. Please try again.')
+              }
+            }}
+            data-cart-btn
+            className="bg-[#dd3333] text-white px-5 py-2 rounded text-sm font-bold tracking-wide hover:opacity-80 transition-opacity">
+            Next Step →
+          </button>
+        </div>
       </header>
 
       {/* Main layout */}
