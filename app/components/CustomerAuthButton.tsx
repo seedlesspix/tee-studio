@@ -75,15 +75,21 @@ export function CustomerAuthButton() {
           role="menu"
           className="absolute right-0 z-10 mt-1 w-40 rounded border border-gray-200 bg-white shadow-md"
         >
-          <form action="/api/customer/logout" method="POST" role="none">
-            <button
-              type="submit"
-              role="menuitem"
-              className="block w-full px-3 py-2 text-left text-sm text-black hover:bg-gray-100"
-            >
-              Log out
-            </button>
-          </form>
+          {/*
+            Plain GET link (not a POST form): the browser navigates to the
+            logout route with GET, so the method stays GET all the way through
+            to Shopify's end_session_endpoint, which only accepts GET. A POST
+            form here relied on the route's 303 downgrading POST→GET on the
+            redirect; a GET link removes that dependency entirely. CSRF risk is
+            negligible — the worst case is an unwanted logout, no data exposure.
+          */}
+          <a
+            href="/api/customer/logout"
+            role="menuitem"
+            className="block w-full px-3 py-2 text-left text-sm text-black hover:bg-gray-100"
+          >
+            Log out
+          </a>
         </div>
       )}
     </div>
