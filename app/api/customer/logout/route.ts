@@ -45,7 +45,11 @@ async function handleLogout(request: NextRequest): Promise<NextResponse> {
     redirectTarget = postLogoutRedirectUri
   }
 
-  const response = NextResponse.redirect(redirectTarget)
+  // 303 See Other (not the default 307) so the browser switches to GET when
+  // following the redirect. Shopify's end_session_endpoint only accepts GET;
+  // a 307 would preserve the incoming POST and Shopify returns "Method not
+  // supported". 303 is also the correct semantics for POST-then-redirect.
+  const response = NextResponse.redirect(redirectTarget, 303)
   clearSessionCookies(response)
   return response
 }
