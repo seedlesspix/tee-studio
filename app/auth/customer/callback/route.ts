@@ -34,12 +34,17 @@ export async function GET(request: NextRequest) {
   const oauthErrorDescription = url.searchParams.get('error_description')
 
   // Shopify itself reported an error during consent — user denied, scope
-  // rejected, etc. Surface the upstream code rather than masking it.
+  // rejected, etc. access_denied is a deliberate cancel, not a failure: bounce
+  // the user back to where they started silently (no scary error param). Any
+  // other upstream code is surfaced.
   if (oauthError) {
-    console.error(
+    console.warn(
       `[customer/callback] Shopify returned error: ${oauthError}`,
       oauthErrorDescription,
     )
+    if (oauthError === 'access_denied') {
+      return loginErrorRedirect(request, null, null)
+    }
     return loginErrorRedirect(request, oauthError, oauthErrorDescription)
   }
 
@@ -94,13 +99,27 @@ function getAppOrigin(request: NextRequest): string {
   return new URL(request.url).origin
 }
 
+// Redirect the user back to wherever they started the login from. The designer
+// return_to carries its own ?restore=<uuid>, so the customer's in-progress work
+// is rehydrated on arrival instead of them landing on a bare homepage with the
+// canvas gone. Falls back to `/` if there's no (valid same-origin) return_to.
+// Pass errorCode=null for a silent bounce (deliberate cancel); a non-null code
+// is appended as ?login_error= for a genuine failure. Always clears the
+// short-lived flow cookies so a later attempt starts clean.
 function loginErrorRedirect(
   request: NextRequest,
-  errorCode: string,
-  description: string | null | undefined,
+  errorCode: string | null,
+  description?: string | null,
 ): NextResponse {
-  const target = new URL('/', getAppOrigin(request))
-  target.searchParams.set('login_error', errorCode)
-  if (description) target.searchParams.set('login_error_description', description)
-  return NextResponse.redirect(target)
+  const returnTo = request.cookies.get('cust_oauth_return_to')?.value
+  const safeReturnTo =
+    returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/'
+  const target = new URL(safeReturnTo, getAppOrigin(request))
+  if (errorCode) {
+    target.searchParams.set('login_error', errorCode)
+    if (description) target.searchParams.set('login_error_description', description)
+  }
+  const response = NextResponse.redirect(target)
+  clearOAuthFlowCookies(response)
+  return response
 }

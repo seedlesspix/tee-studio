@@ -61,7 +61,11 @@ async function fetchMe(): Promise<CachedResult> {
 
 async function loadOnce(force = false): Promise<CachedResult> {
   if (!force && _cache) return _cache
-  if (!force && _inflight) return _inflight
+  // Dedup even when forced: if a fetch is already in flight it's fresh enough,
+  // so piggyback on it rather than firing a parallel one. This keeps the
+  // focus/visibility revalidation (which can fire from many mounted components
+  // and from two events at once) from stampeding /api/customer/me.
+  if (_inflight) return _inflight
 
   _inflight = fetchMe()
     .then((result) => {
@@ -73,6 +77,21 @@ async function loadOnce(force = false): Promise<CachedResult> {
       _inflight = null
     })
   return _inflight
+}
+
+// Cross-tab freshness without a BroadcastChannel: when a tab becomes visible or
+// regains focus, revalidate. Covers the "logged in on tab A, tab B still says
+// Log in" case the moment the user looks at tab B. Installed once for the whole
+// app, guarded so repeated hook mounts don't stack listeners.
+let _focusRevalidationInstalled = false
+function installFocusRevalidation(): void {
+  if (_focusRevalidationInstalled || typeof window === 'undefined') return
+  _focusRevalidationInstalled = true
+  const revalidate = () => {
+    if (document.visibilityState === 'visible') void loadOnce(true)
+  }
+  document.addEventListener('visibilitychange', revalidate)
+  window.addEventListener('focus', revalidate)
 }
 
 function subscribe(callback: () => void): () => void {
@@ -97,6 +116,7 @@ export function useCustomerSession(): CustomerSessionState {
   const state = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 
   useEffect(() => {
+    installFocusRevalidation()
     if (!_cache && !_inflight) {
       void loadOnce()
     }
