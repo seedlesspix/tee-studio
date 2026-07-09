@@ -240,3 +240,73 @@ export async function verifyIdToken(
   }
   return claims
 }
+
+// Verifies the ID token JWT signature + iss + aud + exp against the cached
+// JWKS, but does NOT check `nonce`. Used by /api/customer/me on every page
+// load, where the caller can't produce the original login-time nonce and
+// nonce protection is not relevant after the initial login exchange.
+// The JWKS is cached in memory via createRemoteJWKSet, so this call is
+// network-free after the first hit.
+export async function verifyIdTokenNoNonce(idToken: string): Promise<IdTokenClaims> {
+  const discovery = await getDiscovery()
+  const clientId = process.env.SHOPIFY_CUSTOMER_ACCOUNT_CLIENT_ID
+  if (!clientId) throw new Error('SHOPIFY_CUSTOMER_ACCOUNT_CLIENT_ID is not configured')
+
+  const jwks = await getJwks()
+  const { payload } = await jwtVerify(idToken, jwks, {
+    issuer: discovery.issuer,
+    audience: clientId,
+    clockTolerance: 30,
+  })
+  return payload as IdTokenClaims
+}
+
+// Exchanges a refresh token for a fresh token bundle. Shopify may or may not
+// rotate the refresh token itself — we always take whatever the response
+// returns for refresh_token and id_token, since older values will be stale
+// after a rotation.
+export async function refreshTokens(refreshToken: string): Promise<TokenBundle> {
+  const { token_endpoint } = await getDiscovery()
+
+  const body = new URLSearchParams()
+  body.set('grant_type', 'refresh_token')
+  body.set('refresh_token', refreshToken)
+
+  const res = await fetch(token_endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+      Authorization: buildClientAuthHeader(),
+    },
+    body: body.toString(),
+  })
+
+  const responseText = await res.text()
+  if (!res.ok) {
+    throw new Error(`Token refresh failed (HTTP ${res.status}): ${responseText.slice(0, 500)}`)
+  }
+
+  let data: RawTokenResponse
+  try {
+    data = JSON.parse(responseText) as RawTokenResponse
+  } catch {
+    throw new Error(`Token endpoint returned non-JSON on refresh: ${responseText.slice(0, 200)}`)
+  }
+
+  if (!data.access_token || !data.id_token) {
+    throw new Error('Refresh response missing required fields')
+  }
+
+  const now = Date.now()
+  return {
+    accessToken: data.access_token,
+    // Some OIDC providers rotate the refresh token; some don't. Fall back to
+    // the original if the response omits it.
+    refreshToken: data.refresh_token ?? refreshToken,
+    idToken: data.id_token,
+    accessTokenExpiresAt: now + data.expires_in * 1000,
+    refreshTokenExpiresAt:
+      now + (data.refresh_token_expires_in ?? REFRESH_TOKEN_DEFAULT_TTL_MS / 1000) * 1000,
+  }
+}
