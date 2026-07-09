@@ -303,9 +303,115 @@ npm run build
 npm run lint
 ```
 
+## Environment Variables
+
+Every variable the app reads. `NEXT_PUBLIC_*` values are inlined into the
+client bundle at build time (visible in the browser) — never put a secret
+behind that prefix. Everything else is server-only. A `.env.local.example`
+lives at the repo root with placeholders; copy it to `.env.local` for dev and
+set the same names in the Vercel dashboard for prod.
+
+**"Sensitive in Vercel"** = mark the variable Sensitive when adding it in
+Vercel so its value can't be read back in the dashboard/logs. Only true
+secrets need this; `NEXT_PUBLIC_*` values ship to the browser anyway so there's
+nothing to hide.
+
+| Variable | Req? | Server/Public | Sensitive in Vercel | What it's for |
+|---|---|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Required | Public | No | Supabase project URL. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Required | Public | No | Supabase anon key; RLS-gated, safe in the browser. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Required | Server | **Yes** | Full-access DB key. Used by the Shopify webhook to write completed orders. |
+| `ADMIN_EMAILS` | Required | Server | No | Comma-separated allowlist for the `/admin` area. |
+| `NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN` | Required | Public | No | Storefront domain for the Storefront API client (`app/lib/shopify.ts`). |
+| `NEXT_PUBLIC_SHOPIFY_STOREFRONT_TOKEN` | Required | Public | No | Storefront API public access token (product data + cart). |
+| `SHOPIFY_WEBHOOK_SECRET` | Required¹ | Server | **Yes** | Verifies inbound `order/paid` webhook HMAC signatures. |
+| `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` | Optional | Public | No | Cloudinary cloud for AI/PSD/EPS upload conversion in the designer. |
+| `NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET` | Optional | Public | No | Cloudinary unsigned upload preset (pairs with the cloud name). |
+| `SHOPIFY_STOREFRONT_DOMAIN` | Required² | Server | No | Domain used to fetch the OIDC discovery doc (`/.well-known/openid-configuration`). |
+| `SHOPIFY_CUSTOMER_ACCOUNT_CLIENT_ID` | Required² | Server | No | Confidential OAuth client ID (Customer Account API). |
+| `SHOPIFY_CUSTOMER_ACCOUNT_CLIENT_SECRET` | Required² | Server | **Yes** | Confidential OAuth client secret (`client_secret_basic` at the token endpoint). |
+| `NEXT_PUBLIC_APP_URL` | Required² | Public | No | Public origin used to build the OAuth `redirect_uri`; must match Shopify's registered callback. |
+| `DEBUG_SECRET` | Optional | Server | **Yes** | Shared secret gating `/api/debug` (`?secret=…`). Unset → endpoint 404s (fails closed). |
+
+¹ Required only once the Shopify `order/paid` webhook is registered (see the
+webhook note in Known Issues). ² Required for the Phase 1 customer-login flow.
+
+> **Legacy/unused:** `.env.local` also contains `SHOPIFY_STOREFRONT_PRIVATE_TOKEN`,
+> which is **not referenced anywhere in the code** — the Storefront client uses the
+> public token above. Left in place harmlessly; safe to remove.
+
+## Customer Auth Flow
+
+Plain-English walkthrough of a customer logging in from the designer (Shopify
+Customer Account API, OpenID Connect). All tokens stay server-side in HttpOnly
+cookies — they never touch the browser's JS.
+
+1. **Click "Log in"** (`CustomerAuthButton` in the designer top bar). Before
+   redirecting, the designer **snapshots the in-progress design** — colors,
+   view, quantities, front/back canvas, uploads — to a `design_orders` row with
+   `status='draft'` via `POST /api/designs/draft`, which returns a `draftId`.
+2. **Redirect to login** at `/api/customer/login?return_to=/designer?…&restore=<draftId>`.
+   That route generates a random `state` (CSRF) and `nonce` (replay protection),
+   stashes them plus `return_to` in three short-lived (10 min) HttpOnly
+   `cust_oauth_*` cookies, and 302s the browser to Shopify's authorization
+   endpoint (discovered from the OIDC doc).
+3. **Customer logs in at Shopify** (`account.<domain>`) and consents.
+4. **Shopify redirects back** to `/auth/customer/callback?code=…&state=…`. The
+   callback **verifies `state`** against the cookie (constant-time), then does a
+   **server-side token exchange** (`authorization_code` grant, authenticated
+   with `client_secret_basic`) to get access/refresh/ID tokens.
+5. **ID token verified locally** — JWT signature checked against Shopify's JWKS
+   (cached in memory), plus issuer, audience (our client ID), and the `nonce`
+   claim against the cookie. No network call to Shopify beyond the one-time
+   token exchange.
+6. **Session cookies set** — `cust_at`, `cust_rt`, `cust_id_token`, `cust_at_exp`
+   (all HttpOnly/Secure/SameSite=Lax, host-only). The flow cookies are cleared.
+7. **Redirect to `return_to`** (`/designer?…&restore=<draftId>`). On mount the
+   designer fetches `GET /api/designs/draft?id=<draftId>` and **rehydrates the
+   canvas**, then strips `?restore=` from the URL so a refresh doesn't re-restore.
+
+**"Am I logged in?"** — `GET /api/customer/me` verifies the ID-token JWT
+locally (network-free after the first JWKS fetch) and returns the customer
+summary from the token claims. It proactively refreshes the access token when
+it's within 60s of expiry; if the refresh fails (e.g. expired/revoked refresh
+token) it clears all `cust_*` cookies and returns `{ loggedIn: false }`. The
+`useCustomerSession` hook caches this app-wide and revalidates on tab focus.
+
+**Logout** — the "Log out" control is a plain **GET** link to
+`/api/customer/logout` (GET, not a POST form, so the browser stays on GET
+through the whole redirect chain). That route clears the `cust_*` cookies and
+redirects to Shopify's `end_session_endpoint` (with `id_token_hint`), which
+signs the customer out at Shopify and bounces back to
+`/auth/customer/logout-callback` → home. Shopify's `end_session_endpoint`
+**only accepts GET** — hence the GET link (and a 303 fallback on the route).
+
+### Known bounds / future considerations
+
+- **No PKCE — intentional.** We're a **Confidential** OAuth client and
+  authenticate with `client_secret_basic`. Shopify **rejects** requests that
+  combine `client_secret_basic` with a PKCE `code_verifier`, and the error it
+  returns is a misleading `invalid_client` (cost ~2 days to diagnose once).
+  Do **not** reintroduce PKCE into this flow. If a future phase adds a **Public**
+  client for a different surface (native mobile app, browser extension), PKCE
+  comes back **for that flow only** — never mixed with the confidential one.
+- **Revoked-account ghost (~1 hour bound).** `/api/customer/me` verifies the ID
+  token locally and makes no live Shopify call, so if a customer's Shopify
+  account is deleted or their session revoked while the access token is still
+  unexpired, the UI keeps showing them logged in (with stale name/email) until
+  the next proactive refresh (≤ ~1h), at which point the refresh fails and
+  cookies clear. **No functional impact in Phase 1** — we make no authenticated
+  Shopify calls that could 401. Revisit for **Phase 4** cart binding (verify
+  against Shopify on sensitive actions, or shorten the access-token lifetime).
+- **Draft rows accumulate.** Every login-from-designer (and every "Next Step")
+  writes a `status='draft'` row to `design_orders`; abandoned ones are never
+  cleaned up today. **Phase 4/5 should add a nightly cron** that deletes
+  `WHERE status='draft' AND created_at < now() - interval '7 days'`. The
+  `created_at` column is set explicitly on draft insert so the job can find them.
+
 ## Deployment Notes
 
 - Hosted on Vercel (inferred)
-- Environment variables must be set in Vercel dashboard for production
+- Environment variables must be set in Vercel dashboard for production (see the
+  Environment Variables section above — mind the "Sensitive in Vercel" column)
 - Supabase Storage bucket must be configured as public
 - Shopify API tokens require proper scopes for product/checkout access
