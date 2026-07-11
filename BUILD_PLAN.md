@@ -20,11 +20,15 @@ Planning session completed: 2026-05-02. This document captures the full architec
 
 ## Phase Sequence
 
-### Phase 1: Foundation — Auth & Customer Identity (~1 week)
+### Phase 1: Foundation — Auth & Customer Identity (~1 week) — ✅ Complete (2026-07-11)
 
 - Item 2: Customer Account API integration + login-anywhere UI
 - Verify modern customer accounts setup at `account.tshirtdeli.com`
 - Session management, token refresh, login state across designer
+
+Signed off end-to-end on production; all 9 checklist items pass. Six testing
+findings deferred to Phase 3/4 (logged in CLAUDE.md under "Phase 1 sign-off
+findings").
 
 ### Phase 2: Database & Admin Foundations (~1.5 weeks)
 
