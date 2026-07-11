@@ -1480,13 +1480,26 @@ export default function DesignerCanvas({
     ? parseFloat(selectedVariant.price.amount)
     : productPrice || 18
   const totalQty = Object.values(quantities).reduce((a, b) => a + b, 0)
-  // Count how many sides have design elements
-  const sidesDesigned = (frontObjectsRef.current.length > 0 ? 1 : 0) +
-    (backObjectsRef.current.length > 0 ? 1 : 0) +
-    ((fabricCanvasRef.current?.getObjects()?.length || 0) > 0 &&
-      (shirtView === 'front' ? frontObjectsRef.current.length === 0 : backObjectsRef.current.length === 0) ? 1 : 0)
-  const sidesCount = Math.min(Math.max(sidesDesigned, fabricCanvasRef.current?.getObjects()?.length > 0 ? 1 : 0), 2)
-  const printCharge = sidesCount > 0 ? (printPricing[sidesCount] || (sidesCount === 1 ? 12 : 20)) : 0
+  // Which specific sides carry design content. The active view's objects live on
+  // the live canvas; the opposite view's objects are swapped out into its ref on
+  // view switch. So for the current view trust the live canvas (falling back to
+  // its ref), and for the other view read its ref.
+  const liveCount = fabricCanvasRef.current?.getObjects()?.length || 0
+  const frontHasContent = shirtView === 'front'
+    ? (liveCount > 0 || frontObjectsRef.current.length > 0)
+    : frontObjectsRef.current.length > 0
+  const backHasContent = shirtView === 'back'
+    ? (liveCount > 0 || backObjectsRef.current.length > 0)
+    : backObjectsRef.current.length > 0
+  const sidesCount = (frontHasContent ? 1 : 0) + (backHasContent ? 1 : 0)
+  // Per-side surcharge. designer_pricing.sides is a SIDE IDENTITY (1 = Front,
+  // 2 = Back), NOT a count — each side is charged independently. Sum the price
+  // for each side that has content rather than looking up by the number of
+  // sides (the old `printPricing[sidesCount]` charged a 2-sided design the
+  // single Back-row price, e.g. $12 instead of $12 + $12 = $24).
+  const printCharge =
+    (frontHasContent ? (printPricing[1] ?? 12) : 0) +
+    (backHasContent ? (printPricing[2] ?? 12) : 0)
   const pricePerItem = unitPrice + printCharge
   const total = (totalQty * pricePerItem).toFixed(2)
 
