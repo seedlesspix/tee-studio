@@ -443,6 +443,12 @@ routed to a later phase. Logged here so they aren't rediscovered from scratch.
   Admin write access on colors/fonts/`clipart_categories` was added 2026-07-11
   via `admin_write_policies_colors_fonts_categories` (mirrors the
   `designer_pricing`/`clipart_items` `is_admin()` pattern).
+- **New print areas beyond front/back are out of scope for Phase 2.** The
+  pricing admin only exposes sides 1 (Front) and 2 (Back) because that's all
+  the data model, designer canvas, cart-add resolver, and Shopify variant
+  registry understand. Adding areas like "shoulder print" or "sleeve" requires
+  coordinated changes across the designer canvas + cart + variant model — a
+  Phase 3+ scoping effort, not a pricing-table addition.
 
 ## Deployment Notes
 

@@ -79,6 +79,20 @@ export default function PricingAdmin() {
       : r))
   }
 
+  // Whether a row's edit fields differ from what's persisted. Drives the
+  // "Unsaved" marker and the Save button state so it's obvious an edit —
+  // including the Shopify Variant ID — hasn't taken effect until Save is
+  // clicked (the field does not save on blur).
+  const rowDirty = (row: PricingRow): boolean => {
+    const v = editValues[row.id]
+    if (!v) return false
+    return (
+      v.label !== row.label ||
+      (parseFloat(v.price_add) || 0) !== row.price_add ||
+      (v.shopify_variant_id.trim() || null) !== (row.shopify_variant_id ?? null)
+    )
+  }
+
   const toggleActive = async (row: PricingRow) => {
     const { error } = await supabase
       .from('designer_pricing')
@@ -230,8 +244,20 @@ export default function PricingAdmin() {
                           </div>
                         </div>
                         <div className="flex flex-col gap-2 shrink-0">
-                          <button onClick={() => saveRow(row)} className="px-3 py-2 rounded text-xs font-mono bg-[#dd3333] text-white hover:bg-red-700 transition-all">
-                            {saving === row.id ? '...' : 'Save'}
+                          {rowDirty(row) && (
+                            <span className="text-[10px] font-mono text-amber-600 text-center">● Unsaved</span>
+                          )}
+                          <button
+                            onClick={() => saveRow(row)}
+                            disabled={saving !== row.id && !rowDirty(row)}
+                            title="Saves this row's label, price, and Shopify Variant ID"
+                            className={`px-3 py-2 rounded text-xs font-mono transition-all ${
+                              rowDirty(row)
+                                ? 'bg-[#dd3333] text-white hover:bg-red-700'
+                                : 'bg-gray-100 text-gray-400 cursor-default'
+                            }`}
+                          >
+                            {saving === row.id ? '...' : rowDirty(row) ? 'Save' : 'Saved ✓'}
                           </button>
                           <button onClick={() => toggleActive(row)} className={`px-3 py-2 rounded text-xs font-mono transition-all border ${row.is_active ? 'bg-white text-green-700 border-green-300' : 'bg-red-50 text-red-700 border-red-300'}`}>
                             {row.is_active ? 'Active' : 'Off'}
