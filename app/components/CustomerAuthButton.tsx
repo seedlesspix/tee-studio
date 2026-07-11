@@ -119,9 +119,16 @@ export function CustomerAuthButton({ variant = 'default', onBeforeLogin }: Props
             form here relied on the route's 303 downgrading POST→GET on the
             redirect; a GET link removes that dependency entirely. CSRF risk is
             negligible — the worst case is an unwanted logout, no data exposure.
+
+            return_to carries the current page (e.g. the designer URL) so the
+            post-logout redirect lands back here instead of the homepage, the
+            same shape as login. The menu only renders after a client-side
+            click, so window is defined.
           */}
           <a
-            href="/api/customer/logout"
+            href={`/api/customer/logout?return_to=${encodeURIComponent(
+              window.location.pathname + window.location.search,
+            )}`}
             role="menuitem"
             className="block w-full px-3 py-2 text-left text-sm text-black hover:bg-gray-100"
           >

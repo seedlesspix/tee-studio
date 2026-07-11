@@ -408,6 +408,30 @@ signs the customer out at Shopify and bounces back to
   `WHERE status='draft' AND created_at < now() - interval '7 days'`. The
   `created_at` column is set explicitly on draft insert so the job can find them.
 
+### Phase 1 sign-off findings (deferred to Phase 3/4)
+
+Surfaced during Phase 1 sign-off testing. None block Phase 1 close-out; each is
+routed to a later phase. Logged here so they aren't rediscovered from scratch.
+
+- **Product color/size doesn't pre-populate in the designer** (Phase 3 Item 1).
+  Landing on the designer from a product page doesn't carry the selected color
+  and size into the canvas; the customer has to re-pick them.
+- **"Add Text" button UX is unclear** (new Phase 3 polish item). Customers don't
+  understand how to place text on the shirt — the affordance for adding and
+  positioning a text object needs to be made obvious.
+- **Print-charge per-side pricing miscalculates** (Phase 3 Item 5). The per-side
+  Print Charge line items (front → sides=1, back → sides=2) are not computing the
+  correct amount. Revisit alongside the `designer_pricing` cart-add flow.
+- **Back button from "Next Step" loses design work** (Phase 3 Item 6). Navigating
+  back out of the order/Next-Step page drops the in-progress canvas state.
+- **Cart-add fails with "Cannot find variant"** (related to Phase 3 Item 1, or
+  Phase 4 cart architecture). The Shopify variant resolution fails on cart-add;
+  likely tied to the un-propagated color/size (Item 1) or resolved wholesale by
+  the Phase 4 cart rework.
+- **Browser back from Shopify login abandons the design** (Phase 3 polish).
+  Hitting the browser back button from Shopify's login page loses the snapshotted
+  design state. Explicitly out of scope for the Phase 1 logout fix.
+
 ## Deployment Notes
 
 - Hosted on Vercel (inferred)

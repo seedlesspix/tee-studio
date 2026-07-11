@@ -4,15 +4,21 @@ import { clearSessionCookies } from '../../../lib/customer-session'
 
 export const runtime = 'nodejs'
 
-// POST /api/customer/logout
+// POST /api/customer/logout?return_to=<path>
 //
 // Clears our local cust_* session cookies, then redirects the browser to
 // Shopify's OIDC end_session_endpoint so the customer is also signed out at
 // account.tshirtdeli.com. Shopify redirects back to our
-// /auth/customer/logout-callback with no state to clean up on our side.
+// /auth/customer/logout-callback, which does the final redirect to the app.
 //
-// Also exposed as GET so a plain link works if we ever wire this up outside
-// a form. The behavior is identical.
+// `return_to` (a same-origin path, e.g. the designer URL the customer logged
+// out from) is stashed in a short-lived HttpOnly cookie so the round-trip
+// through Shopify can preserve it. We don't append it to
+// post_logout_redirect_uri because Shopify validates that URI against its
+// registered logout redirects — a query string there risks a mismatch.
+//
+// Also exposed as GET so a plain link works (the logout menu item is a GET
+// link). The behavior is identical.
 export async function POST(request: NextRequest) {
   return handleLogout(request)
 }
@@ -23,6 +29,14 @@ export async function GET(request: NextRequest) {
 
 async function handleLogout(request: NextRequest): Promise<NextResponse> {
   const idTokenHint = request.cookies.get('cust_id_token')?.value
+
+  // Open-redirect guard: only same-origin paths are allowed. Reject absolute
+  // URLs and protocol-relative `//evil.com` variants. Mirrors /api/customer/login.
+  const returnToParam = new URL(request.url).searchParams.get('return_to') ?? ''
+  const safeReturnTo =
+    returnToParam.startsWith('/') && !returnToParam.startsWith('//')
+      ? returnToParam
+      : ''
 
   const appOrigin = getAppOrigin(request)
   const postLogoutRedirectUri = `${appOrigin}/auth/customer/logout-callback`
@@ -51,6 +65,20 @@ async function handleLogout(request: NextRequest): Promise<NextResponse> {
   // supported". 303 is also the correct semantics for POST-then-redirect.
   const response = NextResponse.redirect(redirectTarget, 303)
   clearSessionCookies(response)
+
+  // Carry the post-logout return path across the Shopify round-trip in a
+  // short-lived HttpOnly cookie. /auth/customer/logout-callback reads and
+  // clears it. Absent → callback falls back to the homepage.
+  if (safeReturnTo) {
+    response.cookies.set('cust_logout_return_to', safeReturnTo, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 10,
+    })
+  }
+
   return response
 }
 
