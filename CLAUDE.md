@@ -419,9 +419,12 @@ routed to a later phase. Logged here so they aren't rediscovered from scratch.
 - **"Add Text" button UX is unclear** (new Phase 3 polish item). Customers don't
   understand how to place text on the shirt — the affordance for adding and
   positioning a text object needs to be made obvious.
-- **Print-charge per-side pricing miscalculates** (Phase 3 Item 5). The per-side
-  Print Charge line items (front → sides=1, back → sides=2) are not computing the
-  correct amount. Revisit alongside the `designer_pricing` cart-add flow.
+- ~~**Print-charge per-side pricing miscalculates** (Phase 3 Item 5).~~ **✅ Fixed
+  in Phase 2 Day 1.** The designer looked up the charge by *count* of sides
+  (`printPricing[sidesCount]`) instead of summing per side, so a 2-sided design
+  displayed the single Back-row price ($12) instead of $12+$12. Now sums the
+  price for each side that has content, in `DesignerCanvas.tsx`. Was display-only
+  (checkout already charged correctly via per-side variant line items).
 - **Back button from "Next Step" loses design work** (Phase 3 Item 6). Navigating
   back out of the order/Next-Step page drops the in-progress canvas state.
 - **Cart-add fails with "Cannot find variant"** (related to Phase 3 Item 1, or
@@ -459,13 +462,16 @@ routed to a later phase. Logged here so they aren't rediscovered from scratch.
   Storage) — it's ~1–2 days of infrastructure work before the admin UI can be
   built on top of it. Doing them together as one project is cleaner than
   piecemeal.
-- **Product template print areas: pixels vs. percentages (Day 7 reconcile).**
+- **Product template print areas: pixels vs. percentages (Phase 3 reconcile).**
   The current designer reads print areas in **percentages** from a Shopify
   metafield (`designer.print_area` → `xPct/yPct/widthPct/heightPct`). The new
   `product_template_print_areas` schema stores **pixels** (plus inches for
-  Phase 5 print scaling). Day 7 must reconcile at the read layer — either
-  convert pixels→percentages at designer load, or migrate the designer to
-  native pixel reads.
+  Phase 5 print scaling). Day 7 built only the **admin capture** side — the
+  `/admin/templates` print-area editor stores coordinates in the mockup's
+  **natural pixel space**. The **designer read layer is deferred to Phase 3**:
+  it must convert those px→% at designer load (using the same mockup natural
+  dimensions), or migrate the designer to native pixel reads. Until then, print
+  areas drawn in admin do **not** yet change the customer designer.
 - **`product_templates.shopify_product_id` uses the GID form**
   (`gid://shopify/Product/<n>`), not the bare numeric from the `product_id` URL
   param. Rationale: `getProduct()` converts the URL's bare numeric to a GID for

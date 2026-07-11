@@ -30,12 +30,35 @@ Signed off end-to-end on production; all 9 checklist items pass. Six testing
 findings deferred to Phase 3/4 (logged in CLAUDE.md under "Phase 1 sign-off
 findings").
 
-### Phase 2: Database & Admin Foundations (~1.5 weeks)
+### Phase 2: Database & Admin Foundations (~1.5 weeks) — ✅ Complete (2026-07-11)
 
-- Item 16: Print pricing CRUD
-- Item 17: Fonts CRUD + storage
-- Item 18: Color palettes CRUD
-- Item 19: Product templates CRUD
+- Item 16: Print pricing CRUD ✅ (+ per-side print-charge display bug fixed)
+- Item 18: Color palettes CRUD ✅ (+ reorder)
+- Item 17: Fonts CRUD ✅ (edit/toggle/reorder/delete; no custom upload — see deferred)
+- Item 19: Product templates CRUD ✅ (list + print-area editor: draggable/resizable
+  rectangles over the Shopify mockup, px + inch coordinates)
+
+Signed off on production. Build order was 16→18→17→19 (colors before fonts so
+fonts reused the pattern). Admin-write RLS added for colors/fonts/clipart_categories
+(migration `admin_write_policies_colors_fonts_categories`); product template schema
+added (migration `create_product_templates`). Day-8 sign-off: full production build
+green, all admin routes compile, RLS read+write verified across all Phase 2 tables,
+no regressions from later days.
+
+**Deferred out of Phase 2 (tracked in CLAUDE.md):**
+- **Custom font upload** → future "Font Management" project (needs dynamic font
+  loading infra — runtime Google `<link>` injection + `@font-face` for uploads;
+  ~1–2 days infra before UI). Admin font management is currently READ-ONLY.
+- **Print-area px→% designer read layer** → Phase 3. The admin captures print-area
+  coordinates in the mockup's natural pixels; the designer still reads print areas
+  as percentages from a Shopify metafield. Phase 3 must reconcile at the read layer.
+- **`set_updated_at()` trigger for `designer_pricing`** → deferred cleanup (its
+  `updated_at` is never refreshed on edit; the reusable trigger fn now exists).
+- **Print-area reorder (▲▼)** → deferred; revisit if templates exceed ~6–8 areas.
+- **New print areas beyond front/back** (shoulder/sleeve) → Phase 3+ (needs
+  coordinated designer canvas + cart + variant changes).
+- **Colors/fonts public-read `USING true`** returns inactive rows (React filters
+  client-side); align to the stricter pricing pattern if inactive-leak bugs appear.
 
 ### Phase 3: Designer Polish & Customer Flow (~1.5 weeks)
 
