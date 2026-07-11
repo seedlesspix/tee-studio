@@ -449,6 +449,16 @@ routed to a later phase. Logged here so they aren't rediscovered from scratch.
   registry understand. Adding areas like "shoulder print" or "sleeve" requires
   coordinated changes across the designer canvas + cart + variant model — a
   Phase 3+ scoping effort, not a pricing-table addition.
+- **Font management in admin is currently READ-ONLY.** Existing fonts can be
+  edited/toggled/reordered/deleted, but **adding new fonts requires a code
+  change** (Google Fonts `<link>` in `app/layout.tsx`, or `@font-face` in
+  `app/globals.css`). A future phase should build proper "Font Management" as a
+  single project that handles both adding Google fonts and uploading custom
+  fonts through admin. This requires building **dynamic font loading** (runtime
+  `<link>` injection for Google, dynamic `@font-face` for uploads to Supabase
+  Storage) — it's ~1–2 days of infrastructure work before the admin UI can be
+  built on top of it. Doing them together as one project is cleaner than
+  piecemeal.
 
 ## Deployment Notes
 

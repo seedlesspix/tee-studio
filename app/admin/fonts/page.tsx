@@ -8,14 +8,15 @@ type PrintMethod = Tables<'designer_print_methods'>
 
 type EditFields = { label: string; value: string }
 
-// Quote a multi-word family for an inline-style fontFamily preview (the DB
-// stores bare values like "American Typewriter" that the designer applies via
-// Fabric). Leaves already-quoted values alone.
+// The `value` column is already a complete CSS font-family stack, e.g.
+// "Cooper, serif" or "Bebas Neue, sans-serif" (unquoted multi-word families
+// plus a fallback — valid CSS the browser resolves fine). Apply it verbatim,
+// exactly like the designer does (fontFamily: value). Do NOT re-quote it: an
+// earlier version wrapped the whole stack in quotes ("'Bebas Neue, sans-serif'"),
+// which named one nonexistent family and silently fell back to the inherited
+// font — the preview bug this replaces.
 function previewFamily(value: string): string {
-  const v = value.trim()
-  if (!v) return 'inherit'
-  if (v.includes("'") || v.includes('"')) return v
-  return /\s/.test(v) ? `'${v}'` : v
+  return value.trim() || 'inherit'
 }
 
 export default function FontsAdmin() {
