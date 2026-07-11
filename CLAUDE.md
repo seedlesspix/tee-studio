@@ -432,6 +432,18 @@ routed to a later phase. Logged here so they aren't rediscovered from scratch.
   Hitting the browser back button from Shopify's login page loses the snapshotted
   design state. Explicitly out of scope for the Phase 1 logout fix.
 
+### Phase 2 notes
+
+- **Public-read consistency: colors/fonts vs. pricing.** `designer_colors` and
+  `designer_fonts` use `USING true` for public read, so they return inactive
+  rows too — filtering `is_active` is a **React-side responsibility**, not
+  DB-enforced. `designer_pricing` uses the stricter `USING (is_active = true)`.
+  Left unaligned intentionally (the designer filters client-side today). Worth
+  aligning if we see any inactive-row leak bugs in the wild or during Phase 3.
+  Admin write access on colors/fonts/`clipart_categories` was added 2026-07-11
+  via `admin_write_policies_colors_fonts_categories` (mirrors the
+  `designer_pricing`/`clipart_items` `is_admin()` pattern).
+
 ## Deployment Notes
 
 - Hosted on Vercel (inferred)
