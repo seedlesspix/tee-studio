@@ -34,6 +34,7 @@ export default function ColorsAdmin() {
   const [addingFor, setAddingFor] = useState<string | null>(null)
   const [newColor, setNewColor] = useState<NewFields>(EMPTY_NEW)
   const [creating, setCreating] = useState(false)
+  const [reordering, setReordering] = useState(false)
 
   const showMessage = (text: string, type: 'success' | 'error' = 'success') => {
     setMessage({ text, type })
@@ -133,12 +134,55 @@ export default function ColorsAdmin() {
     }
   }
 
+  const byOrder = (a: ColorRow, b: ColorRow) =>
+    (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.label.localeCompare(b.label)
+
+  // Move a color up/down within its method group. Reindexes the whole group to
+  // a clean 0..n-1 sequence (normalizing any ties/gaps in existing data) and
+  // persists only the rows whose sort_order actually changes.
+  const moveColor = async (row: ColorRow, direction: 'up' | 'down') => {
+    if (reordering) return
+    const group = colors
+      .filter(c => c.print_method_key === row.print_method_key)
+      .sort(byOrder)
+    const idx = group.findIndex(c => c.id === row.id)
+    const swapWith = direction === 'up' ? idx - 1 : idx + 1
+    if (swapWith < 0 || swapWith >= group.length) return
+
+    const reordered = [...group]
+    ;[reordered[idx], reordered[swapWith]] = [reordered[swapWith], reordered[idx]]
+    const updates = reordered
+      .map((c, i) => ({ id: c.id, to: i }))
+      .filter((u, i) => (reordered[i].sort_order ?? 0) !== u.to)
+    if (updates.length === 0) return
+
+    setReordering(true)
+    // Optimistic local update so the swap feels instant.
+    setColors(prev => prev.map(c => {
+      const u = updates.find(x => x.id === c.id)
+      return u ? { ...c, sort_order: u.to } : c
+    }))
+    const results = await Promise.all(
+      updates.map(u => supabase.from('designer_colors').update({ sort_order: u.to }).eq('id', u.id))
+    )
+    setReordering(false)
+    const failed = results.find(r => r.error)
+    if (failed?.error) {
+      showMessage('Error reordering: ' + failed.error.message, 'error')
+      // Re-sync sort_order from server truth (leaves any unsaved label/hex edits alone).
+      const { data } = await supabase
+        .from('designer_colors').select('*')
+        .order('print_method_key').order('sort_order').order('label')
+      if (data) setColors(data)
+    }
+  }
+
   const grouped = colors.reduce((acc, row) => {
     (acc[row.print_method_key ?? ''] ||= []).push(row)
     return acc
   }, {} as Record<string, ColorRow[]>)
   const methodKeys = methods.length ? methods.map(m => m.key) : Object.keys(grouped)
-  methodKeys.forEach(k => { grouped[k] ||= [] })
+  methodKeys.forEach(k => { (grouped[k] ||= []).sort(byOrder) })
   const labelFor = (key: string) => methods.find(m => m.key === key)?.label ?? key.replace('_', ' ')
 
   return (
@@ -146,7 +190,7 @@ export default function ColorsAdmin() {
       <div className="max-w-3xl mx-auto">
         <div className="mb-8">
           <h1 className="text-2xl font-mono font-bold text-black">Colors</h1>
-          <p className="text-gray-600 text-sm font-mono mt-1">Manage the color palette shown in the designer, per print method</p>
+          <p className="text-gray-600 text-sm font-mono mt-1">Manage the color palette shown in the designer, per print method. Use ▲▼ to reorder.</p>
         </div>
 
         {message && (
@@ -175,12 +219,20 @@ export default function ColorsAdmin() {
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  {grouped[method].map(row => {
+                  {grouped[method].map((row, i, arr) => {
                     const v = editValues[row.id] ?? { label: row.label, hex: row.hex }
                     const pickerHex = normalizeHex(v.hex) ?? '#000000'
                     return (
                       <div key={row.id} className={`bg-white border rounded-lg p-3 ${row.is_active ? 'border-gray-200' : 'border-red-300 opacity-60'}`}>
                         <div className="flex items-center gap-3">
+                          <div className="flex flex-col shrink-0">
+                            <button onClick={() => moveColor(row, 'up')} disabled={i === 0 || reordering}
+                              title="Move up"
+                              className="px-1 leading-none text-xs text-gray-500 hover:text-[#dd3333] disabled:opacity-25 disabled:hover:text-gray-500 transition-all">▲</button>
+                            <button onClick={() => moveColor(row, 'down')} disabled={i === arr.length - 1 || reordering}
+                              title="Move down"
+                              className="px-1 leading-none text-xs text-gray-500 hover:text-[#dd3333] disabled:opacity-25 disabled:hover:text-gray-500 transition-all">▼</button>
+                          </div>
                           <input
                             type="color"
                             value={pickerHex}
