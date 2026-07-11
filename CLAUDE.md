@@ -476,6 +476,12 @@ routed to a later phase. Logged here so they aren't rediscovered from scratch.
   migration added a reusable `public.set_updated_at()` trigger function (wired
   to `product_templates`). `designer_pricing.updated_at` is currently never
   refreshed on update — attach the same trigger to it as a future cleanup.
+- **A template with zero print areas has no printable zone.** If a
+  `product_templates` row has no `product_template_print_areas`, the designer
+  will render no print area on that product — customers can't place a design.
+  The `/admin/templates` list flags this with a red **"⚠ 0 areas"** badge on the
+  row (analogous to how pricing surfaces dormant embroidery). Every active
+  template should have at least one print area before it's used in the designer.
 
 ## Deployment Notes
 

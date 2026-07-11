@@ -8,6 +8,7 @@ const tabs = [
   { href: '/admin/pricing', label: 'Pricing' },
   { href: '/admin/colors', label: 'Colors' },
   { href: '/admin/fonts', label: 'Fonts' },
+  { href: '/admin/templates', label: 'Templates' },
 ]
 
 export default function AdminTabs() {

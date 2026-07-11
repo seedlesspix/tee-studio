@@ -1,0 +1,406 @@
+'use client'
+import { useEffect, useRef, useState } from 'react'
+import { supabase } from '../../lib/supabase'
+import type { Tables } from '@/types/database'
+
+type AreaRow = Tables<'product_template_print_areas'>
+
+// Local editing shape: a stable client key plus the DB `id` once persisted.
+type EditArea = {
+  _key: string
+  id?: string
+  name: string
+  side: string
+  print_method: string
+  x_px: number
+  y_px: number
+  width_px: number
+  height_px: number
+  width_in: number
+  height_in: number
+  preset_label: string | null
+  sort_order: number
+}
+
+type ProductResp = { images?: { edges?: { node?: { url?: string } }[] } }
+
+type Props = {
+  templateId: string
+  shopifyProductId: string
+  supportedMethods: string[]
+  methodLabel: (key: string) => string
+  onMessage: (text: string, type?: 'success' | 'error') => void
+}
+
+// Fixed on-screen working width for the mockup. Print-area coordinates are
+// stored in the mockup image's NATURAL pixel space (not this display space),
+// so they're resolution-independent. The designer read layer (Phase 3) will
+// convert these px -> percentages using the same mockup natural dimensions
+// (see CLAUDE.md "pixels vs. percentages" note).
+const DISPLAY_W = 520
+const SIDES = ['front', 'back'] as const
+
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
+let keyCounter = 0
+const nextKey = () => `new-${keyCounter++}`
+
+export default function PrintAreaEditor({
+  templateId, shopifyProductId, supportedMethods, methodLabel, onMessage,
+}: Props) {
+  const [images, setImages] = useState<string[]>([])
+  const [imgIdx, setImgIdx] = useState(0)
+  const [imgError, setImgError] = useState<string | null>(null)
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
+  const [side, setSide] = useState<string>('front')
+  const [areas, setAreas] = useState<EditArea[]>([])
+  const [deletedIds, setDeletedIds] = useState<string[]>([])
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  // Refs the window pointer handlers read (avoids re-subscribing on every move).
+  const naturalRef = useRef<{ w: number; h: number } | null>(null)
+  const scaleRef = useRef(1)
+  const drag = useRef<null | {
+    key: string; mode: 'move' | 'resize'
+    startX: number; startY: number; ox: number; oy: number; ow: number; oh: number
+  }>(null)
+
+  const displayW = natural ? Math.min(DISPLAY_W, natural.w) : DISPLAY_W
+  const scale = natural ? displayW / natural.w : 1
+  // Keep the pointer-handler refs in sync with the latest natural size / scale.
+  useEffect(() => { naturalRef.current = natural; scaleRef.current = scale }, [natural, scale])
+
+  // Load existing print areas for this template.
+  useEffect(() => {
+    supabase
+      .from('product_template_print_areas')
+      .select('*')
+      .eq('template_id', templateId)
+      .order('sort_order')
+      .then(({ data }) => {
+        if (data) setAreas(data.map((r: AreaRow) => ({ ...r, _key: r.id })))
+      })
+  }, [templateId])
+
+  // Load the Shopify product's mockup images (visual reference only — not stored).
+  useEffect(() => {
+    let active = true
+    const numericId = shopifyProductId.split('/').pop() || ''
+    if (!numericId) {
+      const t = setTimeout(() => setImgError('No Shopify product ID on this template.'), 0)
+      return () => clearTimeout(t)
+    }
+    fetch(`/api/product?id=${numericId}`)
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`Product fetch failed (${r.status})`)))
+      .then((p: ProductResp) => {
+        if (!active) return
+        const urls = (p.images?.edges ?? []).map(e => e.node?.url).filter((u): u is string => !!u)
+        if (urls.length === 0) setImgError('This Shopify product has no images to use as a mockup.')
+        setImages(urls)
+      })
+      .catch((e: Error) => { if (active) setImgError(e.message) })
+    return () => { active = false }
+  }, [shopifyProductId])
+
+  // Window-level drag handlers (subscribed once).
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const d = drag.current, nat = naturalRef.current, s = scaleRef.current
+      if (!d || !nat) return
+      const dxN = (e.clientX - d.startX) / s
+      const dyN = (e.clientY - d.startY) / s
+      setAreas(prev => prev.map(a => {
+        if (a._key !== d.key) return a
+        if (d.mode === 'move') {
+          return {
+            ...a,
+            x_px: clamp(Math.round(d.ox + dxN), 0, nat.w - a.width_px),
+            y_px: clamp(Math.round(d.oy + dyN), 0, nat.h - a.height_px),
+          }
+        }
+        return {
+          ...a,
+          width_px: clamp(Math.round(d.ow + dxN), 10, nat.w - a.x_px),
+          height_px: clamp(Math.round(d.oh + dyN), 10, nat.h - a.y_px),
+        }
+      }))
+    }
+    const onUp = () => { drag.current = null }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+  }, [])
+
+  const startDrag = (a: EditArea, mode: 'move' | 'resize', e: React.PointerEvent) => {
+    e.preventDefault(); e.stopPropagation()
+    setSelectedKey(a._key)
+    drag.current = { key: a._key, mode, startX: e.clientX, startY: e.clientY, ox: a.x_px, oy: a.y_px, ow: a.width_px, oh: a.height_px }
+  }
+
+  const patch = (key: string, fields: Partial<EditArea>) =>
+    setAreas(prev => prev.map(a => a._key === key ? { ...a, ...fields } : a))
+
+  const addArea = () => {
+    if (!natural) { onMessage('Wait for the mockup image to load first.', 'error'); return }
+    const w = Math.round(natural.w * 0.4)
+    const h = Math.round(natural.h * 0.4)
+    const area: EditArea = {
+      _key: nextKey(),
+      name: side === 'front' ? 'Front' : 'Back',
+      side,
+      print_method: supportedMethods[0] ?? '',
+      x_px: Math.round((natural.w - w) / 2),
+      y_px: Math.round((natural.h - h) / 2),
+      width_px: w,
+      height_px: h,
+      width_in: 12,
+      height_in: Math.round((12 * h / w) * 100) / 100,
+      preset_label: null,
+      sort_order: areas.length,
+    }
+    setAreas(prev => [...prev, area])
+    setSelectedKey(area._key)
+  }
+
+  const removeArea = (a: EditArea) => {
+    if (!confirm(`Delete print area "${a.name}"?`)) return
+    if (a.id) setDeletedIds(prev => [...prev, a.id!])
+    setAreas(prev => prev.filter(x => x._key !== a._key))
+    if (selectedKey === a._key) setSelectedKey(null)
+  }
+
+  const save = async () => {
+    // Client-side guards (the DB also enforces these via constraints/triggers).
+    const names = new Set<string>()
+    for (const a of areas) {
+      if (!a.name.trim()) { onMessage('Every print area needs a name.', 'error'); return }
+      if (names.has(a.name.trim().toLowerCase())) { onMessage(`Duplicate area name "${a.name}".`, 'error'); return }
+      names.add(a.name.trim().toLowerCase())
+      if (!a.print_method) { onMessage(`"${a.name}" needs a print method.`, 'error'); return }
+      if (a.width_in <= 0 || a.height_in <= 0) { onMessage(`Set physical size (inches) for "${a.name}".`, 'error'); return }
+    }
+    setSaving(true)
+    try {
+      for (const id of deletedIds) {
+        const { error } = await supabase.from('product_template_print_areas').delete().eq('id', id)
+        if (error) throw new Error(error.message)
+      }
+      const saved: EditArea[] = []
+      for (const a of areas) {
+        const row = {
+          template_id: templateId,
+          name: a.name.trim(),
+          side: a.side,
+          print_method: a.print_method,
+          x_px: a.x_px, y_px: a.y_px, width_px: a.width_px, height_px: a.height_px,
+          width_in: a.width_in, height_in: a.height_in,
+          preset_label: a.preset_label?.trim() || null,
+          sort_order: a.sort_order,
+        }
+        if (a.id) {
+          const { error } = await supabase.from('product_template_print_areas').update(row).eq('id', a.id)
+          if (error) throw new Error(error.message)
+          saved.push(a)
+        } else {
+          const { data, error } = await supabase.from('product_template_print_areas').insert(row).select().single()
+          if (error) throw new Error(error.message)
+          saved.push({ ...a, id: data.id, _key: data.id })
+        }
+      }
+      setAreas(saved)
+      setDeletedIds([])
+      onMessage('Print areas saved!')
+    } catch (e) {
+      onMessage('Error saving areas: ' + (e as Error).message, 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const selected = areas.find(a => a._key === selectedKey) ?? null
+  const visibleAreas = areas.filter(a => a.side === side)
+  const dpi = (px: number, inch: number) => (inch > 0 ? Math.round(px / inch) : 0)
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-mono uppercase tracking-widest text-[#dd3333]">Print areas</h2>
+        <div className="flex items-center gap-3">
+          <div className="flex rounded border border-gray-300 overflow-hidden">
+            {SIDES.map(s => (
+              <button key={s} onClick={() => setSide(s)}
+                className={`px-3 py-1 text-xs font-mono capitalize ${side === s ? 'bg-[#dd3333] text-white' : 'bg-white text-black hover:bg-gray-50'}`}>
+                {s}
+              </button>
+            ))}
+          </div>
+          <button onClick={addArea}
+            className="px-3 py-1 rounded text-xs font-mono bg-white text-[#dd3333] border border-[#dd3333] hover:bg-red-50">
+            + Add area ({side})
+          </button>
+          <button onClick={save} disabled={saving}
+            className="px-4 py-1.5 rounded text-xs font-mono bg-[#dd3333] text-white hover:bg-red-700 disabled:opacity-60">
+            {saving ? 'Saving…' : 'Save print areas'}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex gap-6 flex-wrap">
+        {/* ---- Mockup with draggable rectangles ---- */}
+        <div>
+          {images.length > 1 && (
+            <div className="flex gap-2 mb-2 flex-wrap">
+              {images.map((url, i) => (
+                <button key={url} onClick={() => setImgIdx(i)}
+                  className={`w-10 h-10 rounded border overflow-hidden ${i === imgIdx ? 'border-[#dd3333] ring-1 ring-[#dd3333]' : 'border-gray-300'}`}>
+                  <img src={url} alt={`mockup ${i + 1}`} className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
+
+          {imgError ? (
+            <div className="w-[520px] max-w-full rounded border border-dashed border-gray-300 bg-gray-50 p-8 text-center">
+              <p className="text-xs font-mono text-gray-600">{imgError}</p>
+              <p className="text-[10px] font-mono text-gray-400 mt-1">You can still enter coordinates numerically below.</p>
+            </div>
+          ) : images.length > 0 ? (
+            <div className="relative select-none touch-none" style={{ width: displayW }}>
+              <img
+                src={images[imgIdx]}
+                alt="mockup"
+                draggable={false}
+                onLoad={e => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+                style={{ width: displayW, display: 'block' }}
+                className="rounded border border-gray-200"
+              />
+              {natural && visibleAreas.map(a => {
+                const isSel = a._key === selectedKey
+                return (
+                  <div
+                    key={a._key}
+                    onPointerDown={e => startDrag(a, 'move', e)}
+                    style={{
+                      position: 'absolute',
+                      left: a.x_px * scale, top: a.y_px * scale,
+                      width: a.width_px * scale, height: a.height_px * scale,
+                      cursor: 'move',
+                    }}
+                    className={`border-2 ${isSel ? 'border-[#dd3333] bg-[#dd3333]/10' : 'border-blue-500 bg-blue-500/5'}`}
+                  >
+                    <span className="absolute -top-5 left-0 text-[10px] font-mono bg-white/90 px-1 rounded border border-gray-200 whitespace-nowrap">
+                      {a.name}
+                    </span>
+                    <div
+                      onPointerDown={e => startDrag(a, 'resize', e)}
+                      title="Resize"
+                      style={{ position: 'absolute', right: -6, bottom: -6, width: 12, height: 12, cursor: 'nwse-resize' }}
+                      className={`rounded-sm border ${isSel ? 'bg-[#dd3333] border-white' : 'bg-blue-500 border-white'}`}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="w-[520px] max-w-full rounded border border-dashed border-gray-300 bg-gray-50 p-8 text-center">
+              <p className="text-xs font-mono text-gray-500">Loading mockup…</p>
+            </div>
+          )}
+          {natural && (
+            <p className="text-[10px] font-mono text-gray-400 mt-1">
+              Mockup {natural.w}×{natural.h}px · showing at {Math.round(scale * 100)}%. Coordinates saved in natural pixels.
+            </p>
+          )}
+        </div>
+
+        {/* ---- Area list + selected-area fields ---- */}
+        <div className="flex-1 min-w-[16rem]">
+          <div className="flex flex-col gap-1 mb-4">
+            {visibleAreas.length === 0 && (
+              <p className="text-gray-500 font-mono text-xs">No {side} areas yet. “+ Add area” drops one on the mockup.</p>
+            )}
+            {visibleAreas.map(a => (
+              <button key={a._key} onClick={() => setSelectedKey(a._key)}
+                className={`text-left px-3 py-2 rounded text-xs font-mono border ${
+                  a._key === selectedKey ? 'border-[#dd3333] bg-red-50 text-black' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                }`}>
+                {a.name} · {methodLabel(a.print_method)} · {a.width_in}×{a.height_in}in
+              </button>
+            ))}
+          </div>
+
+          {selected && (
+            <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="text-[10px] text-gray-600 font-mono uppercase">Name</label>
+                  <input value={selected.name}
+                    onChange={e => patch(selected._key, { name: e.target.value })}
+                    className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm font-mono mt-1 outline-none focus:border-[#dd3333]" />
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-600 font-mono uppercase">Side</label>
+                  <select value={selected.side}
+                    onChange={e => patch(selected._key, { side: e.target.value })}
+                    className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm font-mono mt-1 outline-none focus:border-[#dd3333] capitalize">
+                    {SIDES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-600 font-mono uppercase">Method</label>
+                  <select value={selected.print_method}
+                    onChange={e => patch(selected._key, { print_method: e.target.value })}
+                    className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm font-mono mt-1 outline-none focus:border-[#dd3333]">
+                    {supportedMethods.map(k => <option key={k} value={k}>{methodLabel(k)}</option>)}
+                  </select>
+                </div>
+
+                {(['x_px', 'y_px', 'width_px', 'height_px'] as const).map(f => (
+                  <div key={f}>
+                    <label className="text-[10px] text-gray-600 font-mono uppercase">{f.replace('_', ' ')}</label>
+                    <input type="number" value={selected[f]}
+                      onChange={e => patch(selected._key, { [f]: Math.max(0, parseInt(e.target.value) || 0) })}
+                      className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm font-mono mt-1 outline-none focus:border-[#dd3333]" />
+                  </div>
+                ))}
+
+                {(['width_in', 'height_in'] as const).map(f => (
+                  <div key={f}>
+                    <label className="text-[10px] text-gray-600 font-mono uppercase">{f.replace('_', ' ')}</label>
+                    <input type="number" step="0.05" value={selected[f]}
+                      onChange={e => patch(selected._key, { [f]: Math.max(0, parseFloat(e.target.value) || 0) })}
+                      className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm font-mono mt-1 outline-none focus:border-[#dd3333]" />
+                  </div>
+                ))}
+
+                <div className="col-span-2">
+                  <label className="text-[10px] text-gray-600 font-mono uppercase">Preset label (optional)</label>
+                  <input value={selected.preset_label ?? ''}
+                    onChange={e => patch(selected._key, { preset_label: e.target.value })}
+                    placeholder="e.g. Men's Print Area 12x16"
+                    className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm font-mono mt-1 outline-none focus:border-[#dd3333] placeholder-gray-400" />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between mt-3">
+                <span className="text-[10px] font-mono text-gray-500">
+                  ≈ {dpi(selected.width_px, selected.width_in)}×{dpi(selected.height_px, selected.height_in)} px/in
+                  {dpi(selected.width_px, selected.width_in) !== dpi(selected.height_px, selected.height_in) && (
+                    <span className="text-amber-600"> · aspect mismatch</span>
+                  )}
+                </span>
+                <button onClick={() => removeArea(selected)}
+                  className="px-3 py-1 rounded text-xs font-mono bg-white text-red-600 border border-gray-300 hover:bg-red-50 hover:border-red-300">
+                  Delete area
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
