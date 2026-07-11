@@ -459,6 +459,23 @@ routed to a later phase. Logged here so they aren't rediscovered from scratch.
   Storage) — it's ~1–2 days of infrastructure work before the admin UI can be
   built on top of it. Doing them together as one project is cleaner than
   piecemeal.
+- **Product template print areas: pixels vs. percentages (Day 7 reconcile).**
+  The current designer reads print areas in **percentages** from a Shopify
+  metafield (`designer.print_area` → `xPct/yPct/widthPct/heightPct`). The new
+  `product_template_print_areas` schema stores **pixels** (plus inches for
+  Phase 5 print scaling). Day 7 must reconcile at the read layer — either
+  convert pixels→percentages at designer load, or migrate the designer to
+  native pixel reads.
+- **`product_templates.shopify_product_id` uses the GID form**
+  (`gid://shopify/Product/<n>`), not the bare numeric from the `product_id` URL
+  param. Rationale: `getProduct()` converts the URL's bare numeric to a GID for
+  the Storefront query, and the designer persists `product.id` (GID) — so
+  `design_orders.shopify_product_id` is already GID. The Day-7 template lookup
+  should key off `product.id`, not the raw URL param.
+- **`set_updated_at()` trigger (future cleanup).** The `create_product_templates`
+  migration added a reusable `public.set_updated_at()` trigger function (wired
+  to `product_templates`). `designer_pricing.updated_at` is currently never
+  refreshed on update — attach the same trigger to it as a future cleanup.
 
 ## Deployment Notes
 

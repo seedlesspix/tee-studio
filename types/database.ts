@@ -442,6 +442,113 @@ export type Database = {
           },
         ]
       }
+      product_template_print_areas: {
+        Row: {
+          height_in: number
+          height_px: number
+          id: string
+          name: string
+          preset_label: string | null
+          print_method: string
+          side: string
+          sort_order: number
+          template_id: string
+          width_in: number
+          width_px: number
+          x_px: number
+          y_px: number
+        }
+        Insert: {
+          height_in: number
+          height_px: number
+          id?: string
+          name: string
+          preset_label?: string | null
+          print_method: string
+          side: string
+          sort_order?: number
+          template_id: string
+          width_in: number
+          width_px: number
+          x_px: number
+          y_px: number
+        }
+        Update: {
+          height_in?: number
+          height_px?: number
+          id?: string
+          name?: string
+          preset_label?: string | null
+          print_method?: string
+          side?: string
+          sort_order?: number
+          template_id?: string
+          width_in?: number
+          width_px?: number
+          x_px?: number
+          y_px?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_template_print_areas_print_method_fkey"
+            columns: ["print_method"]
+            isOneToOne: false
+            referencedRelation: "designer_print_methods"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "product_template_print_areas_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "product_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_templates: {
+        Row: {
+          created_at: string
+          default_print_method: string
+          id: string
+          is_active: boolean
+          name: string
+          shopify_product_id: string
+          sort_order: number
+          supported_print_methods: string[]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          default_print_method: string
+          id?: string
+          is_active?: boolean
+          name: string
+          shopify_product_id: string
+          sort_order?: number
+          supported_print_methods: string[]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          default_print_method?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          shopify_product_id?: string
+          sort_order?: number
+          supported_print_methods?: string[]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_templates_default_print_method_fkey"
+            columns: ["default_print_method"]
+            isOneToOne: false
+            referencedRelation: "designer_print_methods"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
