@@ -503,6 +503,11 @@ routed to a later phase. Logged here so they aren't rediscovered from scratch.
   but the customer must click **Back** to see it. Threading a `restore_side`
   through save/query/designer-mount is a small-scope Phase 3 polish item — add
   it if customer feedback requests it.
+- **Admin Draft Order view doesn't display ink/thread colors used in the
+  design.** Print method is captured (screen_print vs embroidery) but the actual
+  colors chosen for text/artwork live only in the canvas state JSON. Extract and
+  surface in the admin for print-shop reference in Phase 4/5 when the order
+  fulfillment view gets built out.
 
 ## Deployment Notes
 
