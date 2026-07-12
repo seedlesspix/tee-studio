@@ -257,25 +257,38 @@ export default function DesignerCanvas({
   // Restore canvas when designId provided (back from order page)
   useEffect(() => {
     if (!designId) return
-    // Poll until canvas is ready, then restore
+    // Restore an existing order into the designer ("Edit design" flow). Reads
+    // BOTH sides: front loads into the live canvas (restore lands on Front),
+    // and back is enlivened into backObjectsRef so the Back toggle rehydrates
+    // it — mirroring the login-restore path's enlivenObjects usage. Without
+    // back restoration, the Day-4 view-aware save would overwrite the back to
+    // null on the Edit round-trip.
     let attempts = 0
     const poll = setInterval(() => {
       attempts++
       const canvas = (window as any)._fabricCanvas
       if (!canvas) { if (attempts > 20) clearInterval(poll); return }
       clearInterval(poll)
-      supabase.from('design_orders').select('canvas_json_front').eq('id', designId).single()
-        .then(({ data }) => {
-          if (!data?.canvas_json_front) return
+      supabase.from('design_orders')
+        .select('canvas_json_front, canvas_json_back')
+        .eq('id', designId).single()
+        .then(async ({ data }) => {
+          if (!data) return
           try {
-            const json = JSON.parse(data.canvas_json_front)
-            if (json.objects?.length > 0) {
-              canvas.loadFromJSON(json).then(() => {
-                canvas.discardActiveObject()
-                canvas.renderAll()
-              })
+            const { util } = await import('fabric')
+            if (data.canvas_json_front) {
+              const frontJson = JSON.parse(data.canvas_json_front)
+              if (frontJson.objects?.length > 0) await canvas.loadFromJSON(frontJson)
             }
-          } catch (e) { /* ignore */ }
+            if (data.canvas_json_back) {
+              const backJson = JSON.parse(data.canvas_json_back)
+              backObjectsRef.current = backJson.objects?.length
+                ? (await util.enlivenObjects(backJson.objects)) as any[]
+                : []
+            }
+            canvas.discardActiveObject()
+            canvas.renderAll()
+          } catch (e) { /* ignore restore errors */ }
         })
     }, 300)
     return () => clearInterval(poll)
@@ -778,26 +791,8 @@ export default function DesignerCanvas({
       setFabricCanvas(canvas)
       ;(window as any)._fabricCanvas = canvas
 
-      // Restore saved design if returning from order page
-      if (designId) {
-        setTimeout(() => {
-          import('../lib/supabase').then(({ supabase }) => {
-            supabase.from('design_orders').select('canvas_json_front').eq('id', designId).single()
-              .then(({ data }) => {
-                if (!data?.canvas_json_front) return
-                try {
-                  const json = JSON.parse(data.canvas_json_front)
-                  if (json.objects?.length > 0) {
-                    canvas.loadFromJSON(json).then(() => {
-                      canvas.discardActiveObject()
-                      canvas.renderAll()
-                    })
-                  }
-                } catch (e) { /* ignore restore errors */ }
-              })
-          })
-        }, 1200)
-      }
+      // (Order restore for the designId "Edit design" flow is handled by the
+      // consolidated effect above, which restores BOTH front and back.)
 
       // Custom selection handles
       import('fabric').then(({ controlsUtils, Control, util }) => {
