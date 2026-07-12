@@ -541,6 +541,57 @@ routed to a later phase. Logged here so they aren't rediscovered from scratch.
 - **Restore-lands-on-Front sub-issue** — consider auto-landing on the side that
   has content, or showing a subtle indicator that both sides have content.
 
+## Phase 3+ Backlog — Denise notes 7/12/26
+
+Captured for later scoping; not yet slotted into a specific day.
+
+**Admin / Database** (fits Phase 4 Admin polish or later):
+- **Delete Orders** — an option to delete/archive order rows in admin.
+- **Order statistics** — best-selling products/colors/sizes over any given time
+  period. Requires reporting queries + an admin dashboard component. Scope for a
+  dedicated "Admin Reporting" mini-phase.
+- **Rename "Screen Print" → "Print"** everywhere (methods dropdown, admin,
+  customer-facing labels). Fits Phase 3 polish, small change. (Note: the
+  internal DB key `screen_print` stays; this is display-only — see the
+  "Terminology note" under designer_pricing.)
+- **Convert artwork → SVG** — requires image processing (probably server-side
+  with Sharp or similar). Scope for Phase 5 print-file generation work.
+- **Category reordering in admin** — drag-and-reorder Clipart categories (and
+  possibly other lists). Extension of the ▲▼ reorder pattern from Phase 2
+  Colors/Fonts.
+
+**Design Tool / Customer-facing** (fits Phase 3 Day 8 polish or Phase 3+
+enhancement):
+- **Product image naming** — many products share filenames like "XS_Black_Front"
+  across styles, causing collisions. Needs a namespace/product-scoped filename
+  scheme.
+- **Product colors** — correctly reflect Shopify variant colors in the designer
+  (this is Item 1, mostly done in the Day 3 fix; may need follow-up
+  verification).
+- **Switch products mid-design** — change from Cotton Tee to Ring-Spun etc.
+  without starting over; preserves design elements, adapts print-area
+  coordinates. Nontrivial UX + data work (see "Larger consideration items").
+- **Live text preview** — text appears on the shirt in real time as the customer
+  types (line break on Enter, no "Add Text" button). Replaces the current
+  "type in box, then add to shirt" flow.
+- **Text alignment buttons** — left/center/right (may already exist, needs
+  verification).
+- **Center-on-shirt button** — one click centers the current text element.
+- **Rename "Curve" → "Arc"** — and expand range to −360°…360° (currently may be
+  limited).
+- **Explicit Rotate control** — −360°…360° slider or input.
+- **"Add Design Notes" field** on the Order Options page — a text area for
+  printing details that shows up with the order in admin.
+- **AI image generator** — generate images from a text prompt for use in
+  designs. Needs research: provider (OpenAI/Anthropic/Stability), cost per
+  generation, per-session usage limits, content moderation. A Phase 3+
+  enhancement, not core (see "Larger consideration items").
+
+**Larger consideration items** (flag for discussion, not scoped tonight):
+- **Switch-products-mid-design** and the **AI image generator** are both
+  meaningful net-new features that deserve dedicated discovery conversations
+  before scoping. Not "small fixes" — set expectations accordingly.
+
 ## Deployment Notes
 
 - Hosted on Vercel (inferred)
