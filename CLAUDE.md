@@ -511,6 +511,10 @@ routed to a later phase. Logged here so they aren't rediscovered from scratch.
 - **Day 5 will add a dual-side preview to the Order Options page** when both
   sides have design work. This depends on Day 4's view-aware save fix landing
   first so the back PNG populates correctly.
+- **Next Step "add a design" error check is view-scoped, not cross-side**
+  (Day 5 task). If a customer designs on one side, flips to the empty side, and
+  hits Next Step, they'll incorrectly get the error. Should check
+  `frontHasContent` OR `backHasContent`, not just the currently-visible canvas.
 
 ## Deployment Notes
 
