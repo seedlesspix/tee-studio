@@ -489,6 +489,21 @@ routed to a later phase. Logged here so they aren't rediscovered from scratch.
   row (analogous to how pricing surfaces dormant embroidery). Every active
   template should have at least one print area before it's used in the designer.
 
+### Phase 3 notes
+
+- **Designer reads print areas from `product_templates` (Day 3).** The
+  product-load effect queries `product_templates` by `product.id` (GID) +
+  `is_active`, takes the **single** front/back area matching the print method,
+  and converts the stored **natural pixels → percentages** using a loaded
+  product image's natural size (derived, not stored — revisit if aspect-ratio
+  drift appears). Falls back to the legacy `designer.print_area` Shopify
+  metafield for products with no template row. Multi-area-per-side is a future
+  project (needs a mode-picker/zone-selection UX conversation).
+- **Draft restore lands on the Front side only.** Back-side work is preserved
+  but the customer must click **Back** to see it. Threading a `restore_side`
+  through save/query/designer-mount is a small-scope Phase 3 polish item — add
+  it if customer feedback requests it.
+
 ## Deployment Notes
 
 - Hosted on Vercel (inferred)

@@ -140,6 +140,11 @@ export type Database = {
           total_qty: number | null
           unit_price: number | null
           uploaded_files: Json | null
+          template_id: string | null
+          print_area_front_id: string | null
+          print_area_back_id: string | null
+          print_area_front: Json | null
+          print_area_back: Json | null
         }
         Insert: {
           available_sizes?: string[] | null
@@ -174,6 +179,11 @@ export type Database = {
           total_qty?: number | null
           unit_price?: number | null
           uploaded_files?: Json | null
+          template_id?: string | null
+          print_area_front_id?: string | null
+          print_area_back_id?: string | null
+          print_area_front?: Json | null
+          print_area_back?: Json | null
         }
         Update: {
           available_sizes?: string[] | null
@@ -208,6 +218,11 @@ export type Database = {
           total_qty?: number | null
           unit_price?: number | null
           uploaded_files?: Json | null
+          template_id?: string | null
+          print_area_front_id?: string | null
+          print_area_back_id?: string | null
+          print_area_front?: Json | null
+          print_area_back?: Json | null
         }
         Relationships: []
       }

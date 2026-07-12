@@ -10,6 +10,7 @@ function DesignerContent() {
   const productId = searchParams.get('product_id') || ''
   const variantId = searchParams.get('variant_id') || ''
   const price = searchParams.get('price') || '0'
+  const quantity = searchParams.get('quantity') || ''
   const designId = searchParams.get('design_id') || ''
   // Set when returning from a Shopify login round-trip: the id of the draft
   // snapshotted before the redirect, to rehydrate the canvas.
@@ -33,6 +34,7 @@ function DesignerContent() {
         productPrice={parseInt(price) / 100}
         designId={designId}
         restoreId={restoreId}
+        initialQuantity={quantity}
       />
     </main>
   )

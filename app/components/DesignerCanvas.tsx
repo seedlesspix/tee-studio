@@ -11,8 +11,8 @@ import { CustomerAuthButton } from './CustomerAuthButton'
 declare global {
   interface Window {
     _printAreaData?: {
-      front: { xPct: number; yPct: number; widthPct: number; heightPct: number }
-      back:  { xPct: number; yPct: number; widthPct: number; heightPct: number }
+      front: { xPct: number; yPct: number; widthPct: number; heightPct: number } | null
+      back:  { xPct: number; yPct: number; widthPct: number; heightPct: number } | null
     }
   }
 }
@@ -40,6 +40,9 @@ interface Props {
   productPrice: number
   designId?: string
   restoreId?: string
+  // Quantity carried from the product page (?quantity=). Applied to the
+  // matched size so the count survives into design_orders. Optional/blank → 1.
+  initialQuantity?: string
 }
 
 const COLOR_HEX_MAP: Record<string, string> = {
@@ -129,8 +132,20 @@ function constrainObject(obj: any, bounds: { left: number; top: number; right: n
   obj.setCoords()
 }
 
+// Loads an image only to read its natural pixel dimensions (naturalWidth/Height
+// need no CORS). Used to convert admin-captured print-area pixels into the
+// percentages the overlay renders. Resolves null on error.
+function getImageNaturalSize(url: string): Promise<{ w: number; h: number } | null> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight })
+    img.onerror = () => resolve(null)
+    img.src = url
+  })
+}
+
 export default function DesignerCanvas({
-  productId, variantId, productTitle, productPrice, designId = '', restoreId = ''
+  productId, variantId, productTitle, productPrice, designId = '', restoreId = '', initialQuantity = ''
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const shirtImgRef = useRef<HTMLImageElement>(null)
@@ -341,6 +356,14 @@ export default function DesignerCanvas({
   const frontObjectsRef = useRef<any[]>([])
   const backObjectsRef = useRef<any[]>([])
   const uploadedFilesRef = useRef<{ name: string; url: string; type: string }[]>([])
+  // Which template / print areas the current session resolved — stamped onto
+  // the design_orders row at save time (Day 3 backend-completeness). The *Snap
+  // refs hold the full area rows so print geometry survives later admin edits.
+  const templateIdRef = useRef<string | null>(null)
+  const printAreaFrontIdRef = useRef<string | null>(null)
+  const printAreaBackIdRef = useRef<string | null>(null)
+  const printAreaFrontSnapRef = useRef<any>(null)
+  const printAreaBackSnapRef = useRef<any>(null)
   useEffect(() => {
     fabricCanvasRef.current = fabricCanvas
   }, [fabricCanvas])
@@ -495,20 +518,71 @@ export default function DesignerCanvas({
           }
           })()
 
-          // Parse print area metafield
-          if (data.printArea?.value) {
+          // Print area: prefer admin-managed product_templates; fall back to the
+          // legacy Shopify metafield for products without a template row.
+          ;(async () => {
             try {
-              const pa = JSON.parse(data.printArea.value)
-              setPrintArea(pa.front)
-              window._printAreaData = pa
-            } catch(e) { console.error('Print area parse error', e) }
-          } else if (data.metafield?.value) {
-            try {
-              const pa = JSON.parse(data.metafield.value)
-              setPrintArea(pa.front)
-              window._printAreaData = pa
-            } catch(e) { console.error('Print area parse error', e) }
-          }
+              const { supabase } = await import('../lib/supabase')
+              const { data: tpl } = await supabase
+                .from('product_templates')
+                .select('id, default_print_method, product_template_print_areas(*)')
+                .eq('shopify_product_id', data.id)
+                .eq('is_active', true)
+                .maybeSingle()
+
+              const areas = (tpl?.product_template_print_areas || []) as any[]
+              if (tpl && areas.length > 0) {
+                // Print-area px are stored in the mockup's NATURAL pixel space.
+                // Convert to the percentages the overlay renders, deriving the
+                // reference natural size from a loaded product image (all color
+                // mockups share aspect). See CLAUDE.md "pixels vs. percentages".
+                const refUrl = allImages[0]?.url
+                const natural = refUrl ? await getImageNaturalSize(refUrl) : null
+                if (natural) {
+                  const forMethod = areas.filter(a => a.print_method === method)
+                  // Single area per side for Phase 3: the first by sort_order.
+                  const pickSide = (side: string) =>
+                    forMethod.filter(a => a.side === side)
+                      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))[0] || null
+                  const toPct = (a: any) => a ? {
+                    xPct: (a.x_px / natural.w) * 100,
+                    yPct: (a.y_px / natural.h) * 100,
+                    widthPct: (a.width_px / natural.w) * 100,
+                    heightPct: (a.height_px / natural.h) * 100,
+                  } : null
+                  const frontArea = pickSide('front')
+                  const backArea = pickSide('back')
+                  const pa = { front: toPct(frontArea), back: toPct(backArea) }
+                  if (pa.front || pa.back) {
+                    window._printAreaData = pa
+                    setPrintArea(pa.front || pa.back)
+                    templateIdRef.current = tpl.id
+                    printAreaFrontIdRef.current = frontArea?.id ?? null
+                    printAreaBackIdRef.current = backArea?.id ?? null
+                    printAreaFrontSnapRef.current = frontArea ?? null
+                    printAreaBackSnapRef.current = backArea ?? null
+                    return
+                  }
+                }
+              }
+            } catch (e) {
+              console.error('Template print-area read failed, falling back to metafield:', e)
+            }
+            // Fallback: legacy Shopify metafield (already stored as percentages).
+            if (data.printArea?.value) {
+              try {
+                const pa = JSON.parse(data.printArea.value)
+                setPrintArea(pa.front)
+                window._printAreaData = pa
+              } catch (e) { console.error('Print area parse error', e) }
+            } else if (data.metafield?.value) {
+              try {
+                const pa = JSON.parse(data.metafield.value)
+                setPrintArea(pa.front)
+                window._printAreaData = pa
+              } catch (e) { console.error('Print area parse error', e) }
+            }
+          })()
           const colorOption = data.options?.find((o: any) => o.name === 'Color')
           if (colorOption?.values?.length > 0) {
             const firstColor = colorOption.values[0]
@@ -541,9 +615,11 @@ export default function DesignerCanvas({
             const imgs = getColorImages(resolvedColor, imgMap)
             if (imgs?.front && shirtImgRef.current) shirtImgRef.current.src = imgs.front
 
-            // Pre-select the matched size (only when the URL resolved one).
+            // Pre-select the matched size with the quantity carried from the
+            // product page (?quantity=), defaulting to 1.
             if (matchedSize) {
-              setQuantities((prev: Record<string, number>) => ({ ...prev, [matchedSize]: 1 }))
+              const qty = Math.max(1, parseInt(initialQuantity || '', 10) || 1)
+              setQuantities((prev: Record<string, number>) => ({ ...prev, [matchedSize]: qty }))
             }
 
             // selectedVariant must reflect the resolved color — it's saved as
@@ -1452,6 +1528,13 @@ export default function DesignerCanvas({
         selected_color: selectedColor,
         print_method: printMethod,
         sides_designed: sidesCount,
+        // Day 3: which template / print areas this design used, plus a frozen
+        // geometry snapshot for print-file fidelity (survives later admin edits).
+        template_id: templateIdRef.current,
+        print_area_front_id: printAreaFrontIdRef.current,
+        print_area_back_id: printAreaBackIdRef.current,
+        print_area_front: printAreaFrontSnapRef.current,
+        print_area_back: printAreaBackSnapRef.current,
         canvas_png_front: pngFrontUrl,
         canvas_png_back: pngBackUrl,
         canvas_svg_front: svgFrontUrl,
