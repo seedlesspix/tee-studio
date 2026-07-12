@@ -50,6 +50,17 @@ function OrderPage() {
   const pricePerItem = design ? ((design.unit_price ?? 0) + (design.print_charge ?? 0)) : 0
   const total = (totalQty * pricePerItem).toFixed(2)
 
+  // Per-side print-charge split for display. The exact per-side amounts land in
+  // design_orders.print_charge_front/back with the Day-4 backend capture; until
+  // then, derive from which sides have rendered content. For the active
+  // screen_print method (equal $/side) this is exact and sums to print_charge.
+  const frontDesigned = !!design?.canvas_png_front
+  const backDesigned = !!design?.canvas_png_back
+  const printChargeTotal = design?.print_charge ?? 0
+  const bothSides = frontDesigned && backDesigned
+  const frontCharge = frontDesigned ? (bothSides ? printChargeTotal / 2 : printChargeTotal) : 0
+  const backCharge = backDesigned ? (bothSides ? printChargeTotal / 2 : printChargeTotal) : 0
+
   const handleAddToCart = async () => {
     if (!design || totalQty === 0) { setError('Please select at least one size and quantity.'); return }
     setAdding(true)
@@ -224,10 +235,18 @@ function OrderPage() {
                 <span>Blank shirt</span>
                 <span className="text-gray-900 font-medium">${design?.unit_price?.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-gray-900">
-                <span>Print charge ({design?.sides_designed} side{(design?.sides_designed || 0) > 1 ? 's' : ''})</span>
-                <span className="text-gray-900">+${design?.print_charge?.toFixed(2)}</span>
-              </div>
+              {frontCharge > 0 && (
+                <div className="flex justify-between text-gray-900">
+                  <span>Front Print</span>
+                  <span className="text-gray-900">+${frontCharge.toFixed(2)}</span>
+                </div>
+              )}
+              {backCharge > 0 && (
+                <div className="flex justify-between text-gray-900">
+                  <span>Back Print</span>
+                  <span className="text-gray-900">+${backCharge.toFixed(2)}</span>
+                </div>
+              )}
               <div className="flex justify-between font-bold border-t border-gray-200 pt-2">
                 <span className="text-gray-900 font-bold">Price per item</span>
                 <span className="text-[#dd3333]">${pricePerItem.toFixed(2)}</span>

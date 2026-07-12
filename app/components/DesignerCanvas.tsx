@@ -1627,9 +1627,9 @@ export default function DesignerCanvas({
   // for each side that has content rather than looking up by the number of
   // sides (the old `printPricing[sidesCount]` charged a 2-sided design the
   // single Back-row price, e.g. $12 instead of $12 + $12 = $24).
-  const printCharge =
-    (frontHasContent ? (printPricing[1] ?? 12) : 0) +
-    (backHasContent ? (printPricing[2] ?? 12) : 0)
+  const frontCharge = frontHasContent ? (printPricing[1] ?? 12) : 0
+  const backCharge = backHasContent ? (printPricing[2] ?? 12) : 0
+  const printCharge = frontCharge + backCharge
   const pricePerItem = unitPrice + printCharge
   const total = (totalQty * pricePerItem).toFixed(2)
 
@@ -2238,10 +2238,16 @@ export default function DesignerCanvas({
               <span>Blank price</span>
               <span className="text-gray-900">{`$${unitPrice.toFixed(2)}`}</span>
             </div>
-            {printCharge > 0 && (
+            {frontCharge > 0 && (
               <div className="flex justify-between text-gray-800">
-                <span>Print charge ({sidesCount} side{sidesCount > 1 ? 's' : ''})</span>
-                <span className="text-gray-900">{`+$${printCharge.toFixed(2)}`}</span>
+                <span>Front Print</span>
+                <span className="text-gray-900">{`+$${frontCharge.toFixed(2)}`}</span>
+              </div>
+            )}
+            {backCharge > 0 && (
+              <div className="flex justify-between text-gray-800">
+                <span>Back Print</span>
+                <span className="text-gray-900">{`+$${backCharge.toFixed(2)}`}</span>
               </div>
             )}
             <div className="flex justify-between font-bold border-t border-gray-200 pt-2">
