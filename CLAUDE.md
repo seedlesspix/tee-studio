@@ -516,6 +516,31 @@ routed to a later phase. Logged here so they aren't rediscovered from scratch.
   hits Next Step, they'll incorrectly get the error. Should check
   `frontHasContent` OR `backHasContent`, not just the currently-visible canvas.
 
+**Day 5 polish backlog (from Day 4 testing):**
+
+*Order Options page:*
+- **Shirt preview images are too large.** Options to explore: (a) both
+  front/back shown smaller side-by-side, or (b) one main image with a thumbnail
+  toggle. (Related to the dual-side preview item above.)
+
+*Cross-page:*
+- **"Edit Design" back control should be visually prominent** — button
+  treatment, not a text link.
+- **Browser back-button behavior needs review.** It should walk backwards
+  through the natural flow (Order Options → Designer → Product Page), not land
+  on stale intermediate states with URL params from earlier interactions.
+  **Trace current history behavior before proposing a fix** — likely involves
+  `history.pushState` management.
+
+*Designer page:*
+- **Quantity should NOT show on the first designer step** (the customer is
+  still designing, not ordering). Move it to the Order Options step.
+- **"Add Text" button UX** — customers don't discover how to add text today.
+  Consider more discoverable placement. (This is the Phase 1 sign-off "Add Text"
+  finding.)
+- **Restore-lands-on-Front sub-issue** — consider auto-landing on the side that
+  has content, or showing a subtle indicator that both sides have content.
+
 ## Deployment Notes
 
 - Hosted on Vercel (inferred)
