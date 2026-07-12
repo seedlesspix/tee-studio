@@ -1513,35 +1513,42 @@ export default function DesignerCanvas({
     const timestamp = Date.now()
 
     try {
-      // 1. Export PNG for front (current view)
-      const frontPng = await exportCanvasPNG(canvas)
-      const frontSvg = exportCanvasSVG(canvas)
+      // Sync the live canvas into the ref for the CURRENT view first, so both
+      // refs hold the true front/back content regardless of which side is
+      // showing. Previously the live canvas was always exported as "front", so
+      // a design created on the back view was saved into the front slot (and
+      // the back slot left null) — a fulfillment data-integrity bug.
+      const liveObjects = canvas.getObjects().map((o: any) => o)
+      if (shirtView === 'front') frontObjectsRef.current = liveObjects
+      else backObjectsRef.current = liveObjects
 
-      // 2. Upload front PNG + SVG
-      const [pngFrontUrl, svgFrontUrl] = await Promise.all([
-        frontPng ? uploadToStorage(frontPng, `${orderId}/front.png`, 'design-exports') : null,
-        frontSvg ? uploadToStorage(frontSvg, `${orderId}/front.svg`, 'design-exports') : null,
-      ])
-
-      // 3. Handle back canvas if designed
-      let pngBackUrl = null, svgBackUrl = null
-      if (backObjectsRef.current.length > 0) {
-        // Temporarily load back objects to export
-        const currentObjects = canvas.getObjects().map((o: any) => o)
+      // Export one side from its ref: PNG + SVG + JSON, each written to that
+      // side's slot. Empty side -> all nulls (no downstream line/preview).
+      const exportSide = async (objs: any[], name: string) => {
+        if (!objs.length) return { png: null as string | null, svg: null as string | null, json: null as string | null }
         canvas.clear()
-        backObjectsRef.current.forEach((o: any) => canvas.add(o))
+        objs.forEach((o: any) => canvas.add(o))
         canvas.renderAll()
-        const backPng = await exportCanvasPNG(canvas)
-        const backSvg = exportCanvasSVG(canvas)
-        ;[pngBackUrl, svgBackUrl] = await Promise.all([
-          backPng ? uploadToStorage(backPng, `${orderId}/back.png`, 'design-exports') : null,
-          backSvg ? uploadToStorage(backSvg, `${orderId}/back.svg`, 'design-exports') : null,
+        const pngBlob = await exportCanvasPNG(canvas)
+        const svgBlob = exportCanvasSVG(canvas)
+        const json = JSON.stringify(canvas.toJSON())
+        const [png, svg] = await Promise.all([
+          pngBlob ? uploadToStorage(pngBlob, `${orderId}/${name}.png`, 'design-exports') : null,
+          svgBlob ? uploadToStorage(svgBlob, `${orderId}/${name}.svg`, 'design-exports') : null,
         ])
-        // Restore front
-        canvas.clear()
-        currentObjects.forEach((o: any) => canvas.add(o))
-        canvas.renderAll()
+        return { png, svg, json }
       }
+
+      const front = await exportSide(frontObjectsRef.current, 'front')
+      const back = await exportSide(backObjectsRef.current, 'back')
+
+      // Restore the live view onto the canvas.
+      canvas.clear()
+      liveObjects.forEach((o: any) => canvas.add(o))
+      canvas.renderAll()
+
+      const pngFrontUrl = front.png, svgFrontUrl = front.svg
+      const pngBackUrl = back.png, svgBackUrl = back.svg
 
       // 4. Upload any customer-uploaded files
       const uploadedFileUrls = await Promise.all(
@@ -1575,8 +1582,8 @@ export default function DesignerCanvas({
         canvas_png_back: pngBackUrl,
         canvas_svg_front: svgFrontUrl,
         canvas_svg_back: svgBackUrl,
-        canvas_json_front: JSON.stringify(canvas.toJSON()),
-        canvas_json_back: JSON.stringify(backObjectsRef.current.map((o: any) => o.toJSON?.() || {})),
+        canvas_json_front: front.json,
+        canvas_json_back: back.json,
         uploaded_files: uploadedFileUrls,
         quantities,
         available_sizes: SIZES.filter(s => isSizeAvailable(s)),

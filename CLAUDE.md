@@ -508,6 +508,9 @@ routed to a later phase. Logged here so they aren't rediscovered from scratch.
   colors chosen for text/artwork live only in the canvas state JSON. Extract and
   surface in the admin for print-shop reference in Phase 4/5 when the order
   fulfillment view gets built out.
+- **Day 5 will add a dual-side preview to the Order Options page** when both
+  sides have design work. This depends on Day 4's view-aware save fix landing
+  first so the back PNG populates correctly.
 
 ## Deployment Notes
 
