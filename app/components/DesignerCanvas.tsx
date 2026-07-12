@@ -512,40 +512,51 @@ export default function DesignerCanvas({
           const colorOption = data.options?.find((o: any) => o.name === 'Color')
           if (colorOption?.values?.length > 0) {
             const firstColor = colorOption.values[0]
-            // Try to match the variant_id to pre-select the right color
-            const matchedVariant = data.variants?.edges?.find(
-              (e: any) => e.node.id.includes(variantId)
-            )
-            if (matchedVariant) {
-              const variantColorOpt = matchedVariant.node.selectedOptions.find(
-                (o: any) => o.name === 'Color'
-              )
-              const variantSizeOpt = matchedVariant.node.selectedOptions.find(
-                (o: any) => o.name === 'Size'
-              )
-              if (variantColorOpt) {
-                setSelectedColor(variantColorOpt.value)
-              } else {
-                setSelectedColor(firstColor)
-              }
-              if (variantSizeOpt) {
-                setQuantities((prev: Record<string, number>) => ({
-                  ...prev,
-                  [variantSizeOpt.value]: 1
-                }))
-              }
-            } else {
-              setSelectedColor(firstColor)
-            }
-            setShirtHex(COLOR_HEX_MAP[firstColor] || '#888')
-            const imgs = getColorImages(firstColor, imgMap)
+
+            // Match the URL's variant_id (bare numeric) against the variant GID
+            // by EXACT id, not substring. String.includes('') is always true, so
+            // an empty/missing variantId used to silently match the FIRST variant
+            // (e.g. gold/L landing on Columbia Blue/S). Guard on a non-empty
+            // variantId and compare the trailing numeric of the GID exactly.
+            const matchedVariant = variantId
+              ? data.variants?.edges?.find(
+                  (e: any) => e.node.id.split('/').pop() === variantId
+                )?.node
+              : undefined
+            const matchedColor = matchedVariant?.selectedOptions.find(
+              (o: any) => o.name === 'Color'
+            )?.value
+            const matchedSize = matchedVariant?.selectedOptions.find(
+              (o: any) => o.name === 'Size'
+            )?.value
+
+            // Resolve the color to actually use, then drive EVERY downstream
+            // piece of state from it. Previously hex, the shirt image, and
+            // selectedVariant were hardcoded to firstColor even when a different
+            // variant matched — so the picker could say "Gold" while the shirt,
+            // price, and saved variant were all the first color.
+            const resolvedColor = matchedColor || firstColor
+            setSelectedColor(resolvedColor)
+            setShirtHex(COLOR_HEX_MAP[resolvedColor] || '#888')
+            const imgs = getColorImages(resolvedColor, imgMap)
             if (imgs?.front && shirtImgRef.current) shirtImgRef.current.src = imgs.front
-            const firstVariant = data.variants?.edges?.find(({ node }: any) =>
-              node.selectedOptions.some(
-                (o: any) => o.name === 'Color' && o.value === firstColor
-              )
-            )
-            if (firstVariant) setSelectedVariant(firstVariant.node)
+
+            // Pre-select the matched size (only when the URL resolved one).
+            if (matchedSize) {
+              setQuantities((prev: Record<string, number>) => ({ ...prev, [matchedSize]: 1 }))
+            }
+
+            // selectedVariant must reflect the resolved color — it's saved as
+            // shopify_variant_id and drives unit price + cart-add (a wrong/empty
+            // one is the "Cannot find variant" cart error). Prefer the exact
+            // matched variant, else the first variant of the resolved color.
+            const chosenVariant = matchedVariant
+              || data.variants?.edges?.find(({ node }: any) =>
+                   node.selectedOptions.some(
+                     (o: any) => o.name === 'Color' && o.value === resolvedColor
+                   )
+                 )?.node
+            if (chosenVariant) setSelectedVariant(chosenVariant)
           }
         }
       })
