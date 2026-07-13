@@ -499,6 +499,27 @@ routed to a later phase. Logged here so they aren't rediscovered from scratch.
   drift appears). Falls back to the legacy `designer.print_area` Shopify
   metafield for products with no template row. Multi-area-per-side is a future
   project (needs a mode-picker/zone-selection UX conversation).
+- **Color→image matching + GID normalization (Day 6.5, onesie fix).** The
+  second template (Baby Onesie) rendered a blank designer canvas — two bugs.
+  **(A)** The old filename parser assumed a rigid `{knownSize}_{Color}_{Front|Back}`
+  shape and broke on the onesie's inconsistent names (`_Onesie` suffix on some
+  files, `3-6mo` size tokens on others), so every color resolved to no image.
+  Replaced with a shared `buildColorImageMap`/`getColorImages` in
+  **`app/lib/productImages.ts`** that matches by "normalized filename **contains**
+  the Shopify color name" (longest color first, so "Light Blue" beats "Blue"),
+  tolerating size prefixes, garment suffixes, and UUIDs. When a color still
+  matches nothing, the designer falls back to the product's **first/featured
+  image** (never a blank canvas) and the `/admin/templates` Colors section shows
+  a red **"⚠ no image matched"** badge on that color (same spirit as "⚠ 0
+  areas" — silent blanks are how this bug hid). **(B)** The admin saved
+  `shopify_product_id` verbatim, so a typo (`gid://shopify/Products/…`, plural)
+  never matched the designer's GID lookup. `normalizeShopifyProductId` (also in
+  `productImages.ts`) now canonicalizes GID/plural-typo/bare-numeric/product-URL
+  → `gid://shopify/Product/<n>` on save; the one existing onesie row was
+  data-fixed. **The onesie's inconsistent source filenames are the existing
+  "Product image naming" backlog item** — the contains-matcher tolerates them,
+  but tidying the names in Shopify (a consistent, product-scoped scheme) is still
+  worth doing to avoid future collisions.
 - **Draft restore lands on the Front side only.** Back-side work is preserved
   but the customer must click **Back** to see it. Threading a `restore_side`
   through save/query/designer-mount is a small-scope Phase 3 polish item — add
@@ -578,7 +599,10 @@ Captured for later scoping; not yet slotted into a specific day.
 enhancement):
 - **Product image naming** — many products share filenames like "XS_Black_Front"
   across styles, causing collisions. Needs a namespace/product-scoped filename
-  scheme.
+  scheme. (The Day-6.5 contains-matcher in `productImages.ts` now tolerates
+  inconsistent names like the onesie's `_Onesie`/`3-6mo` tokens — see the
+  "Color→image matching" note under Phase 3 notes — but tidying the source names
+  is still the clean fix.)
 - **Product colors** — correctly reflect Shopify variant colors in the designer
   (this is Item 1, mostly done in the Day 3 fix; may need follow-up
   verification).

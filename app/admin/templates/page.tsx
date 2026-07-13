@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { normalizeShopifyProductId } from '../../lib/productImages'
 import type { Tables } from '@/types/database'
 import PrintAreaEditor from './PrintAreaEditor'
 import TemplateColorsEditor from './TemplateColorsEditor'
@@ -98,6 +99,8 @@ export default function TemplatesAdmin() {
   const validateDraft = (): string | null => {
     if (!draft.name.trim()) return 'Template name is required.'
     if (!draft.shopify_product_id.trim()) return 'Shopify product ID is required.'
+    if (!normalizeShopifyProductId(draft.shopify_product_id))
+      return 'Shopify product ID must contain a numeric ID (a full gid://…, a bare number, or a product URL).'
     if (draft.supported_print_methods.length === 0) return 'Pick at least one supported print method.'
     if (!draft.default_print_method) return 'Choose a default print method.'
     if (!draft.supported_print_methods.includes(draft.default_print_method))
@@ -111,7 +114,10 @@ export default function TemplatesAdmin() {
     setSavingTemplate(true)
     const payload = {
       name: draft.name.trim(),
-      shopify_product_id: draft.shopify_product_id.trim(),
+      // Canonicalize to gid://shopify/Product/<n> so the designer's template
+      // lookup (keyed off the GID) always matches, regardless of what form the
+      // admin pasted (GID, bare numeric, product URL, or a "Products" typo).
+      shopify_product_id: normalizeShopifyProductId(draft.shopify_product_id)!,
       supported_print_methods: draft.supported_print_methods,
       default_print_method: draft.default_print_method,
       is_active: draft.is_active,

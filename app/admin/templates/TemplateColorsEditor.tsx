@@ -1,10 +1,14 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { buildColorImageMap, getColorImages } from '../../lib/productImages'
 import type { Tables } from '@/types/database'
 
 type ColorRow = Tables<'product_template_colors'>
-type ProductResp = { options?: { name: string; values: string[] }[] }
+type ProductResp = {
+  options?: { name: string; values: string[] }[]
+  images?: { edges: { node: { url: string } }[] }
+}
 
 type Props = {
   templateId: string
@@ -41,17 +45,23 @@ export default function TemplateColorsEditor({ templateId, shopifyProductId, onM
   const [savingRow, setSavingRow] = useState<string | null>(null)
   const [savingAll, setSavingAll] = useState(false)
   const [uploading, setUploading] = useState<string | null>(null)
+  // Colors whose name matched no product mockup — the designer falls back to the
+  // featured image for these, so flag them here (same spirit as "⚠ 0 areas").
+  const [noImg, setNoImg] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     let active = true
     ;(async () => {
       const numericId = shopifyProductId.split('/').pop() || ''
       let shopifyColors: string[] = []
+      let imgMap: ReturnType<typeof buildColorImageMap> = {}
       try {
         const res = await fetch(`/api/product?id=${numericId}`)
         if (res.ok) {
           const p: ProductResp = await res.json()
           shopifyColors = p.options?.find(o => o.name === 'Color')?.values ?? []
+          const images = (p.images?.edges ?? []).map(e => ({ url: e.node.url }))
+          imgMap = buildColorImageMap(images, shopifyColors)
         }
       } catch { /* ignore — fall back to existing assignments below */ }
 
@@ -80,6 +90,11 @@ export default function TemplateColorsEditor({ templateId, shopifyProductId, onM
       })
       setRows(built)
       setSaved(savedState)
+      // Only flag when we actually resolved the product's images — a failed fetch
+      // would otherwise mark every color as unmatched.
+      setNoImg(shopifyColors.length
+        ? new Set(colorNames.filter(name => !getColorImages(name, imgMap)))
+        : new Set<string>())
       if (!colorNames.length) setNote('No colors found for this product (Shopify fetch returned none).')
       setLoading(false)
     })()
@@ -201,6 +216,10 @@ export default function TemplateColorsEditor({ templateId, shopifyProductId, onM
 
                 {r.autofilled && (
                   <span className="text-[10px] font-mono text-amber-600 whitespace-nowrap" title="Prefilled from another template — save to confirm">• autofilled</span>
+                )}
+                {noImg.has(r.color_name) && (
+                  <span className="text-[10px] font-mono text-[#dd3333] whitespace-nowrap"
+                    title="No product mockup filename matched this color — the designer shows the product's featured image instead. Check the image filenames in Shopify.">⚠ no image matched</span>
                 )}
 
                 <div className="ml-auto flex items-center gap-2 shrink-0">

@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import ClipartPanel from './ClipartPanel'
 import { getProduct } from '../lib/shopify'
+import { buildColorImageMap, getColorImages } from '../lib/productImages'
 import { CustomerAuthButton } from './CustomerAuthButton'
 
 declare global {
@@ -70,43 +71,9 @@ const COLOR_HEX_MAP: Record<string, string> = {
 
 const SIZES = ['S', 'M', 'L', 'XL', '2XL', '3XL']
 
-function buildColorImageMap(images: { url: string; altText: string }[]) {
-  const map: Record<string, { front: string; back: string }> = {}
-  images.forEach(({ url }) => {
-    const filename = url.split('/').pop()?.split('?')[0] || ''
-    const isFront = filename.toLowerCase().includes('_front')
-    const isBack = filename.toLowerCase().includes('_back')
-    if (!isFront && !isBack) return
-    // Strip UUID suffix (e.g. _7eb4268e-9c21-44ad-961d-59d47598c18b) before parsing
-    const cleanFilename = filename.replace(/_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '')
-    const withoutExt = cleanFilename.replace(/\.[^.]+$/, '')
-    const parts = withoutExt.split('_')
-    const sizePrefixes = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', 'OS', 'OSFA', 'ONE']
-    if (sizePrefixes.includes(parts[0].toUpperCase())) parts.shift()
-    // Remove Front/Back suffix
-    const cleaned = parts.filter(p =>
-      p.toLowerCase() !== 'front' &&
-      p.toLowerCase() !== 'back'
-    )
-    const colorKey = cleaned.join('').toLowerCase()
-    if (!map[colorKey]) map[colorKey] = { front: '', back: '' }
-    if (isFront) map[colorKey].front = url
-    if (isBack) map[colorKey].back = url
-  })
-  Object.keys(map).forEach(key => {
-    if (!map[key].front && map[key].back) map[key].front = map[key].back
-    if (!map[key].back && map[key].front) map[key].back = map[key].front
-  })
-  return map
-}
-
-function getColorImages(
-  colorName: string,
-  imageMap: Record<string, { front: string; back: string }>
-) {
-  const key = colorName.toLowerCase().replace(/\s/g, '')
-  return imageMap[key] || null
-}
+// buildColorImageMap / getColorImages now live in ../lib/productImages (shared
+// with the template admin) and match by color-name-contains rather than a rigid
+// filename parse.
 
 // Constrain a Fabric object to stay within the print area bounds
 function constrainObject(obj: any, bounds: { left: number; top: number; right: number; bottom: number }) {
@@ -374,6 +341,10 @@ export default function DesignerCanvas({
   const frontObjectsRef = useRef<any[]>([])
   const backObjectsRef = useRef<any[]>([])
   const uploadedFilesRef = useRef<{ name: string; url: string; type: string }[]>([])
+  // Product's first/featured image — the shirt fallback when a color resolves no
+  // matching mockup (so we never show a blank canvas; the gap is flagged in the
+  // template admin's Colors section instead).
+  const firstImageUrlRef = useRef<string>('')
   // Which template / print areas the current session resolved — stamped onto
   // the design_orders row at save time (Day 3 backend-completeness). The *Snap
   // refs hold the full area rows so print geometry survives later admin edits.
@@ -434,7 +405,8 @@ export default function DesignerCanvas({
           setSelectedColor(state.selectedColor)
           setShirtHex(COLOR_HEX_MAP[state.selectedColor] || '#888')
           const imgs = getColorImages(state.selectedColor, colorImageMap)
-          if (imgs?.front && shirtImgRef.current) shirtImgRef.current.src = imgs.front
+          const restoreSrc = imgs?.front || firstImageUrlRef.current
+          if (restoreSrc && shirtImgRef.current) shirtImgRef.current.src = restoreSrc
           const match = product.variants.edges.find(({ node }) =>
             node.selectedOptions.some(o => o.name === 'Color' && o.value === state.selectedColor)
           )
@@ -507,7 +479,9 @@ export default function DesignerCanvas({
           const allImages = data.images?.edges?.map(
             ({ node }: any) => ({ url: node.url, altText: node.altText })
           ) || []
-          const imgMap = buildColorImageMap(allImages)
+          firstImageUrlRef.current = allImages[0]?.url || ''
+          const colorNames = data.options?.find((o: any) => o.name === 'Color')?.values || []
+          const imgMap = buildColorImageMap(allImages, colorNames)
           setColorImageMap(imgMap)
           // Check raw image URLs for actual _back files
           const anyBack = allImages.some(({ url }: { url: string }) =>
@@ -676,7 +650,8 @@ export default function DesignerCanvas({
             setSelectedColor(resolvedColor)
             setShirtHex(COLOR_HEX_MAP[resolvedColor] || '#888')
             const imgs = getColorImages(resolvedColor, imgMap)
-            if (imgs?.front && shirtImgRef.current) shirtImgRef.current.src = imgs.front
+            const loadSrc = imgs?.front || firstImageUrlRef.current
+            if (loadSrc && shirtImgRef.current) shirtImgRef.current.src = loadSrc
 
             // Pre-select the matched size with the quantity carried from the
             // product page (?quantity=), defaulting to 1.
@@ -954,12 +929,10 @@ export default function DesignerCanvas({
     setShirtHex(COLOR_HEX_MAP[color] || '#888')
     setQuantities(SIZES.reduce((acc, s) => ({ ...acc, [s]: 0 }), {}))
     const imgs = getColorImages(color, colorImageMap)
-    if (imgs) {
-      const url = shirtView === 'back'
-        ? (imgs.back || imgs.front)
-        : (imgs.front || imgs.back)
-      if (url && shirtImgRef.current) shirtImgRef.current.src = url
-    }
+    const url = (shirtView === 'back'
+      ? (imgs?.back || imgs?.front)
+      : (imgs?.front || imgs?.back)) || firstImageUrlRef.current
+    if (url && shirtImgRef.current) shirtImgRef.current.src = url
     if (product) {
       const match = product.variants.edges.find(({ node }) =>
         node.selectedOptions.some(o => o.name === 'Color' && o.value === color)
@@ -1551,8 +1524,10 @@ export default function DesignerCanvas({
       // the selected color) — previously both used the live view's shirt, so a
       // back-designed order showed both previews on the back-of-shirt image.
       const sideImgs = getColorImages(selectedColor, colorImageMap)
-      const front = await exportSide(frontObjectsRef.current, 'front', sideImgs?.front)
-      const back = await exportSide(backObjectsRef.current, 'back', sideImgs?.back)
+      const frontShirt = sideImgs?.front || firstImageUrlRef.current || undefined
+      const backShirt = sideImgs?.back || firstImageUrlRef.current || undefined
+      const front = await exportSide(frontObjectsRef.current, 'front', frontShirt)
+      const back = await exportSide(backObjectsRef.current, 'back', backShirt)
 
       // Restore the live view onto the canvas.
       canvas.clear()
@@ -2166,7 +2141,8 @@ export default function DesignerCanvas({
                 }
                 setShirtView('front')
                 const imgs = getColorImages(selectedColor, colorImageMap)
-                if (imgs?.front && shirtImgRef.current) shirtImgRef.current.src = imgs.front
+                const frontSrc = imgs?.front || firstImageUrlRef.current
+                if (frontSrc && shirtImgRef.current) shirtImgRef.current.src = frontSrc
                 if (window._printAreaData?.front) { setPrintArea(window._printAreaData.front); window.dispatchEvent(new Event('printAreaChanged')) }
               }}
               className={`px-4 py-1.5 rounded-full text-xs font-mono tracking-widest transition-all ${
@@ -2223,7 +2199,8 @@ export default function DesignerCanvas({
                   }
                   setShirtView('back')
                   const imgs = getColorImages(selectedColor, colorImageMap)
-                  if (imgs?.back && shirtImgRef.current) shirtImgRef.current.src = imgs.back
+                  const backSrc = imgs?.back || firstImageUrlRef.current
+                  if (backSrc && shirtImgRef.current) shirtImgRef.current.src = backSrc
                   if (window._printAreaData?.back) { setPrintArea(window._printAreaData.back); window.dispatchEvent(new Event('printAreaChanged')) }
                 }}
                 className={`px-4 py-1.5 rounded-full text-xs font-mono tracking-widest transition-all ${
