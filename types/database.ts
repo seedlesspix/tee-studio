@@ -224,7 +224,29 @@ export type Database = {
           print_area_front?: Json | null
           print_area_back?: Json | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "design_orders_print_area_back_id_fkey"
+            columns: ["print_area_back_id"]
+            isOneToOne: false
+            referencedRelation: "product_template_print_areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "design_orders_print_area_front_id_fkey"
+            columns: ["print_area_front_id"]
+            isOneToOne: false
+            referencedRelation: "product_template_print_areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "design_orders_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "product_templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       designer_colors: {
         Row: {
