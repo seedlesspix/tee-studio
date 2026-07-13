@@ -587,6 +587,12 @@ enhancement):
   generation, per-session usage limits, content moderation. A Phase 3+
   enhancement, not core (see "Larger consideration items").
 
+**Admin polish** (fold into a future admin-view pass):
+- **Admin Draft Order view could break out per-side print charges** now that
+  `print_charge_front`/`print_charge_back` exist on `design_orders` (Day 4). It
+  currently shows the summed "Blank + Print" format. Per-side breakout benefits
+  the print shop.
+
 **Larger consideration items** (flag for discussion, not scoped tonight):
 - **Switch-products-mid-design** and the **AI image generator** are both
   meaningful net-new features that deserve dedicated discovery conversations
