@@ -1741,6 +1741,20 @@ export default function DesignerCanvas({
               const result = await saveDesignAndAddToCart()
               if (btn) { btn.textContent = 'Next Step →'; (btn as any).disabled = false }
               if (result && result.orderId) {
+                // Stamp the designer's history entry so browser-Back from the
+                // order page rehydrates the FULL design: design_id restores the
+                // canvas (front + back), and the CURRENT variant_id/quantity
+                // restore the last color/size/quantity — not the stale params
+                // from the first Design-Now click. (Then Back once more → product
+                // page cleanly.)
+                try {
+                  const backUrl = new URL(window.location.href)
+                  backUrl.searchParams.set('design_id', result.orderId)
+                  const vId = selectedVariant?.id?.split('/').pop()
+                  if (vId) backUrl.searchParams.set('variant_id', vId)
+                  if (totalQty > 0) backUrl.searchParams.set('quantity', String(totalQty))
+                  window.history.replaceState({}, '', backUrl.pathname + backUrl.search)
+                } catch { /* ignore */ }
                 window.location.href = `/order?design_id=${result.orderId}`
               } else {
                 alert('Error saving design. Please try again.')
