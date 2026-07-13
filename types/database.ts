@@ -488,6 +488,44 @@ export type Database = {
           },
         ]
       }
+      product_template_colors: {
+        Row: {
+          color_name: string
+          created_at: string
+          hex: string
+          id: string
+          sort_order: number
+          swatch_image_url: string | null
+          template_id: string
+        }
+        Insert: {
+          color_name: string
+          created_at?: string
+          hex: string
+          id?: string
+          sort_order?: number
+          swatch_image_url?: string | null
+          template_id: string
+        }
+        Update: {
+          color_name?: string
+          created_at?: string
+          hex?: string
+          id?: string
+          sort_order?: number
+          swatch_image_url?: string | null
+          template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_template_colors_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "product_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_template_print_areas: {
         Row: {
           height_in: number
