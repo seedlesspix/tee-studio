@@ -127,8 +127,8 @@ export default function OrdersAdmin() {
                 selected?.id === order.id ? 'bg-gray-50 border-l-2 border-l-[#dd3333]' : ''
               }`}>
               <div className="w-14 h-14 rounded-lg overflow-hidden bg-gray-100 shrink-0 border border-gray-200">
-                {order.canvas_png_front ? (
-                  <img src={order.canvas_png_front} alt="Design" className="w-full h-full object-cover" />
+                {(order.canvas_png_front || order.canvas_png_back) ? (
+                  <img src={order.canvas_png_front || order.canvas_png_back!} alt="Design" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-400 text-[9px] font-mono">No preview</div>
                 )}
