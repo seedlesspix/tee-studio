@@ -541,12 +541,19 @@ routed to a later phase. Logged here so they aren't rediscovered from scratch.
 - **Restore-lands-on-Front sub-issue** — consider auto-landing on the side that
   has content, or showing a subtle indicator that both sides have content.
 - **Garment color hex comes from a hardcoded `COLOR_HEX_MAP`** in
-  `DesignerCanvas.tsx`, not the `designer_colors` table where hex already lives.
-  Day 5 captures `design_orders.selected_color_hex` from that map (null for
-  unmapped colors, deliberately — an honest null beats a misleading `#888`
-  fallback for the print shop). Future cleanup: read the hex from
-  `designer_colors` (admin-managed) and retire the hardcoded map — the shirt
-  swatch rendering and this capture both depend on it.
+  `DesignerCanvas.tsx` (drives the shirt swatch AND the Day-5
+  `design_orders.selected_color_hex` capture — null for unmapped colors,
+  deliberately, since an honest null beats a misleading `#888` for the print
+  shop). **Decided direction (Denise, Phase 3):** garment hexes will be assigned
+  **per product template** in the `/admin/templates` editor — *not* a global
+  registry and *not* `designer_colors`. Rationale: template setup is where each
+  blank-product is already configured (print areas, methods), the template knows
+  exactly which Shopify colors the product has, so color assignment belongs in
+  that same one-sitting workflow. Hybrid: autofill a color's hex as an
+  overridable default from other templates' assignments. Scoped ~1–1.5 days (new
+  `product_template_colors` table + template-editor UI + designer read +
+  autofill). Retires `COLOR_HEX_MAP` for templated products and upgrades the
+  Day-5 hex capture to the template source.
 
 ## Phase 3+ Backlog — Denise notes 7/12/26
 
