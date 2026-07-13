@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { Tables } from '@/types/database'
 import PrintAreaEditor from './PrintAreaEditor'
+import TemplateColorsEditor from './TemplateColorsEditor'
 
 type Template = Tables<'product_templates'>
 type PrintMethod = Tables<'designer_print_methods'>
@@ -321,18 +322,25 @@ export default function TemplatesAdmin() {
               </div>
             </div>
 
-            {/* Print-area editor only once the template exists (areas FK to it). */}
+            {/* Print-area + color editors only once the template exists (both FK to it). */}
             {editing.id && editingTemplate ? (
-              <PrintAreaEditor
-                templateId={editing.id}
-                shopifyProductId={editingTemplate.shopify_product_id}
-                supportedMethods={editingTemplate.supported_print_methods}
-                methodLabel={labelFor}
-                onMessage={showMessage}
-              />
+              <>
+                <PrintAreaEditor
+                  templateId={editing.id}
+                  shopifyProductId={editingTemplate.shopify_product_id}
+                  supportedMethods={editingTemplate.supported_print_methods}
+                  methodLabel={labelFor}
+                  onMessage={showMessage}
+                />
+                <TemplateColorsEditor
+                  templateId={editing.id}
+                  shopifyProductId={editingTemplate.shopify_product_id}
+                  onMessage={showMessage}
+                />
+              </>
             ) : (
               <p className="text-gray-500 font-mono text-xs">
-                Save the template first — then you can add print areas over its Shopify mockup.
+                Save the template first — then you can add print areas and colors over its Shopify mockup.
               </p>
             )}
           </div>
