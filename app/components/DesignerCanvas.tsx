@@ -1584,6 +1584,10 @@ export default function DesignerCanvas({
         available_sizes: SIZES.filter(s => isSizeAvailable(s)),
         unit_price: unitPrice,
         print_charge: printCharge,
+        // Per-side split (Day 4). Null when that side has no content, so the
+        // order page / fulfillment can tell "designed but $0" from "not designed".
+        print_charge_front: frontHasContent ? frontCharge : null,
+        print_charge_back: backHasContent ? backCharge : null,
         price_per_item: pricePerItem,
         total_qty: totalQty,
         total_price: parseFloat(total),

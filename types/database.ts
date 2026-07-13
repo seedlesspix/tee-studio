@@ -124,6 +124,8 @@ export type Database = {
           notes: string | null
           price_per_item: number | null
           print_charge: number | null
+          print_charge_back: number | null
+          print_charge_front: number | null
           print_method: string | null
           product_title: string | null
           quantities: Json | null
@@ -163,6 +165,8 @@ export type Database = {
           notes?: string | null
           price_per_item?: number | null
           print_charge?: number | null
+          print_charge_back?: number | null
+          print_charge_front?: number | null
           print_method?: string | null
           product_title?: string | null
           quantities?: Json | null
@@ -202,6 +206,8 @@ export type Database = {
           notes?: string | null
           price_per_item?: number | null
           print_charge?: number | null
+          print_charge_back?: number | null
+          print_charge_front?: number | null
           print_method?: string | null
           product_title?: string | null
           quantities?: Json | null
