@@ -92,8 +92,11 @@ export default function TemplateColorsEditor({ templateId, shopifyProductId, onM
   const rowDirty = (r: Row): boolean => {
     const s = saved[r.color_name]
     const nh = normalizeHex(r.hex) ?? r.hex
-    if (!s) return !!r.hex.trim()
-    return nh !== s.hex || (r.swatch_image_url ?? null) !== (s.swatch_image_url ?? null)
+    const swatch = r.swatch_image_url ?? null
+    // A swatch upload is a change too — the unsaved branch previously checked
+    // hex only, so uploading a swatch never enabled Save for an unsaved color.
+    if (!s) return !!r.hex.trim() || swatch !== null
+    return nh !== s.hex || swatch !== (s.swatch_image_url ?? null)
   }
 
   // Persists one row; returns true on success. Shared by row Save and Save all.
