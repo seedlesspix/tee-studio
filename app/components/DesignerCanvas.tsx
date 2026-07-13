@@ -156,6 +156,11 @@ export default function DesignerCanvas({
   const [selectedVariant, setSelectedVariant] = useState<ShopifyVariant | null>(null)
   const [shirtHex, setShirtHex] = useState('#1a1a1a')
   const [colorImageMap, setColorImageMap] = useState<Record<string, { front: string; back: string }>>({})
+  // Per-template garment colors (hex + optional swatch image), keyed by color
+  // name. Loaded from product_template_colors; drives the swatch rendering and
+  // the selected_color_hex capture, with COLOR_HEX_MAP as the fallback for
+  // non-templated products.
+  const [templateColors, setTemplateColors] = useState<Record<string, { hex: string; swatch_image_url: string | null }>>({})
   const [shirtView, setShirtView] = useState<'front' | 'back'>('front')
   const [hasBackImages, setHasBackImages] = useState(false)
   const [printArea, setPrintArea] = useState<{xPct:number,yPct:number,widthPct:number,heightPct:number} | null>(null)
@@ -538,10 +543,19 @@ export default function DesignerCanvas({
               const { supabase } = await import('../lib/supabase')
               const { data: tpl } = await supabase
                 .from('product_templates')
-                .select('id, default_print_method, product_template_print_areas(*)')
+                .select('id, default_print_method, product_template_print_areas(*), product_template_colors(*)')
                 .eq('shopify_product_id', data.id)
                 .eq('is_active', true)
                 .maybeSingle()
+
+              // Template garment colors (independent of print areas) → swatch
+              // rendering + selected_color_hex capture.
+              const tplColors = (tpl?.product_template_colors || []) as any[]
+              if (tplColors.length) {
+                const cmap: Record<string, { hex: string; swatch_image_url: string | null }> = {}
+                tplColors.forEach((c: any) => { cmap[c.color_name] = { hex: c.hex, swatch_image_url: c.swatch_image_url } })
+                setTemplateColors(cmap)
+              }
 
               const areas = (tpl?.product_template_print_areas || []) as any[]
               if (tpl && areas.length > 0) {
@@ -1571,7 +1585,7 @@ export default function DesignerCanvas({
         // unmapped color stays null rather than the misleading #888 fallback.
         // TODO: source hex from designer_colors instead of the hardcoded
         // COLOR_HEX_MAP (see CLAUDE.md).
-        selected_color_hex: COLOR_HEX_MAP[selectedColor] ?? null,
+        selected_color_hex: templateColors[selectedColor]?.hex ?? COLOR_HEX_MAP[selectedColor] ?? null,
         print_method: printMethod,
         sides_designed: sidesCount,
         // Day 3: which template / print areas this design used, plus a frozen
@@ -2251,10 +2265,20 @@ export default function DesignerCanvas({
                   <div key={color} className="relative group">
                     <button
                       onClick={() => handleColorSelect(color)}
-                      style={{
-                        background: COLOR_HEX_MAP[color] || '#888',
-                        border: ['White', 'Natural'].includes(color) ? '1px solid #555' : 'none'
-                      }}
+                      style={
+                        templateColors[color]?.swatch_image_url
+                          ? {
+                              backgroundImage: `url(${templateColors[color]!.swatch_image_url})`,
+                              backgroundSize: 'cover',
+                              backgroundPosition: 'center',
+                              border: '1px solid #555',
+                            }
+                          : {
+                              // Template hex first; COLOR_HEX_MAP fallback for non-templated products.
+                              background: templateColors[color]?.hex || COLOR_HEX_MAP[color] || '#888',
+                              border: ['White', 'Natural'].includes(color) ? '1px solid #555' : 'none',
+                            }
+                      }
                       className={`w-8 h-8 rounded-full transition-all hover:scale-110 ${
                         selectedColor === color
                           ? 'ring-2 ring-[#dd3333] ring-offset-2 ring-offset-[#161616]'
