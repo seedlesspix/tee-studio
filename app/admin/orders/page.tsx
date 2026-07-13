@@ -241,6 +241,14 @@ export default function OrdersAdmin() {
               </div>
             </div>
 
+            {/* Design Notes (customer printing instructions) */}
+            {selected.notes && (
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                <p className="text-xs font-mono text-gray-600 uppercase tracking-widest mb-2">Design Notes</p>
+                <p className="text-sm text-black whitespace-pre-wrap">{selected.notes}</p>
+              </div>
+            )}
+
             {/* Sizes */}
             {selected.quantities && Object.values(selected.quantities).some(v => v > 0) && (
               <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">

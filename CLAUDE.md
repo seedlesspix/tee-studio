@@ -540,6 +540,13 @@ routed to a later phase. Logged here so they aren't rediscovered from scratch.
   finding.)
 - **Restore-lands-on-Front sub-issue** — consider auto-landing on the side that
   has content, or showing a subtle indicator that both sides have content.
+- **Garment color hex comes from a hardcoded `COLOR_HEX_MAP`** in
+  `DesignerCanvas.tsx`, not the `designer_colors` table where hex already lives.
+  Day 5 captures `design_orders.selected_color_hex` from that map (null for
+  unmapped colors, deliberately — an honest null beats a misleading `#888`
+  fallback for the print shop). Future cleanup: read the hex from
+  `designer_colors` (admin-managed) and retire the hardcoded map — the shirt
+  swatch rendering and this capture both depend on it.
 
 ## Phase 3+ Backlog — Denise notes 7/12/26
 

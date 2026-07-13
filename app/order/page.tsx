@@ -19,6 +19,7 @@ function OrderPage() {
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState('')
+  const [notes, setNotes] = useState('')
 
   useEffect(() => {
     if (!designId) return
@@ -27,6 +28,7 @@ function OrderPage() {
         if (error || !data) { setError('Design not found'); setLoading(false); return }
         const order = data as DesignOrder
         setDesign(order)
+        setNotes(order.notes ?? '')
         const initQty: Record<string, number> = {}
         const savedQuantities = order.quantities ?? {}
         // Use available_sizes from product, or fall back to saved quantities
@@ -72,6 +74,7 @@ function OrderPage() {
       quantities,
       total_qty: totalQty,
       total_price: parseFloat(total),
+      notes: notes.trim() || null,
       status: 'ordering',
     }).eq('id', design.id)
 
@@ -193,26 +196,35 @@ function OrderPage() {
         {/* Left - Design Preview */}
         <div className="flex-1">
           <h2 className="text-lg font-bold font-mono mb-4">Your Design</h2>
-          <div className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
-            {design?.canvas_png_front ? (
-              <img src={design.canvas_png_front} alt="Your design - front"
-                className="w-full object-contain" />
-            ) : (
-              <div className="aspect-square flex items-center justify-center text-gray-800 font-mono">
-                No preview available
+          {(() => {
+            // One designed side → a single centered, smaller preview (no blank-
+            // side noise). Both sides → a side-by-side pair. Each PNG already
+            // has its own front/back shirt image composited in (designer fix).
+            const sides = [
+              design?.canvas_png_front && { src: design.canvas_png_front, label: 'FRONT' },
+              design?.canvas_png_back && { src: design.canvas_png_back, label: 'BACK' },
+            ].filter(Boolean) as { src: string; label: string }[]
+            if (sides.length === 0) {
+              return (
+                <div className="aspect-square flex items-center justify-center text-gray-800 font-mono border border-gray-200 rounded-xl">
+                  No preview available
+                </div>
+              )
+            }
+            return (
+              <div className={sides.length === 2 ? 'grid grid-cols-2 gap-4' : 'max-w-xs mx-auto'}>
+                {sides.map(s => (
+                  <div key={s.label} className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
+                    <p className="text-xs font-mono text-gray-900 px-3 pt-3">{s.label}</p>
+                    <img src={s.src} alt={`Your design - ${s.label.toLowerCase()}`} className="w-full object-contain" />
+                  </div>
+                ))}
               </div>
-            )}
-          </div>
-          {design?.canvas_png_back && (
-            <div className="mt-4 bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
-              <p className="text-xs font-mono text-gray-900 px-3 pt-3">BACK</p>
-              <img src={design.canvas_png_back} alt="Your design - back"
-                className="w-full object-contain" />
-            </div>
-          )}
+            )
+          })()}
           {/* Edit design link */}
           <a href={`/designer?product_id=${design?.shopify_product_id?.split('/').pop()}&variant_id=${design?.shopify_variant_id?.split('/').pop()}&title=${encodeURIComponent(design?.product_title || '')}&price=${((design?.unit_price || 0) * 100).toFixed(0)}&design_id=${design?.id}`}
-            className="mt-4 inline-block text-xs font-mono text-gray-900 hover:text-[#dd3333] transition-all underline">
+            className="mt-4 inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-mono font-medium text-gray-900 hover:border-[#dd3333] hover:text-[#dd3333] transition-all">
             ← Edit Design
           </a>
         </div>
@@ -287,6 +299,22 @@ function OrderPage() {
                 <span className="text-[#dd3333] text-lg">${total}</span>
               </div>
             </div>
+          </div>
+
+          {/* Design Notes — printing details for the shop; saved to the order
+              and surfaced in admin. */}
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+            <label htmlFor="design-notes" className="block text-xs font-mono text-gray-900 uppercase tracking-widest mb-2">
+              Design Notes <span className="text-gray-500 normal-case">(optional)</span>
+            </label>
+            <textarea
+              id="design-notes"
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              rows={3}
+              placeholder="Printing details for our team — e.g. exact ink color, placement notes…"
+              className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333] resize-y placeholder-gray-400"
+            />
           </div>
 
           {/* Error */}

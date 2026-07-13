@@ -1426,7 +1426,7 @@ export default function DesignerCanvas({
   }
 
   // Export canvas as PNG blob - composite with shirt image using proxy to avoid CORS
-  const exportCanvasPNG = async (canvas: any): Promise<Blob | null> => {
+  const exportCanvasPNG = async (canvas: any, shirtSrc: string | null | undefined): Promise<Blob | null> => {
     return new Promise(async resolve => {
       try {
         const composite = document.createElement('canvas')
@@ -1435,8 +1435,7 @@ export default function DesignerCanvas({
         const ctx = composite.getContext('2d')!
         ctx.fillStyle = '#ffffff'
         ctx.fillRect(0, 0, 680, 850)
-        // Load shirt image via server proxy to avoid CORS in production
-        const shirtSrc = shirtImgRef.current?.src
+        // Load the (per-side) shirt image via server proxy to avoid CORS.
         if (shirtSrc && !shirtSrc.startsWith('data:')) {
           try {
             const proxyRes = await fetch(`/api/preview?shirt=${encodeURIComponent(shirtSrc)}`)
@@ -1519,12 +1518,12 @@ export default function DesignerCanvas({
 
       // Export one side from its ref: PNG + SVG + JSON, each written to that
       // side's slot. Empty side -> all nulls (no downstream line/preview).
-      const exportSide = async (objs: any[], name: string) => {
+      const exportSide = async (objs: any[], name: string, shirtSrc: string | undefined) => {
         if (!objs.length) return { png: null as string | null, svg: null as string | null, json: null as string | null }
         canvas.clear()
         objs.forEach((o: any) => canvas.add(o))
         canvas.renderAll()
-        const pngBlob = await exportCanvasPNG(canvas)
+        const pngBlob = await exportCanvasPNG(canvas, shirtSrc)
         const svgBlob = exportCanvasSVG(canvas)
         const json = JSON.stringify(canvas.toJSON())
         const [png, svg] = await Promise.all([
@@ -1534,8 +1533,12 @@ export default function DesignerCanvas({
         return { png, svg, json }
       }
 
-      const front = await exportSide(frontObjectsRef.current, 'front')
-      const back = await exportSide(backObjectsRef.current, 'back')
+      // Each side composites onto ITS OWN shirt image (front vs back mockup for
+      // the selected color) — previously both used the live view's shirt, so a
+      // back-designed order showed both previews on the back-of-shirt image.
+      const sideImgs = getColorImages(selectedColor, colorImageMap)
+      const front = await exportSide(frontObjectsRef.current, 'front', sideImgs?.front)
+      const back = await exportSide(backObjectsRef.current, 'back', sideImgs?.back)
 
       // Restore the live view onto the canvas.
       canvas.clear()
@@ -1564,6 +1567,11 @@ export default function DesignerCanvas({
         shopify_variant_id: selectedVariant?.id || '',
         product_title: productTitle,
         selected_color: selectedColor,
+        // Garment hex for the print shop. Only stamp a real mapped hex — an
+        // unmapped color stays null rather than the misleading #888 fallback.
+        // TODO: source hex from designer_colors instead of the hardcoded
+        // COLOR_HEX_MAP (see CLAUDE.md).
+        selected_color_hex: COLOR_HEX_MAP[selectedColor] ?? null,
         print_method: printMethod,
         sides_designed: sidesCount,
         // Day 3: which template / print areas this design used, plus a frozen
@@ -1718,7 +1726,10 @@ export default function DesignerCanvas({
           <button
             onClick={async () => {
               const canvas = (window as any)._fabricCanvas
-              if (!canvas || canvas.getObjects().length === 0) {
+              // Cross-side check: allow continuing if EITHER side has content,
+              // not just the currently-visible canvas (a back-only design viewed
+              // from the empty front should still pass).
+              if (!canvas || (!frontHasContent && !backHasContent)) {
                 alert('Please add a design before continuing. Add text, clipart, or upload an image.')
                 return
               }
@@ -2261,19 +2272,8 @@ export default function DesignerCanvas({
               <span className="text-[#dd3333]">{`$${pricePerItem.toFixed(2)}`}</span>
             </div>
           </div>
-
-          <div className="h-px bg-gray-200" />
-
-          <div className="flex flex-col gap-1 text-sm">
-            <div className="flex justify-between text-gray-800">
-              <span>Total qty</span>
-              <span className="text-gray-900">{totalQty}</span>
-            </div>
-            <div className="flex justify-between text-gray-800">
-              <span>Total</span>
-              <span className="text-gray-900">{`$${total}`}</span>
-            </div>
-          </div>
+          {/* Quantity + order total live on the Order Options step — the customer
+              is still designing here, not ordering. */}
         </aside>
       </div>
     </div>
