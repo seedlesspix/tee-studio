@@ -5,8 +5,6 @@ import { supabase } from '../lib/supabase'
 import { addItemsToShopifyCart, getStoreOrigin, resolvePrintChargeVariant, type CartItem } from '../lib/shopify'
 import type { Tables } from '@/types/database'
 
-const ALL_SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL']
-
 type DesignOrder = Omit<Tables<'design_orders'>, 'quantities'> & {
   quantities: Record<string, number> | null
 }
@@ -16,6 +14,9 @@ function OrderPage() {
   const designId = searchParams.get('design_id')
   const [design, setDesign] = useState<DesignOrder | null>(null)
   const [quantities, setQuantities] = useState<Record<string, number>>({})
+  // Sizes in Shopify variant order (from the design's available_sizes) — the
+  // merchant's intended display order, never alphabetized or a hardcoded list.
+  const [orderedSizes, setOrderedSizes] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState('')
@@ -31,23 +32,23 @@ function OrderPage() {
         setNotes(order.notes ?? '')
         const initQty: Record<string, number> = {}
         const savedQuantities = order.quantities ?? {}
-        // Use available_sizes from product, or fall back to saved quantities
+        // Sizes come from the design's saved available_sizes, already in Shopify
+        // variant order (real per-product sizes). Fall back to whatever sizes the
+        // saved quantities use — never a hardcoded adult list.
         const sizesToUse: string[] =
           (order.available_sizes?.length ?? 0) > 0
             ? order.available_sizes!
-            : Object.keys(savedQuantities).length > 0
-              ? Object.keys(savedQuantities)
-              : ALL_SIZES
+            : Object.keys(savedQuantities)
         sizesToUse.forEach((s) => { initQty[s] = savedQuantities[s] ?? 0 })
+        setOrderedSizes(sizesToUse)
         setQuantities(initQty)
         setLoading(false)
       })
   }, [designId])
 
-  const SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL']
-  const sortedSizes = Object.keys(quantities).sort(
-    (a, b) => SIZE_ORDER.indexOf(a) - SIZE_ORDER.indexOf(b)
-  )
+  // Render in Shopify variant order (orderedSizes) — no alphabetical/hardcoded
+  // sort, which would scramble both "3-6mo, 6-12mo" and "S, M, L".
+  const sortedSizes = orderedSizes
   const totalQty = Object.values(quantities).reduce((a, b) => a + b, 0)
   const pricePerItem = design ? ((design.unit_price ?? 0) + (design.print_charge ?? 0)) : 0
   const total = (totalQty * pricePerItem).toFixed(2)

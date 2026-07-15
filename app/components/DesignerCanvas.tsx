@@ -8,6 +8,33 @@ import ClipartPanel from './ClipartPanel'
 import { getProduct } from '../lib/shopify'
 import { buildColorImageMap, getColorImages } from '../lib/productImages'
 import { CustomerAuthButton } from './CustomerAuthButton'
+import MyUploadsPanel, { type UploadItem } from './MyUploadsPanel'
+
+// Uploads a File/Blob/data-URI to Cloudinary (unsigned preset) and returns the
+// hosted image URL + metadata, or null if Cloudinary isn't configured or the
+// upload fails. Used to give every "My Uploads" library entry a durable URL;
+// the designer still works without Cloudinary (the library just won't persist).
+async function uploadToCloudinary(
+  file: File | Blob | string,
+): Promise<{ url: string; publicId: string; width?: number; height?: number } | null> {
+  const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
+  const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
+  if (!cloudName || !uploadPreset) return null
+  try {
+    const fd = new FormData()
+    fd.append('file', file as Blob)
+    fd.append('upload_preset', uploadPreset)
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+      method: 'POST',
+      body: fd,
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    return { url: data.secure_url, publicId: data.public_id, width: data.width, height: data.height }
+  } catch {
+    return null
+  }
+}
 
 declare global {
   interface Window {
@@ -69,6 +96,8 @@ const COLOR_HEX_MAP: Record<string, string> = {
   'Silver': '#c0c0c0'
 }
 
+// Fallback size list ONLY — real sizes come per-product from the Shopify Size
+// option (see productSizes). Used when a product exposes no Size option.
 const SIZES = ['S', 'M', 'L', 'XL', '2XL', '3XL']
 
 // buildColorImageMap / getColorImages now live in ../lib/productImages (shared
@@ -174,9 +203,14 @@ export default function DesignerCanvas({
     })
     fabricCanvas.renderAll()
   }
-  const [quantities, setQuantities] = useState<Record<string, number>>(
-    SIZES.reduce((acc, s) => ({ ...acc, [s]: 0 }), {})
-  )
+  // Quantities keyed by the product's REAL sizes — populated on product load
+  // (see productSizes). Starts empty so we never assume the adult size set.
+  const [quantities, setQuantities] = useState<Record<string, number>>({})
+  // The product's sizes in Shopify's variant order (the merchant's intended
+  // display order — never alphabetized: "3-6mo, 6-12mo" and "S, M, L" both
+  // break under a sort). Falls back to module SIZES only if a product has no
+  // Size option.
+  const [productSizes, setProductSizes] = useState<string[]>([])
 
   // Fetch fonts and colors from Supabase based on print method
   const fetchDesignerConfig = useCallback(async (method: string) => {
@@ -345,6 +379,11 @@ export default function DesignerCanvas({
   // matching mockup (so we never show a blank canvas; the gap is flagged in the
   // template admin's Colors section instead).
   const firstImageUrlRef = useRef<string>('')
+  // "My Uploads" library — the caller's previously-uploaded images (server
+  // returns them scoped to the Shopify customer, or the anonymous session
+  // cookie). Files live in Cloudinary; these rows just index them.
+  const [libraryUploads, setLibraryUploads] = useState<UploadItem[]>([])
+  const [libraryLoading, setLibraryLoading] = useState(true)
   // Which template / print areas the current session resolved — stamped onto
   // the design_orders row at save time (Day 3 backend-completeness). The *Snap
   // refs hold the full area rows so print geometry survives later admin edits.
@@ -483,6 +522,14 @@ export default function DesignerCanvas({
           const colorNames = data.options?.find((o: any) => o.name === 'Color')?.values || []
           const imgMap = buildColorImageMap(allImages, colorNames)
           setColorImageMap(imgMap)
+          // Real per-product sizes in Shopify's variant order — never a
+          // hardcoded adult list. Preserve any quantities already picked
+          // (draft restore) while dropping stale keys.
+          const sizeValues: string[] = data.options?.find((o: any) => o.name === 'Size')?.values || []
+          const resolvedSizes = sizeValues.length ? sizeValues : SIZES
+          setProductSizes(resolvedSizes)
+          setQuantities(prev => resolvedSizes.reduce(
+            (acc: Record<string, number>, s: string) => ({ ...acc, [s]: prev[s] ?? 0 }), {}))
           // Check raw image URLs for actual _back files
           const anyBack = allImages.some(({ url }: { url: string }) =>
             url.split('/').pop()?.toLowerCase().includes('_back')
@@ -927,7 +974,7 @@ export default function DesignerCanvas({
   const handleColorSelect = useCallback((color: string) => {
     setSelectedColor(color)
     setShirtHex(COLOR_HEX_MAP[color] || '#888')
-    setQuantities(SIZES.reduce((acc, s) => ({ ...acc, [s]: 0 }), {}))
+    setQuantities((productSizes.length ? productSizes : SIZES).reduce((acc, s) => ({ ...acc, [s]: 0 }), {}))
     const imgs = getColorImages(color, colorImageMap)
     const url = (shirtView === 'back'
       ? (imgs?.back || imgs?.front)
@@ -1304,6 +1351,76 @@ export default function DesignerCanvas({
     })
   }
 
+  // Load the caller's "My Uploads" library once on mount. Server scopes it to
+  // the Shopify customer (if logged in) or the anonymous session cookie.
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      try {
+        const res = await fetch('/api/uploads', { credentials: 'include', cache: 'no-store' })
+        if (res.ok) {
+          const { uploads } = await res.json()
+          if (active) setLibraryUploads(Array.isArray(uploads) ? uploads : [])
+        }
+      } catch { /* leave empty */ }
+      if (active) setLibraryLoading(false)
+    })()
+    return () => { active = false }
+  }, [])
+
+  // Record a Cloudinary asset in the caller's library and prepend it to the
+  // strip. Non-blocking on failure (the image still placed on the canvas).
+  const persistUploadToLibrary = async (info: {
+    url: string; publicId?: string; fileName: string; fileType?: string
+    source: string; width?: number; height?: number
+  }) => {
+    try {
+      const res = await fetch('/api/uploads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          cloudinaryUrl: info.url,
+          cloudinaryPublicId: info.publicId,
+          fileName: info.fileName,
+          fileType: info.fileType,
+          source: info.source,
+          width: info.width,
+          height: info.height,
+        }),
+      })
+      if (!res.ok) return
+      const { upload } = await res.json()
+      if (upload) setLibraryUploads(prev => [upload, ...prev.filter(u => u.id !== upload.id)])
+    } catch { /* non-blocking */ }
+  }
+
+  // Remove a library entry only — never the Cloudinary file (a saved design may
+  // reference it). Optimistic; the server delete is scoped to the caller.
+  const deleteLibraryUpload = async (id: string) => {
+    setLibraryUploads(prev => prev.filter(u => u.id !== id))
+    try {
+      await fetch(`/api/uploads?id=${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' })
+    } catch { /* already removed from UI */ }
+  }
+
+  // Re-add a library image to the canvas (and track it for the order so a reused
+  // upload is included at cart-add, same as a fresh upload).
+  const pickLibraryUpload = async (item: UploadItem) => {
+    if (!fabricCanvas) return
+    try {
+      const { FabricImage } = await import('fabric')
+      const img = await FabricImage.fromURL(item.url, { crossOrigin: 'anonymous' })
+      await placeImageOnCanvas(img, fabricCanvas)
+      uploadedFilesRef.current = [
+        ...uploadedFilesRef.current,
+        { name: item.fileName, url: item.url, type: item.fileType || 'image' },
+      ]
+    } catch {
+      alert('Could not add that image. Please try again.')
+    }
+  }
+
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !fabricCanvas) return
@@ -1336,6 +1453,8 @@ export default function DesignerCanvas({
         const { FabricImage } = await import('fabric')
         const img = await FabricImage.fromURL(pngUrl, { crossOrigin: 'anonymous' })
         await placeImageOnCanvas(img, fabricCanvas)
+        // Index the converted PNG in My Uploads (Cloudinary already hosts it).
+        void persistUploadToLibrary({ url: pngUrl, publicId: data.public_id, fileName: file.name, fileType: 'image/png', source: 'converted', width: data.width, height: data.height })
       } catch (err: any) {
         alert(`Could not convert ${ext.toUpperCase()} file: ${err.message}`)
       }
@@ -1361,6 +1480,9 @@ export default function DesignerCanvas({
         const { FabricImage } = await import('fabric')
         const img = await FabricImage.fromURL(dataUrl)
         await placeImageOnCanvas(img, fabricCanvas)
+        // Persist the rasterized page to My Uploads via Cloudinary.
+        const uploaded = await uploadToCloudinary(dataUrl)
+        if (uploaded) void persistUploadToLibrary({ url: uploaded.url, publicId: uploaded.publicId, fileName: file.name, fileType: 'image/png', source: 'pdf', width: uploaded.width, height: uploaded.height })
       } catch (err) {
         alert('Could not load PDF. Make sure it is a valid PDF file.')
       }
@@ -1381,6 +1503,9 @@ export default function DesignerCanvas({
         url: dataUrl,
         type: file.type || ext
       }]
+      // Persist to My Uploads via Cloudinary (background; needs Cloudinary).
+      const uploaded = await uploadToCloudinary(file)
+      if (uploaded) void persistUploadToLibrary({ url: uploaded.url, publicId: uploaded.publicId, fileName: file.name, fileType: file.type || ext, source: 'raster', width: uploaded.width, height: uploaded.height })
     }
     reader.readAsDataURL(file)
     e.target.value = ''
@@ -1578,7 +1703,8 @@ export default function DesignerCanvas({
         canvas_json_back: back.json,
         uploaded_files: uploadedFileUrls,
         quantities,
-        available_sizes: SIZES.filter(s => isSizeAvailable(s)),
+        // Real sizes available for the selected color, in Shopify variant order.
+        available_sizes: (productSizes.length ? productSizes : SIZES).filter(s => isSizeAvailable(s)),
         unit_price: unitPrice,
         print_charge: printCharge,
         // Per-side split (Day 4). Null when that side has no content, so the
@@ -1971,6 +2097,12 @@ export default function DesignerCanvas({
                   </span>
                   <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,application/pdf,.pdf,.svg,.png,.jpg,.jpeg,.webp,.ai,.eps,.psd" onChange={handleImageUpload} className="hidden" />
                 </label>
+                <MyUploadsPanel
+                  uploads={libraryUploads}
+                  loading={libraryLoading}
+                  onPick={pickLibraryUpload}
+                  onDelete={deleteLibraryUpload}
+                />
               </div>
             )}
 

@@ -11,6 +11,7 @@ import {
   readOAuthFlowCookies,
   setSessionCookies,
 } from '../../../lib/customer-session'
+import { adoptSessionUploads, getSessionId } from '../../../lib/customer-uploads'
 
 // Node runtime — node:crypto for safeStringEqual + jose for JWT verify.
 export const runtime = 'nodejs'
@@ -73,8 +74,10 @@ export async function GET(request: NextRequest) {
     return loginErrorRedirect(request, 'token_exchange_failed', 'Could not complete login')
   }
 
+  let customerSub: string | null = null
   try {
-    await verifyIdToken(bundle.idToken, flow.nonce)
+    const claims = await verifyIdToken(bundle.idToken, flow.nonce)
+    customerSub = String(claims.sub)
   } catch (err) {
     console.error('[customer/callback] ID token verification failed:', err)
     return loginErrorRedirect(request, 'id_token_invalid', 'Login response invalid')
@@ -88,6 +91,16 @@ export async function GET(request: NextRequest) {
 
   setSessionCookies(response, bundle)
   clearOAuthFlowCookies(response)
+
+  // Adopt any uploads this browser made while logged out into the account, so
+  // the "My Uploads" library follows the customer in. Same adoption pattern
+  // Day 8 reuses for My Designs. Best-effort — the helper swallows its own
+  // errors so a failure here can never block login.
+  const sessionId = getSessionId(request)
+  if (sessionId && customerSub) {
+    await adoptSessionUploads(sessionId, customerSub)
+  }
+
   return response
 }
 

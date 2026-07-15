@@ -520,6 +520,36 @@ routed to a later phase. Logged here so they aren't rediscovered from scratch.
   "Product image naming" backlog item** — the contains-matcher tolerates them,
   but tidying the names in Shopify (a consistent, product-scoped scheme) is still
   worth doing to avoid future collisions.
+- **Hardcoded adult sizes — Order Options shows S–3XL for every product (onesie
+  testing 2026-07-13; diagnosed, not yet fixed; slotted Day 7).** Same class as
+  the Day-6.5 image parser: a Cotton-Tee size list hardcoded before templates
+  existed. **Three** hardcoded adult lists: `SIZES` (`DesignerCanvas.tsx:72`),
+  plus `ALL_SIZES` (`app/order/page.tsx:8`, fallback) and `SIZE_ORDER`
+  (`app/order/page.tsx:47`, sort key). Chain: the designer inits `quantities`
+  from `SIZES` (`:177`, re-set in `handleColorSelect` `:930`) and saves
+  `available_sizes: SIZES.filter(isSizeAvailable)` (`:1581`). `isSizeAvailable`
+  (`:944`) is a real **color-scoped** variant check — so for the onesie every
+  adult size is unavailable → **`available_sizes` saves as `[]`**. The order page
+  (`:35`) then falls back to `ALL_SIZES` whenever `available_sizes` is empty →
+  **adult sizes shown for the onesie**; it also `.sort()`s by `SIZE_ORDER` index
+  (`:48`) instead of preserving Shopify order. **Capture is fine** —
+  `design_orders.quantities` is a generic `Record<string,number>` and admin
+  (`admin/orders/page.tsx:257`) renders whatever keys exist, so **no
+  schema/migration**. **Fix:** source sizes from the product's **Size option
+  values** (`data.options.find(o=>o.name==='Size')?.values`, same pattern as the
+  Day-6.5 color fix), preserving **Shopify variant order** (NOT alpha —
+  `3-6mo,6-12mo,12-24mo` and `S,M,L` both break under sort). Make the designer's
+  size state per-product (retire the module `SIZES` for quantities/
+  `available_sizes`); the order page uses the saved `available_sizes` order
+  directly and drops both the `.sort()` and the `ALL_SIZES` fallback.
+- **Phase 3 sign-off — "test everything against the onesie" sweep.**
+  Second-product testing has now caught **two** Cotton-Tee assumptions hardcoded
+  before the template system existed (image-filename parser → fixed Day 6.5; size
+  list → slotted Day 7). Phase 3 sign-off must include a deliberate pass running
+  the **onesie** (a non-adult, inconsistently-named second product) through the
+  *entire* flow — designer load, per-color images, print areas, sizes/quantities,
+  cart-add, admin order view — to flush out any third hardcoded Cotton-Tee
+  assumption before Phase 3 closes.
 - **Draft restore lands on the Front side only.** Back-side work is preserved
   but the customer must click **Back** to see it. Threading a `restore_side`
   through save/query/designer-mount is a small-scope Phase 3 polish item — add

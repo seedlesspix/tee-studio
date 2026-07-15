@@ -106,6 +106,48 @@ export type Database = {
           },
         ]
       }
+      customer_uploads: {
+        Row: {
+          cloudinary_public_id: string | null
+          cloudinary_url: string
+          created_at: string
+          file_name: string
+          file_type: string | null
+          height: number | null
+          id: string
+          session_id: string | null
+          shopify_customer_id: string | null
+          source: string | null
+          width: number | null
+        }
+        Insert: {
+          cloudinary_public_id?: string | null
+          cloudinary_url: string
+          created_at?: string
+          file_name: string
+          file_type?: string | null
+          height?: number | null
+          id?: string
+          session_id?: string | null
+          shopify_customer_id?: string | null
+          source?: string | null
+          width?: number | null
+        }
+        Update: {
+          cloudinary_public_id?: string | null
+          cloudinary_url?: string
+          created_at?: string
+          file_name?: string
+          file_type?: string | null
+          height?: number | null
+          id?: string
+          session_id?: string | null
+          shopify_customer_id?: string | null
+          source?: string | null
+          width?: number | null
+        }
+        Relationships: []
+      }
       design_orders: {
         Row: {
           available_sizes: string[] | null
@@ -123,6 +165,10 @@ export type Database = {
           id: string
           notes: string | null
           price_per_item: number | null
+          print_area_back: Json | null
+          print_area_back_id: string | null
+          print_area_front: Json | null
+          print_area_front_id: string | null
           print_charge: number | null
           print_charge_back: number | null
           print_charge_front: number | null
@@ -139,15 +185,11 @@ export type Database = {
           shopify_variant_id: string | null
           sides_designed: number | null
           status: string | null
+          template_id: string | null
           total_price: number | null
           total_qty: number | null
           unit_price: number | null
           uploaded_files: Json | null
-          template_id: string | null
-          print_area_front_id: string | null
-          print_area_back_id: string | null
-          print_area_front: Json | null
-          print_area_back: Json | null
         }
         Insert: {
           available_sizes?: string[] | null
@@ -165,6 +207,10 @@ export type Database = {
           id?: string
           notes?: string | null
           price_per_item?: number | null
+          print_area_back?: Json | null
+          print_area_back_id?: string | null
+          print_area_front?: Json | null
+          print_area_front_id?: string | null
           print_charge?: number | null
           print_charge_back?: number | null
           print_charge_front?: number | null
@@ -181,15 +227,11 @@ export type Database = {
           shopify_variant_id?: string | null
           sides_designed?: number | null
           status?: string | null
+          template_id?: string | null
           total_price?: number | null
           total_qty?: number | null
           unit_price?: number | null
           uploaded_files?: Json | null
-          template_id?: string | null
-          print_area_front_id?: string | null
-          print_area_back_id?: string | null
-          print_area_front?: Json | null
-          print_area_back?: Json | null
         }
         Update: {
           available_sizes?: string[] | null
@@ -207,6 +249,10 @@ export type Database = {
           id?: string
           notes?: string | null
           price_per_item?: number | null
+          print_area_back?: Json | null
+          print_area_back_id?: string | null
+          print_area_front?: Json | null
+          print_area_front_id?: string | null
           print_charge?: number | null
           print_charge_back?: number | null
           print_charge_front?: number | null
@@ -223,15 +269,11 @@ export type Database = {
           shopify_variant_id?: string | null
           sides_designed?: number | null
           status?: string | null
+          template_id?: string | null
           total_price?: number | null
           total_qty?: number | null
           unit_price?: number | null
           uploaded_files?: Json | null
-          template_id?: string | null
-          print_area_front_id?: string | null
-          print_area_back_id?: string | null
-          print_area_front?: Json | null
-          print_area_back?: Json | null
         }
         Relationships: [
           {
