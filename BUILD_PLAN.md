@@ -189,6 +189,14 @@ no regressions from later days.
 
 ### Phase 5: Fulfillment Backend (~2-3 weeks)
 
+> **DEFINITION OF DONE (Denise, 2026-07-15): the final deliverable is ONE USABLE
+> PRINTABLE SVG PER DESIGNED SIDE.**
+>
+> That is the acceptance criterion for this phase — not "print files exist", not
+> "the folder structure matches ImprintNext". One SVG per designed side, and the
+> print shop can actually print from it. Everything below serves that outcome; if
+> a task doesn't move toward it, it isn't Phase 5 work.
+
 - Item 13: Print-ready file generation (port from ImprintNext)
 - Item 15: Color metadata capture
 - Item 20: Order management overlay in admin
