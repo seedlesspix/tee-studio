@@ -699,6 +699,44 @@ export type Database = {
         }
         Relationships: []
       }
+      saved_designs: {
+        Row: {
+          created_at: string
+          design_order_id: string
+          id: string
+          name: string | null
+          session_id: string | null
+          shopify_customer_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          design_order_id: string
+          id?: string
+          name?: string | null
+          session_id?: string | null
+          shopify_customer_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          design_order_id?: string
+          id?: string
+          name?: string | null
+          session_id?: string | null
+          shopify_customer_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saved_designs_design_order_id_fkey"
+            columns: ["design_order_id"]
+            isOneToOne: false
+            referencedRelation: "design_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

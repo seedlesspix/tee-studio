@@ -9,6 +9,9 @@ import { getProduct } from '../lib/shopify'
 import { buildColorImageMap, getColorImages } from '../lib/productImages'
 import { CustomerAuthButton } from './CustomerAuthButton'
 import MyUploadsPanel, { type UploadItem } from './MyUploadsPanel'
+import MyDesignsDrawer, { type SavedDesign } from './MyDesignsDrawer'
+import SaveDesignControl from './SaveDesignControl'
+import { useCustomerSession } from '../hooks/useCustomerSession'
 
 // Uploads a File/Blob/data-URI to Cloudinary (unsigned preset) and returns the
 // hosted image URL + metadata, or null if Cloudinary isn't configured or the
@@ -384,6 +387,18 @@ export default function DesignerCanvas({
   // cookie). Files live in Cloudinary; these rows just index them.
   const [libraryUploads, setLibraryUploads] = useState<UploadItem[]>([])
   const [libraryLoading, setLibraryLoading] = useState(true)
+  // Drives the save feedback only: logged-out customers get the restore link
+  // surfaced (their only handle), logged-in ones just get "Saved ✓" since it's
+  // in their account. The server derives the real owner — this is never trusted.
+  const { loggedIn } = useCustomerSession()
+  // "My Designs" library — saved designs, server-scoped to the Shopify customer
+  // or the anonymous session cookie (same owner model as My Uploads).
+  const [savedDesigns, setSavedDesigns] = useState<SavedDesign[]>([])
+  const [designsLoading, setDesignsLoading] = useState(true)
+  const [designsOpen, setDesignsOpen] = useState(false)
+  // The design currently being edited (set on restore, and after a save) so
+  // re-saving updates it in place instead of forking a copy.
+  const currentDesignIdRef = useRef<string | null>(null)
   // Which template / print areas the current session resolved — stamped onto
   // the design_orders row at save time (Day 3 backend-completeness). The *Snap
   // refs hold the full area rows so print geometry survives later admin edits.
@@ -405,6 +420,11 @@ export default function DesignerCanvas({
     if (!restoreId || restoredRef.current) return
     if (!fabricCanvas || !product) return
     restoredRef.current = true
+    // Remember which design we're editing so "Save design" updates it in place
+    // rather than forking a copy. Safe for BOTH kinds of restore: the server
+    // only updates in place if the caller owns a library entry for this id, so
+    // an auto-draft (login snapshot) simply saves as a new design instead.
+    currentDesignIdRef.current = restoreId
 
     const cleanUrl = () => {
       try {
@@ -1368,6 +1388,39 @@ export default function DesignerCanvas({
     return () => { active = false }
   }, [])
 
+  // Load the caller's saved designs. Server scopes to the Shopify customer (if
+  // logged in) or the anonymous session cookie.
+  const loadSavedDesigns = async () => {
+    try {
+      const res = await fetch('/api/designs', { credentials: 'include', cache: 'no-store' })
+      if (res.ok) {
+        const { designs } = await res.json()
+        setSavedDesigns(Array.isArray(designs) ? designs : [])
+      }
+    } catch { /* leave as-is */ }
+    setDesignsLoading(false)
+  }
+
+  useEffect(() => { void loadSavedDesigns() }, [])
+
+  // Remove a library entry. The design_orders row is left intact, so any
+  // restore link the customer already shared keeps working.
+  const deleteSavedDesign = async (savedId: string) => {
+    setSavedDesigns(prev => prev.filter(d => d.savedId !== savedId))
+    try {
+      await fetch(`/api/designs?id=${encodeURIComponent(savedId)}`, { method: 'DELETE', credentials: 'include' })
+    } catch { /* already removed from UI */ }
+  }
+
+  // Open a saved design: a full navigation to the designer with ?restore=, which
+  // is the same path the post-login rehydrate uses.
+  const openSavedDesign = (d: SavedDesign) => {
+    const params = new URLSearchParams()
+    if (d.productId) params.set('product_id', d.productId)
+    params.set('restore', d.designId)
+    window.location.href = `/designer?${params.toString()}`
+  }
+
   // Record a Cloudinary asset in the caller's library and prepend it to the
   // strip. Non-blocking on failure (the image still placed on the canvas).
   const persistUploadToLibrary = async (info: {
@@ -1827,6 +1880,79 @@ export default function DesignerCanvas({
     }
   }
 
+  // Composite a thumbnail for the My Designs tile. Prefers the front side, and
+  // falls back to the back for a back-only design so the tile is never blank.
+  // Mutates the live canvas to render the chosen side, then puts it back —
+  // same dance saveDesignAndAddToCart does.
+  const exportFrontThumbnail = async (thumbId: string): Promise<string | null> => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return null
+    try {
+      const liveObjects = canvas.getObjects().map((o: any) => o)
+      if (shirtView === 'front') frontObjectsRef.current = liveObjects
+      else backObjectsRef.current = liveObjects
+
+      const useFront = frontObjectsRef.current.length > 0
+      const objs = useFront ? frontObjectsRef.current : backObjectsRef.current
+      if (!objs.length) return null
+
+      const imgs = getColorImages(selectedColor, colorImageMap)
+      const shirtSrc = (useFront ? imgs?.front : imgs?.back) || firstImageUrlRef.current || undefined
+
+      canvas.clear()
+      objs.forEach((o: any) => canvas.add(o))
+      canvas.renderAll()
+      const blob = await exportCanvasPNG(canvas, shirtSrc)
+
+      canvas.clear()
+      liveObjects.forEach((o: any) => canvas.add(o))
+      canvas.renderAll()
+
+      if (!blob) return null
+      return await uploadToStorage(blob, `saved/${thumbId}.png`, 'design-exports')
+    } catch (err) {
+      console.error('[designer] thumbnail export failed:', err)
+      return null
+    }
+  }
+
+  // "Save design" — snapshot the canvas into the customer's library. Returns the
+  // restore link so the control can surface it to a logged-out customer (their
+  // only handle on the design until they log in and it's adopted).
+  const handleSaveDesign = async (): Promise<{ restoreUrl: string } | null> => {
+    const state = snapshotDesignState()
+    if (!state) {
+      alert('Please add a design before saving. Add text, clipart, or upload an image.')
+      return null
+    }
+    const pngFront = await exportFrontThumbnail(crypto.randomUUID())
+    try {
+      const res = await fetch('/api/designs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ designId: currentDesignIdRef.current, state, pngFront }),
+      })
+      if (!res.ok) return null
+      const { designId } = await res.json()
+      if (!designId) return null
+      currentDesignIdRef.current = designId
+
+      // Point the URL at the saved design so a refresh (or the browser Back
+      // button) lands back on it rather than an empty canvas.
+      const params = new URLSearchParams(window.location.search)
+      params.set('restore', designId)
+      const path = `${window.location.pathname}?${params.toString()}`
+      window.history.replaceState({}, '', path)
+
+      void loadSavedDesigns()
+      return { restoreUrl: `${window.location.origin}${path}` }
+    } catch (err) {
+      console.error('[designer] save design failed:', err)
+      return null
+    }
+  }
+
   return (
     <div className="flex flex-col h-screen text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
 
@@ -1837,6 +1963,13 @@ export default function DesignerCanvas({
         </div>
         <div className="text-sm text-gray-800 truncate max-w-xs">{productTitle}</div>
         <div className="flex items-center gap-3">
+          <SaveDesignControl onSave={handleSaveDesign} loggedIn={loggedIn} />
+          <button
+            onClick={() => setDesignsOpen(true)}
+            className="px-3 py-1.5 rounded text-sm text-gray-600 hover:text-[#dd3333] transition-colors whitespace-nowrap"
+          >
+            My Designs{savedDesigns.length > 0 ? ` (${savedDesigns.length})` : ''}
+          </button>
           <CustomerAuthButton variant="quiet" onBeforeLogin={prepareLoginRedirect} />
           <button
             onClick={async () => {
@@ -2423,6 +2556,15 @@ export default function DesignerCanvas({
               is still designing here, not ordering. */}
         </aside>
       </div>
+
+      <MyDesignsDrawer
+        open={designsOpen}
+        designs={savedDesigns}
+        loading={designsLoading}
+        onClose={() => setDesignsOpen(false)}
+        onOpenDesign={openSavedDesign}
+        onDelete={deleteSavedDesign}
+      />
     </div>
   )
 }

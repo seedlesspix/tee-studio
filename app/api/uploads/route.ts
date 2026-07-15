@@ -3,10 +3,10 @@ import {
   serviceClient,
   getCustomerId,
   getSessionId,
-  UPLOAD_SESSION_COOKIE,
-  SESSION_MAX_AGE,
+  getOrCreateSessionId,
+  setSessionCookie,
   UUID_RE,
-} from '../../lib/customer-uploads'
+} from '../../lib/customer-library'
 
 // Node runtime for crypto.randomUUID() + jose (ID-token verify).
 export const runtime = 'nodejs'
@@ -95,13 +95,11 @@ export async function POST(request: NextRequest) {
   // Anonymous: reuse the existing session id or mint a new one to set on the
   // response (HttpOnly, so it never becomes JS-readable).
   let sessionId: string | null = null
-  let setSessionCookie = false
+  let mintedSession = false
   if (!customerId) {
-    sessionId = getSessionId(request)
-    if (!sessionId) {
-      sessionId = crypto.randomUUID()
-      setSessionCookie = true
-    }
+    const session = getOrCreateSessionId(request)
+    sessionId = session.sessionId
+    mintedSession = session.isNew
   }
 
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : null)
@@ -131,15 +129,7 @@ export async function POST(request: NextRequest) {
   }
 
   const response = NextResponse.json({ upload: toDTO(data) })
-  if (setSessionCookie && sessionId) {
-    response.cookies.set(UPLOAD_SESSION_COOKIE, sessionId, {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'lax',
-      path: '/',
-      maxAge: SESSION_MAX_AGE,
-    })
-  }
+  if (mintedSession && sessionId) setSessionCookie(response, sessionId)
   return response
 }
 

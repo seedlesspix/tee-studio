@@ -18,6 +18,45 @@ Planning session completed: 2026-05-02. This document captures the full architec
 - **Shopify Plus**: Not pursued. Cost ($30k+/year) not justified by features needed for this build. Revisit if business outgrows standard plan.
 - **Print-ready files**: Format ports from ImprintNext's existing structure (sides/layers/original_image/preview folders, with element-level metadata for fonts/colors/thread). Generated automatically post-payment.
 
+## 🚨 Blockers — must close before customer traffic
+
+### BLOCKER-1: `design_orders` blanket anon read/update → server-mediated access
+
+> **BLOCKER — the `design_orders` blanket anon read/update must be replaced with
+> server-mediated access before any customer traffic. Currently all non-completed
+> designs are enumerable and writable via the anon key.**
+
+**Must close before the Phase 6 theme cutover.** Lands in **Phase 4**, whose cart
+rework already touches every call site involved.
+
+Verified against the live database (2026-07-15), `design_orders` grants `anon` +
+`authenticated`:
+
+| cmd | `USING` |
+|---|---|
+| SELECT | `status IS NULL OR status <> 'completed'` |
+| UPDATE | `status IN ('draft','ordering','cart_created')` |
+
+Neither is owner-scoped and **neither requires knowing the row id**. The anon key
+ships in the client bundle, so a caller can run `select * from design_orders` with
+no filter and read **every** draft and in-flight order, or `update` any of them.
+This is **not** the "URL-as-key, UUIDs are unguessable" posture described in
+CLAUDE.md — no UUID is needed to enumerate the table.
+
+**Fix:** move the remaining call sites onto service-role routes that derive the
+owner/id server-side, then drop the blanket public policies — the same shape as
+`customer_uploads` / `saved_designs` (RLS on, **no** policies). Known call sites:
+
+- `app/api/designs/draft/route.ts` — already server-side; swap the anon client for service-role.
+- `app/components/DesignerCanvas.tsx` — the "Next Step" insert.
+- `app/order/page.tsx` — the design read + quantities/notes/status updates.
+
+**Why it can't ride along quietly:** Day 8 deliberately put My Designs ownership in
+a locked `saved_designs` side table *because* of this — stamping
+`shopify_customer_id` onto `design_orders` would have made "which customer owns
+which design" world-readable and enumerable. The design *content* remains exposed
+until this blocker closes.
+
 ## Phase Sequence
 
 ### Phase 1: Foundation — Auth & Customer Identity (~1 week) — ✅ Complete (2026-07-11)
@@ -70,9 +109,12 @@ no regressions from later days.
 
 ### Phase 4: Cart Architecture Replacement (~2 weeks, heaviest)
 
+- **BLOCKER-1: `design_orders` server-mediated access** (see Blockers above) — must
+  close here; gates the Phase 6 cutover.
 - Item 11: Dynamic product creation via Shopify Admin API
 - Item 10: Cart-add proxy modification
-- Item 12: Cleanup job
+- Item 12: Cleanup job — **must exclude designs with a `saved_designs` row**
+  (`ON DELETE CASCADE` would silently destroy customers' saved work; see CLAUDE.md)
 - Item 7: Cart Liquid customization
 - Item 8: Checkout (verify defaults; no work)
 
@@ -84,6 +126,8 @@ no regressions from later days.
 
 ### Phase 6: Verification & Launch Prep (~1 week)
 
+- **Gate: BLOCKER-1 must be closed** (see Blockers above) — do not cut over while
+  all non-completed designs are enumerable/writable via the anon key.
 - Item 9: Order email verification
 - End-to-end testing across products, sizes, devices
 - Side-by-side comparison with ImprintNext

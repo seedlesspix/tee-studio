@@ -407,6 +407,16 @@ signs the customer out at Shopify and bounces back to
   cleaned up today. **Phase 4/5 should add a nightly cron** that deletes
   `WHERE status='draft' AND created_at < now() - interval '7 days'`. The
   `created_at` column is set explicitly on draft insert so the job can find them.
+  > **🚨 THE CRON MUST EXCLUDE SAVED DESIGNS 🚨** — a customer's "My Designs"
+  > entry (Day 8) points at a `design_orders` row that is *still* `status='draft'`,
+  > and `saved_designs.design_order_id` is **`ON DELETE CASCADE`**. A naive
+  > age-based delete would therefore **silently destroy customers' saved work**
+  > (the row goes, and the library entry cascades away with it — no error, no
+  > trace). Whoever builds the cron must add:
+  > ```sql
+  > AND NOT EXISTS (SELECT 1 FROM saved_designs sd WHERE sd.design_order_id = design_orders.id)
+  > ```
+  > Same applies to any future bulk cleanup/archival of `design_orders`.
 
 ### Phase 1 sign-off findings (deferred to Phase 3/4)
 

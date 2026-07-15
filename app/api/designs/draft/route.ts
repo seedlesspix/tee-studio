@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '../../../lib/supabase/server'
+import {
+  DESIGN_STATE_COLUMNS,
+  designStateToRow,
+  rowToDesignState,
+  type DesignState,
+  type DesignStateRow,
+} from '../../../lib/design-state'
 
 // Node runtime for crypto.randomUUID(), matching the other new route handlers.
 export const runtime = 'nodejs'
@@ -25,23 +32,9 @@ export const runtime = 'nodejs'
 // RLS: design_orders allows public insert/read of non-completed rows, so the
 // anon server client is sufficient — drafts carry no PII.
 
-type UploadedFile = { name: string; url: string; type: string }
-
-type DraftState = {
-  schemaVersion?: number
-  productId?: string
-  variantId?: string
-  productTitle?: string
-  productPrice?: number
-  selectedColor?: string
-  shirtView?: 'front' | 'back'
-  printMethod?: string
-  quantities?: Record<string, number>
-  sidesDesigned?: number
-  front?: unknown
-  back?: unknown
-  uploadedFiles?: UploadedFile[]
-}
+// The snapshot shape + its row mapping are shared with /api/designs (My
+// Designs) via lib/design-state, so adding a column updates both paths at once.
+type DraftState = DesignState
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -76,16 +69,7 @@ export async function POST(request: NextRequest) {
     // Explicit so a future cleanup job can reliably age out abandoned drafts
     // even if the column's server-side default ever changes.
     created_at: new Date().toISOString(),
-    shopify_product_id: body.productId ?? null,
-    shopify_variant_id: body.variantId ?? null,
-    product_title: body.productTitle ?? null,
-    selected_color: body.selectedColor ?? null,
-    print_method: body.printMethod ?? null,
-    quantities: (body.quantities ?? null) as never,
-    uploaded_files: (body.uploadedFiles ?? null) as never,
-    sides_designed: body.sidesDesigned ?? null,
-    canvas_json_front: body.front ? JSON.stringify(body.front) : null,
-    canvas_json_back: body.back ? JSON.stringify(body.back) : null,
+    ...designStateToRow(body),
   })
 
   if (error) {
@@ -105,9 +89,7 @@ export async function GET(request: NextRequest) {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('design_orders')
-    .select(
-      'shopify_product_id, shopify_variant_id, product_title, selected_color, print_method, quantities, uploaded_files, sides_designed, canvas_json_front, canvas_json_back',
-    )
+    .select(DESIGN_STATE_COLUMNS)
     .eq('id', id)
     // Only ever serve drafts — never a real (submitted/completed) order.
     .eq('status', 'draft')
@@ -121,27 +103,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Draft not found' }, { status: 404 })
   }
 
-  const state: DraftState = {
-    schemaVersion: 1,
-    productId: data.shopify_product_id ?? undefined,
-    variantId: data.shopify_variant_id ?? undefined,
-    productTitle: data.product_title ?? undefined,
-    selectedColor: data.selected_color ?? undefined,
-    printMethod: data.print_method ?? undefined,
-    quantities: (data.quantities as Record<string, number> | null) ?? undefined,
-    uploadedFiles: (data.uploaded_files as UploadedFile[] | null) ?? undefined,
-    sidesDesigned: data.sides_designed ?? undefined,
-    front: data.canvas_json_front ? safeParse(data.canvas_json_front) : undefined,
-    back: data.canvas_json_back ? safeParse(data.canvas_json_back) : undefined,
-  }
-
+  const state: DraftState = rowToDesignState(data as unknown as DesignStateRow)
   return NextResponse.json({ state })
-}
-
-function safeParse(s: string): unknown {
-  try {
-    return JSON.parse(s)
-  } catch {
-    return undefined
-  }
 }
