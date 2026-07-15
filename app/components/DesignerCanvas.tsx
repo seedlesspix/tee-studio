@@ -284,7 +284,12 @@ export default function DesignerCanvas({
       if (!canvas) { if (attempts > 20) clearInterval(poll); return }
       clearInterval(poll)
       supabase.from('design_orders')
-        .select('canvas_json_front, canvas_json_back')
+        // uploaded_files too: without it uploadedFilesRef starts EMPTY on this
+        // path, so the used-files filter has nothing to match against and the
+        // order carries zero files no matter how good the stamps are. (This one
+        // predates the filter — an Edit-Design round trip has always wiped
+        // uploaded_files; the filter just made it visible.)
+        .select('canvas_json_front, canvas_json_back, uploaded_files')
         .eq('id', designId).single()
         .then(async ({ data }) => {
           if (!data) return
@@ -299,6 +304,9 @@ export default function DesignerCanvas({
               backObjectsRef.current = backJson.objects?.length
                 ? (await util.enlivenObjects(backJson.objects)) as any[]
                 : []
+            }
+            if (Array.isArray(data.uploaded_files)) {
+              uploadedFilesRef.current = data.uploaded_files as typeof uploadedFilesRef.current
             }
             canvas.discardActiveObject()
             canvas.renderAll()
@@ -1827,10 +1835,17 @@ export default function DesignerCanvas({
         canvas.renderAll()
         const pngBlob = await exportCanvasPNG(canvas, shirtSrc)
         const svgBlob = exportCanvasSVG(canvas)
-        // Custom props were being dropped here, so an "Edit design" restore
-        // (which reads canvas_json_*) lost _originalText and would now lose the
-        // _uploadSrc stamps too — taking the print shop's files with them.
-        const json = JSON.stringify(canvas.toJSON(CANVAS_CUSTOM_PROPS))
+        // MUST be toObject(props), not toJSON(props). Fabric's own source says
+        // it plainly: "JSON does not support additional properties because
+        // toJSON has its own signature" — toJSON() is the standard JS
+        // serialization hook, so its signature is fixed and it SILENTLY IGNORES
+        // the argument. Passing CANVAS_CUSTOM_PROPS to toJSON looked like a fix
+        // and did nothing: custom props were dropped, so an "Edit design"
+        // restore (which reads canvas_json_*) lost _originalText, and lost the
+        // _uploadSrc stamps too — taking the print shop's files with it.
+        // Proof: the draft path's toObject(CUSTOM_PROPS) kept stamps on the same
+        // objects, minutes apart, in the same session.
+        const json = JSON.stringify(canvas.toObject(CANVAS_CUSTOM_PROPS))
         const [png, svg] = await Promise.all([
           pngBlob ? uploadToStorage(pngBlob, `${orderId}/${name}.png`, 'design-exports') : null,
           svgBlob ? uploadToStorage(svgBlob, `${orderId}/${name}.svg`, 'design-exports') : null,
@@ -1871,11 +1886,20 @@ export default function DesignerCanvas({
         if (o?._uploadSrc) usedSrcs.add(o._uploadSrc)
       })
       const seenUrls = new Set<string>()
-      const usedFiles = uploadedFilesRef.current.filter(f => {
+      const filtered = uploadedFilesRef.current.filter(f => {
         if (!usedSrcs.has(f.url) || seenUrls.has(f.url)) return false
         seenUrls.add(f.url) // same image on both sides -> one entry
         return true
       })
+      // Fail SAFE. If we hold uploads but found no stamps at all, something
+      // upstream lost them (e.g. a design saved by an older build, whose canvas
+      // JSON predates the toObject fix). Handing the print shop EXTRA files is
+      // the old behaviour; handing them NOTHING is a silent fulfilment failure —
+      // which is exactly what shipped and had to be caught in testing.
+      const usedFiles =
+        usedSrcs.size === 0 && uploadedFilesRef.current.length > 0
+          ? uploadedFilesRef.current
+          : filtered
 
       const uploadedFileUrls = await Promise.all(
         usedFiles.map(async (f, idx) => {
