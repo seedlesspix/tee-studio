@@ -137,6 +137,14 @@ The `shopify_variant_id` column points at a Shopify Print Charge product variant
 > the designer's `getProduct`, Online Store for the cart); Print Charge needs
 > only the Online Store.
 
+**Print pricing is FLAT PER SIDE regardless of garment — decided 2026-07-15.**
+A baby onesie print costs the same as an adult tee print. This surfaced at Phase 3
+sign-off (`designer_pricing` is keyed by `print_method_key` × `sides` only, with
+no product dimension) and was **reviewed and kept deliberately** — the charge
+represents the print, not the garment. It is a business decision, not an
+oversight: don't "fix" it. Per-product pricing remains expressible through the
+pricing admin if the business ever changes course.
+
 **Embroidery is intentionally dormant.** The Shopify Print Charge product has a third variant for embroidery (variant ID `53029191123260`), but the embroidery rows in `designer_pricing` are left with `shopify_variant_id = NULL` on purpose. Embroidery products currently bake the embroidery cost into the base product price (a $32 polo includes embroidery, not $22 + $10 surcharge). Wiring up the embroidery variant would double-charge customers. The cart-add code path in `handleAddToCart` checks `print_method === 'screen_print'` and skips the Print Charge step entirely for any other method.
 
 **To switch embroidery to a surcharge model in the future:**

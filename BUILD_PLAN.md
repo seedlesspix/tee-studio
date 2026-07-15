@@ -207,6 +207,25 @@ no regressions from later days.
 - Monitoring setup
 - Cut over from ImprintNext
 
+## Sequencing after Phase 3 (decided 2026-07-15)
+
+**1. Mobile DISCOVERY (~1-2 days, scoping only — not the build).**
+**2. Phase 4 execution** (cart architecture; owns BLOCKER-1 and BLOCKER-3).
+**3. Then decide mobile-BUILD vs Phase 5 order with real numbers.**
+
+Reasoning, recorded so it isn't re-litigated:
+
+- Mobile is the **calendar's biggest unknown** (BLOCKER-2 is phase-sized and
+  unscoped). Discovery converts it into a number **cheaply** — before the number
+  is needed for planning, not after.
+- **Phase 4's plumbing is desktop-agnostic** — dynamic per-design products,
+  cart-add, server-mediated `design_orders` access. Mobile findings don't change
+  it, so it can proceed either way.
+- **Phase 5 should NOT build against designer surfaces that mobile findings might
+  move.** Print-file generation and the admin fulfilment view depend on designer
+  output; sequencing mobile discovery ahead of them keeps Phase 5 from being built
+  twice.
+
 ## Total Estimate
 
 8-10 weeks of focused build work, calendar.
