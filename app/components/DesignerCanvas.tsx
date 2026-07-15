@@ -389,6 +389,26 @@ export default function DesignerCanvas({
   const isUppercaseRef = useRef(isUppercase)
   useEffect(() => { fontSizeRef.current = fontSize }, [fontSize])
   useEffect(() => { isUppercaseRef.current = isUppercase }, [isUppercase])
+
+  // Has the canvas changed since the last successful save? Drives the Save
+  // button's "Saved ✓" vs "Save changes" state.
+  //
+  // Marked from USER-INTENT actions plus object:modified (which only fires on a
+  // real drag/scale/rotate). Deliberately NOT object:added/removed — those also
+  // fire during programmatic rebuilds (switching sides clears and re-adds the
+  // canvas; restore repopulates it), which would claim "unsaved changes" when
+  // the customer changed nothing.
+  const [isDirty, setIsDirty] = useState(false)
+  const markDirty = () => setIsDirty(true)
+
+  // Every style control is a design change. Guarded so this effect's own mount
+  // run doesn't declare a fresh, untouched canvas dirty.
+  const styleDirtyMounted = useRef(false)
+  useEffect(() => {
+    if (!styleDirtyMounted.current) { styleDirtyMounted.current = true; return }
+    markDirty()
+  }, [selectedFont, textColor, isBold, isItalic, isUppercase, textAlign,
+      letterSpacing, textDirection, textOutline, curveAmount, fontSize])
   // The "Your Text" box is the typing surface: the button focuses it, and the
   // first keystroke with nothing selected spawns the text on the shirt.
   const textInputRef = useRef<HTMLTextAreaElement>(null)
@@ -881,6 +901,11 @@ export default function DesignerCanvas({
         textInputRef.current?.select()
       })
 
+      // Fires once a drag/scale/rotate COMPLETES, and only from real user
+      // interaction — programmatic obj.set() (fitAndConstrain, restore) doesn't
+      // trigger it, which is exactly why it's safe as a dirty signal.
+      canvas.on('object:modified', () => markDirty())
+
       setFabricCanvas(canvas)
       ;(window as any)._fabricCanvas = canvas
 
@@ -1036,6 +1061,7 @@ export default function DesignerCanvas({
   }, [])
 
   const handleColorSelect = useCallback((color: string) => {
+    markDirty()
     setSelectedColor(color)
     setShirtHex(COLOR_HEX_MAP[color] || '#888')
     setQuantities((productSizes.length ? productSizes : SIZES).reduce((acc, s) => ({ ...acc, [s]: 0 }), {}))
@@ -1391,6 +1417,7 @@ export default function DesignerCanvas({
   // nothing selected the first keystroke spawns one. Either way the shirt
   // updates on every keystroke — wrapped and inside the print area.
   const handleTextInputChange = (value: string) => {
+    markDirty()
     setTextInput(value)
     setSelectedTextPreview(value.trim())
     pendingTextRef.current = value
@@ -1467,8 +1494,15 @@ export default function DesignerCanvas({
   // Open a saved design: a full navigation to the designer with ?restore=, which
   // is the same path the post-login rehydrate uses.
   const openSavedDesign = (d: SavedDesign) => {
+    // Carry the SAME context every other entry path carries. This originally
+    // passed only product_id + restore, so a design opened from the drawer lost
+    // its title and variant — which is why those rows saved with an empty
+    // product_title and showed blank in the admin order view.
     const params = new URLSearchParams()
     if (d.productId) params.set('product_id', d.productId)
+    if (d.variantId) params.set('variant_id', d.variantId)
+    if (d.productTitle) params.set('title', d.productTitle)
+    if (d.unitPrice != null) params.set('price', String(Math.round(d.unitPrice * 100)))
     params.set('restore', d.designId)
     window.location.href = `/designer?${params.toString()}`
   }
@@ -1517,6 +1551,7 @@ export default function DesignerCanvas({
       const { FabricImage } = await import('fabric')
       const img = await FabricImage.fromURL(item.url, { crossOrigin: 'anonymous' })
       await placeImageOnCanvas(img, fabricCanvas)
+      markDirty()
       uploadedFilesRef.current = [
         ...uploadedFilesRef.current,
         { name: item.fileName, url: item.url, type: item.fileType || 'image' },
@@ -1529,6 +1564,7 @@ export default function DesignerCanvas({
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !fabricCanvas) return
+    markDirty()
 
     const ext = file.name.split('.').pop()?.toLowerCase() || ''
     const cloudinaryFormats = ['ai', 'psd', 'eps']
@@ -1835,6 +1871,7 @@ export default function DesignerCanvas({
   }
 
   const deleteSelected = () => {
+    markDirty()
     if (!fabricCanvas) return
     const active = fabricCanvas.getActiveObject()
     if (active) { fabricCanvas.remove(active); fabricCanvas.renderAll() }
@@ -1989,6 +2026,7 @@ export default function DesignerCanvas({
       const { designId } = await res.json()
       if (!designId) return null
       currentDesignIdRef.current = designId
+      setIsDirty(false)
 
       // Point the URL at the saved design so a refresh (or the browser Back
       // button) lands back on it rather than an empty canvas.
@@ -2015,7 +2053,7 @@ export default function DesignerCanvas({
         </div>
         <div className="text-sm text-gray-800 truncate max-w-xs">{productTitle}</div>
         <div className="flex items-center gap-3">
-          <SaveDesignControl onSave={handleSaveDesign} loggedIn={loggedIn} />
+          <SaveDesignControl onSave={handleSaveDesign} loggedIn={loggedIn} dirty={isDirty} />
           <button
             onClick={() => setDesignsOpen(true)}
             className="px-3 py-1.5 rounded text-sm text-gray-600 hover:text-[#dd3333] transition-colors whitespace-nowrap"
@@ -2321,6 +2359,7 @@ export default function DesignerCanvas({
                   printMethod={printMethod}
                   onSelect={(url, fileType) => {
                     if (!fabricCanvas) return
+                    markDirty()
                     const canvasEl = canvasRef.current
                     const overlay = document.querySelector('[data-print-area]') as HTMLElement
                     let spawnX = 280, spawnY = 378

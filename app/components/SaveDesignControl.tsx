@@ -11,23 +11,23 @@ import { useEffect, useRef, useState } from 'react'
 type Props = {
   onSave: () => Promise<{ restoreUrl: string } | null>
   loggedIn: boolean
+  /** True when the canvas has changed since the last successful save. */
+  dirty: boolean
 }
 
-type Status = 'idle' | 'saving' | 'saved' | 'error'
+type Status = 'idle' | 'saving' | 'error'
 
-export default function SaveDesignControl({ onSave, loggedIn }: Props) {
+export default function SaveDesignControl({ onSave, loggedIn, dirty }: Props) {
   const [status, setStatus] = useState<Status>('idle')
+  const [savedOnce, setSavedOnce] = useState(false)
   const [restoreUrl, setRestoreUrl] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
 
-  // Logged-in "Saved ✓" reverts on its own; the logged-out panel stays until
-  // dismissed so the link can't vanish before it's copied.
-  useEffect(() => {
-    if (status !== 'saved' || !loggedIn) return
-    const t = setTimeout(() => setStatus('idle'), 2500)
-    return () => clearTimeout(t)
-  }, [status, loggedIn])
+  // "Saved ✓" used to time out after 2.5s because nothing tracked whether the
+  // design had since changed. Now that `dirty` does, the state can just be
+  // honest: it stays "Saved ✓" until the customer actually edits something, at
+  // which point it becomes "Save changes". No timer.
 
   useEffect(() => {
     if (!restoreUrl) return
@@ -44,7 +44,8 @@ export default function SaveDesignControl({ onSave, loggedIn }: Props) {
     try {
       const result = await onSave()
       if (!result) { setStatus('error'); setTimeout(() => setStatus('idle'), 3000); return }
-      setStatus('saved')
+      setStatus('idle')
+      setSavedOnce(true)
       if (!loggedIn) setRestoreUrl(result.restoreUrl)
     } catch {
       setStatus('error')
@@ -63,10 +64,12 @@ export default function SaveDesignControl({ onSave, loggedIn }: Props) {
     }
   }
 
+  const isSaved = savedOnce && !dirty
   const text =
     status === 'saving' ? 'Saving…' :
-    status === 'saved' ? 'Saved ✓' :
     status === 'error' ? 'Try again' :
+    isSaved ? 'Saved ✓' :
+    savedOnce ? 'Save changes' :
     'Save design'
 
   return (
@@ -75,7 +78,7 @@ export default function SaveDesignControl({ onSave, loggedIn }: Props) {
         onClick={handleSave}
         disabled={status === 'saving'}
         className={`px-3 py-1.5 rounded text-sm border transition-colors ${
-          status === 'saved'
+          isSaved
             ? 'border-green-600 text-green-700 bg-green-50'
             : status === 'error'
               ? 'border-[#dd3333] text-[#dd3333] bg-red-50'

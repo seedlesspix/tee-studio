@@ -35,12 +35,16 @@ type SavedRow = {
         product_title: string | null
         selected_color: string | null
         shopify_product_id: string | null
+        shopify_variant_id: string | null
+        unit_price: number | null
       }
     | Array<{
         canvas_png_front: string | null
         product_title: string | null
         selected_color: string | null
         shopify_product_id: string | null
+        shopify_variant_id: string | null
+        unit_price: number | null
       }>
     | null
 }
@@ -64,11 +68,13 @@ function toDTO(r: SavedRow) {
     productTitle: d?.product_title ?? null,
     color: d?.selected_color ?? null,
     productId: numericProductId(d?.shopify_product_id ?? null),
+    variantId: d?.shopify_variant_id ? d.shopify_variant_id.split('/').pop() ?? null : null,
+    unitPrice: d?.unit_price ?? null,
   }
 }
 
 const SELECT =
-  'id, name, updated_at, design_order_id, design_orders(canvas_png_front, product_title, selected_color, shopify_product_id)'
+  'id, name, updated_at, design_order_id, design_orders(canvas_png_front, product_title, selected_color, shopify_product_id, shopify_variant_id, unit_price)'
 
 // GET — list the caller's saved designs, most recently updated first.
 export async function GET(request: NextRequest) {

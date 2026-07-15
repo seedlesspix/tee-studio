@@ -120,6 +120,23 @@ Storage:
 
 The `shopify_variant_id` column points at a Shopify Print Charge product variant. When a customer adds a screen-print design to their cart, the cart-add flow looks up this variant per side that has rendered content (`canvas_png_front` → `(screen_print, sides=1)`; `canvas_png_back` → `(screen_print, sides=2)`) and adds a separate Print Charge line item with quantity equal to the total shirt count. A NULL `shopify_variant_id` is treated as a configuration error — the resolver in `app/lib/shopify.ts` aborts the entire cart-add (no partial cart state) and surfaces a "missing Shopify variant ID" message to the customer.
 
+> **⚠️ A populated `shopify_variant_id` is NOT enough — the variant must also be
+> PUBLISHED to the Online Store sales channel.** Phase 3 sign-off hit
+> `Could not add to cart: Cannot find variant` with all three Print Charge
+> variant IDs present and **exactly matching** Shopify. Root cause: the Print
+> Charge product wasn't published to the **Online Store** channel. Cart-add
+> proxies to `/cart/add.js` (Online Store), so an unpublished product's variants
+> don't exist as far as the cart is concerned. The rule above only guards
+> *presence*, not *reachability* — that's the hole.
+>
+> **Channels are independent, and this store proves it:** after publishing to
+> Online Store, cart-add works while the **Storefront API still returns `null`**
+> for those same variants (the Storefront token's channel is a separate
+> publication). So **never validate cart-ability via the Storefront API** — it is
+> not the surface the cart uses. Garment products need BOTH (Storefront API for
+> the designer's `getProduct`, Online Store for the cart); Print Charge needs
+> only the Online Store.
+
 **Embroidery is intentionally dormant.** The Shopify Print Charge product has a third variant for embroidery (variant ID `53029191123260`), but the embroidery rows in `designer_pricing` are left with `shopify_variant_id = NULL` on purpose. Embroidery products currently bake the embroidery cost into the base product price (a $32 polo includes embroidery, not $22 + $10 surcharge). Wiring up the embroidery variant would double-charge customers. The cart-add code path in `handleAddToCart` checks `print_method === 'screen_print'` and skips the Print Charge step entirely for any other method.
 
 **To switch embroidery to a surcharge model in the future:**
@@ -651,6 +668,11 @@ enhancement):
   coordinates. Nontrivial UX + data work. **Same underlying capability as
   [Design Portability](#design-portability-post-phase-3-candidate) under "Named
   Future Features" — scope the two together, don't build either in isolation.**
+- **Print-color panel should be persistent / shared across tabs.** Selecting a
+  piece of clipart while you're on another tab gives you no way to recolour it
+  without tab-hopping back. Text and clipart draw from the **same print palette**,
+  so one always-visible colour surface could serve both instead of a per-tab
+  colour control. Design-note quality; scope post-Phase-3.
 - **Live text preview** — text appears on the shirt in real time as the customer
   types (line break on Enter, no "Add Text" button). Replaces the current
   "type in box, then add to shirt" flow.
@@ -721,6 +743,19 @@ staff shirts — who inherently want one graphic across several garment types, a
 who buy in volume.
 
 **Size.** Multi-day. Discovery conversation first, then scope.
+
+### Recolorable single-color vector uploads (post-Phase-3 candidate)
+
+A customer uploads a **one-colour vector** (SVG/AI/EPS) and can then recolour it
+to any offered print colour — the same way clipart recolouring already works
+(`recolorSvg` tints SVG clipart via a Fabric BlendColor filter). Natural sibling
+to [Design Portability](#design-portability-post-phase-3-candidate): both are
+about artwork being *adaptable* rather than frozen at upload.
+
+Needs: detecting that an upload really is single-colour; keeping the vector as a
+vector (today AI/EPS are flattened to a delivery PNG — see the uploaded-originals
+note under designer_pricing); and deciding what happens to a multi-colour file
+(refuse to recolour? recolour the dominant ink?). Not scoped.
 
 ### Designer on Mobile — 🚨 LAUNCH GATE (see BUILD_PLAN.md → BLOCKER-2)
 

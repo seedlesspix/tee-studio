@@ -94,6 +94,32 @@ caret on a canvas, not harder. **No sequencing constraint remains**; the keyboar
 work here is now about keeping the print area visible while a normal input has
 focus.
 
+### BLOCKER-3: the cart sends ONE variant for EVERY size
+
+> **BLOCKER — the cart currently adds the wrong variant for every size except the
+> one the design was created in. Wrong price, wrong inventory, wrong fulfilment.
+> It does NOT error, so testing passes.**
+
+Found while diagnosing the Phase 3 sign-off cart failure (2026-07-15).
+`app/order/page.tsx` resolves a single `variantId` from the design's saved
+`shopify_variant_id` and reuses it for **every** line item, carrying the size only
+as a `_size` **text property**:
+
+```js
+const variantId = design.shopify_variant_id?.split('/').pop() || ''
+...map(([size, qty]) => ({ variantId, quantity: qty, properties: { _size: size } }))
+```
+
+Compounding it, `selectedVariant` in the designer is matched by **Colour only** at
+all three call sites, so the one variant used is arbitrary with respect to size.
+
+Design in White/3-6MO, order 2×6-12MO → both lines are the **White/3-6MO**
+variant. Shopify prices, reserves and fulfils that variant.
+
+**Fix belongs in Phase 4** (cart architecture), which replaces this wholesale with
+dynamic per-design products. Do not patch it ad hoc — but it MUST be closed before
+customer traffic.
+
 ## Phase Sequence
 
 ### Phase 1: Foundation — Auth & Customer Identity (~1 week) — ✅ Complete (2026-07-11)
@@ -153,6 +179,12 @@ no regressions from later days.
 - Item 12: Cleanup job — **must exclude designs with a `saved_designs` row**
   (`ON DELETE CASCADE` would silently destroy customers' saved work; see CLAUDE.md)
 - Item 7: Cart Liquid customization
+  - **Recorded cart UX expectation (Denise, Phase 3 sign-off):** the current cart
+    shows **two lines** (garment + print charge) which reads as awkward — the
+    wanted outcome is **one line, one price, with the design imagery as the
+    product**. She arrived at this independently while testing; it is Phase 4's
+    dynamic-product architecture described in customer terms, so it belongs here
+    rather than as a cosmetic cart-styling ticket.
 - Item 8: Checkout (verify defaults; no work)
 
 ### Phase 5: Fulfillment Backend (~2-3 weeks)

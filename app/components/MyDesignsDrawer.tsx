@@ -15,6 +15,8 @@ export type SavedDesign = {
   productTitle: string | null
   color: string | null
   productId: string | null
+  variantId: string | null
+  unitPrice: number | null
 }
 
 type Props = {
