@@ -273,8 +273,11 @@ function OrderPage() {
             <p className="text-xs font-mono text-gray-900 uppercase tracking-widest mb-3">Sizes & Quantities</p>
             <div className="flex flex-col gap-2">
               {sortedSizes.map(size => (
-                <div key={size} className="flex items-center justify-between">
-                  <span className="text-sm font-mono text-gray-900 font-semibold w-10">{size}</span>
+                <div key={size} className="flex items-center justify-between gap-3">
+                  {/* min-w keeps adult sizes aligned in a column; shrink-0 +
+                      nowrap stop multi-character names ("12-18MO") wrapping at
+                      the hyphen. w-10 was sized for single-character sizes. */}
+                  <span className="text-sm font-mono text-gray-900 font-semibold min-w-[2.5rem] shrink-0 whitespace-nowrap">{size}</span>
                   <div className="flex items-center gap-3 bg-white border border-[#333] rounded-lg px-3 py-1.5">
                     <button onClick={() => setQuantities(q => ({ ...q, [size]: Math.max(0, (q[size] || 0) - 1) }))}
                       className="text-gray-900 hover:text-[#dd3333] font-bold w-5 text-center text-lg leading-none">−</button>
