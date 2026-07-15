@@ -1,0 +1,16 @@
+-- The customer-uploads bucket held order-snapshot copies of customer artwork,
+-- but uploadToStorage builds its links with getPublicUrl — which only works on a
+-- PUBLIC bucket. Supabase doesn't expose a private bucket on the /object/public/
+-- path, so every one of those links has answered {"error":"Bucket not found"}
+-- since the bucket was created. The admin's raster downloads have never worked;
+-- nobody had tried one until Phase 3 sign-off.
+--
+-- Public here matches the posture already chosen deliberately for this artwork:
+-- Cloudinary hosts the same files on public, unguessable URLs (Day 7 —
+-- "Cloudinary-as-home"), and clipart/draft-order artwork follow the same
+-- public-but-unguessable model. Object paths are order-scoped UUIDs, so nothing
+-- is enumerable.
+--
+-- Retroactive: this revives the dead links on EVERY historical order, not just
+-- new ones.
+update storage.buckets set public = true where id = 'customer-uploads';

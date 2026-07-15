@@ -99,6 +99,11 @@ const COLOR_HEX_MAP: Record<string, string> = {
   'Silver': '#c0c0c0'
 }
 
+// Props Fabric's default serializer drops but we rely on. `_uploadSrc` is the
+// stamp that ties a placed image back to its uploaded file — see the used-files
+// filter in saveDesignAndAddToCart.
+const CANVAS_CUSTOM_PROPS = ['_isSvg', '_originalText', '_currentColor', '_isCurvedText', '_uploadSrc']
+
 // Fallback size list ONLY — real sizes come per-product from the Shopify Size
 // option (see productSizes). Used when a product exposes no Size option.
 const SIZES = ['S', 'M', 'L', 'XL', '2XL', '3XL']
@@ -1558,6 +1563,7 @@ export default function DesignerCanvas({
     try {
       const { FabricImage } = await import('fabric')
       const img = await FabricImage.fromURL(item.url, { crossOrigin: 'anonymous' })
+      ;(img as any)._uploadSrc = item.url
       await placeImageOnCanvas(img, fabricCanvas)
       markDirty()
       uploadedFilesRef.current = [
@@ -1605,6 +1611,7 @@ export default function DesignerCanvas({
         const pngUrl = originalUrl.replace('/upload/', '/upload/f_png/')
         const { FabricImage } = await import('fabric')
         const img = await FabricImage.fromURL(pngUrl, { crossOrigin: 'anonymous' })
+        ;(img as any)._uploadSrc = pngUrl
         await placeImageOnCanvas(img, fabricCanvas)
         // Index the converted PNG in My Uploads (Cloudinary already hosts it).
         void persistUploadToLibrary({ url: pngUrl, publicId: data.public_id, fileName: file.name, fileType: 'image/png', source: 'converted', width: data.width, height: data.height, originalUrl, originalFormat: ext })
@@ -1648,6 +1655,7 @@ export default function DesignerCanvas({
           uploadToCloudinary(file),
         ])
         if (uploaded) {
+          ;(img as any)._uploadSrc = uploaded.url
           void persistUploadToLibrary({
             url: uploaded.url, publicId: uploaded.publicId, fileName: file.name,
             fileType: 'image/png', source: 'pdf', width: uploaded.width, height: uploaded.height,
@@ -1672,15 +1680,22 @@ export default function DesignerCanvas({
       const { FabricImage } = await import('fabric')
       const img = await FabricImage.fromURL(dataUrl)
       await placeImageOnCanvas(img, fabricCanvas)
-      // Track uploaded file for order storage
-      uploadedFilesRef.current = [...uploadedFilesRef.current, {
-        name: file.name,
-        url: dataUrl,
-        type: file.type || ext
-      }]
+      // Track uploaded file for order storage. Provisionally the data URL —
+      // swapped for the Cloudinary URL below once it resolves.
+      const entry = { name: file.name, url: dataUrl, type: file.type || ext }
+      uploadedFilesRef.current = [...uploadedFilesRef.current, entry]
+      ;(img as any)._uploadSrc = dataUrl
       // Persist to My Uploads via Cloudinary (background; needs Cloudinary).
       const uploaded = await uploadToCloudinary(file)
-      if (uploaded) void persistUploadToLibrary({ url: uploaded.url, publicId: uploaded.publicId, fileName: file.name, fileType: file.type || ext, source: 'raster', width: uploaded.width, height: uploaded.height })
+      if (uploaded) {
+        // Carry the CLOUDINARY url into the order, not the data URL. The data
+        // URL would be re-uploaded to the customer-uploads bucket at cart-add;
+        // Cloudinary already has the identical bytes, so this gives every upload
+        // type one URL grammar and one place to live.
+        entry.url = uploaded.url
+        ;(img as any)._uploadSrc = uploaded.url
+        void persistUploadToLibrary({ url: uploaded.url, publicId: uploaded.publicId, fileName: file.name, fileType: file.type || ext, source: 'raster', width: uploaded.width, height: uploaded.height })
+      }
     }
     reader.readAsDataURL(file)
     e.target.value = ''
@@ -1812,7 +1827,10 @@ export default function DesignerCanvas({
         canvas.renderAll()
         const pngBlob = await exportCanvasPNG(canvas, shirtSrc)
         const svgBlob = exportCanvasSVG(canvas)
-        const json = JSON.stringify(canvas.toJSON())
+        // Custom props were being dropped here, so an "Edit design" restore
+        // (which reads canvas_json_*) lost _originalText and would now lose the
+        // _uploadSrc stamps too — taking the print shop's files with them.
+        const json = JSON.stringify(canvas.toJSON(CANVAS_CUSTOM_PROPS))
         const [png, svg] = await Promise.all([
           pngBlob ? uploadToStorage(pngBlob, `${orderId}/${name}.png`, 'design-exports') : null,
           svgBlob ? uploadToStorage(svgBlob, `${orderId}/${name}.svg`, 'design-exports') : null,
@@ -1837,9 +1855,30 @@ export default function DesignerCanvas({
       const pngFrontUrl = front.png, svgFrontUrl = front.svg
       const pngBackUrl = back.png, svgBackUrl = back.svg
 
-      // 4. Upload any customer-uploaded files
+      // 4. Upload the customer's files — but ONLY the ones actually PLACED in
+      // the final design. uploadedFilesRef is append-only per session, so
+      // "uploaded five logos, used one" would otherwise hand the print shop all
+      // five. The library keeps everything (correct); the ORDER carries what's on
+      // the garment.
+      //
+      // Matched on the _uploadSrc stamp rather than obj.src: Fabric rewrites src
+      // (data URL for rasters, the f_png rendition for converted files), so
+      // string-matching the stored URL would be exactly the kind of over-fitting
+      // that broke the image-filename parser. An explicit stamp is exact.
+      // Deleting an image removes its object, so it drops out for free.
+      const usedSrcs = new Set<string>()
+      ;[...frontObjectsRef.current, ...backObjectsRef.current].forEach((o: any) => {
+        if (o?._uploadSrc) usedSrcs.add(o._uploadSrc)
+      })
+      const seenUrls = new Set<string>()
+      const usedFiles = uploadedFilesRef.current.filter(f => {
+        if (!usedSrcs.has(f.url) || seenUrls.has(f.url)) return false
+        seenUrls.add(f.url) // same image on both sides -> one entry
+        return true
+      })
+
       const uploadedFileUrls = await Promise.all(
-        uploadedFilesRef.current.map(async (f, idx) => {
+        usedFiles.map(async (f, idx) => {
           // originalUrl rides along so the admin/print shop can reach the vector
           // rather than only the flattened rendition.
           const extra = f.originalUrl
@@ -1950,7 +1989,7 @@ export default function DesignerCanvas({
     if (!canvas) return null
     // Custom props Fabric's default serializer drops but we rely on for editing
     // affordances (SVG recolor, uppercase toggle, curved-text identity).
-    const CUSTOM_PROPS = ['_isSvg', '_originalText', '_currentColor', '_isCurvedText']
+    const CUSTOM_PROPS = CANVAS_CUSTOM_PROPS
     const liveJson = canvas.toObject(CUSTOM_PROPS)
     const serializeRef = (objs: any[]) => ({
       version: liveJson.version,
