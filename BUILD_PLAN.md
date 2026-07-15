@@ -162,13 +162,54 @@ no regressions from later days.
 - **Colors/fonts public-read `USING true`** returns inactive rows (React filters
   client-side); align to the stricter pricing pattern if inactive-leak bugs appear.
 
-### Phase 3: Designer Polish & Customer Flow (~1.5 weeks)
+### Phase 3: Designer Polish & Customer Flow (~1.5 weeks) — ✅ Complete (2026-07-15)
 
-- Item 1: color/size pre-population from product page
-- Item 3: My Designs tab
-- Item 4: My Uploads session library
-- Item 5: Live pricing display per-side breakdown
-- Item 6: Order Options page polish
+All five planned items shipped, plus the work the build surfaced. Signed off
+against a full checklist run end-to-end on **BOTH products** (Unisex Cotton Tee
+and 100% Cotton Onesie).
+
+- Item 1: color/size pre-population from product page ✅
+- Item 3: My Designs tab ✅
+- Item 4: My Uploads session library ✅
+- Item 5: Live pricing display per-side breakdown ✅
+- Item 6: Order Options page polish ✅
+
+**Days 1–9 inventory:**
+
+| Day | Shipped |
+|---|---|
+| 1 | Color/size + variant pre-population (exact GID match; all state driven from the resolved variant) |
+| 2 | Shopify theme migration — ImprintNext glue removed, "Design Now" gated by the `blank-product` tag. **Draft theme still unpublished** |
+| 3 | Designer reads print areas from `product_templates` (containment-aware px→%); template + frozen geometry captured on save |
+| 4 | Per-side pricing split; **view-aware save fix** (back designs were saving into the front slot); back-side restore on Edit Design |
+| 5 | Order Options polish — dual-side preview, view-aware PNG capture, Design Notes, cross-side Next-Step check, garment-hex capture, browser-Back fix |
+| 6 | Per-template garment colors (`product_template_colors` + `garment-swatches` bucket + admin editor + designer read) |
+| 6.5 | **Onesie blank-canvas fix** — contains-based color→image matching, featured-image fallback, "⚠ no image matched" badge, GID normalization |
+| 7 | My Uploads library (`customer_uploads`, `/api/uploads`, adopt-on-login, `tee_session`) + **onesie size fix** (sizes from the Shopify Size option, in variant order) |
+| 8 | My Designs (`saved_designs` locked side table, `/api/designs`, Save + drawer, restore-by-link, adoption generalized) |
+| 9 | Add Text — box-first typing, silent-revert fix, `fitAndConstrain`, **Enter = real line break**, one editing surface, curve guard |
+| Sign-off | Print Charge publication fix, cart-reachability badge, uploaded originals retained, used-files filter, dead download links revived |
+
+**Second-product testing earned its keep.** Running the onesie through the whole
+flow caught **two** assumptions hardcoded for the Cotton Tee before templates
+existed (the image-filename parser → Day 6.5; the size list → Day 7) plus a third
+cosmetic one (size labels sized for single-character adult sizes). **Keep doing
+this on every new product type.**
+
+### Deferred from Phase 3
+
+Each lives somewhere canonical; this is the index, not the detail.
+
+| Item | Status | Canonical entry |
+|---|---|---|
+| `design_orders` blanket anon read/update | 🚨 **Blocker** — before customer traffic | BLOCKER-1 above (lands in Phase 4) |
+| Designer on Mobile | 🚨 **Launch gate** — phase-sized, unscoped | BLOCKER-2 above (discovery next) |
+| Cart sends ONE variant for EVERY size | 🚨 **Blocker** — silent, wrong fulfilment | BLOCKER-3 above (lands in Phase 4) |
+| Add Text v2 — stacked-arc curve remnant | Deferred, low priority | CLAUDE.md → Named Future Features → "Add Text" |
+| Design Portability | Post-Phase-3 candidate, multi-day | CLAUDE.md → Named Future Features |
+| Recolorable single-color vector uploads | Post-Phase-3 candidate | CLAUDE.md → Named Future Features |
+| Persistent / shared print-color panel | Design-note quality | CLAUDE.md → Phase 3+ Backlog |
+| Print pricing flat per side | ✅ **Decided 2026-07-15, not open** — a onesie print costs the same as a tee print | CLAUDE.md → designer_pricing ("don't fix this") |
 
 ### Phase 4: Cart Architecture Replacement (~2 weeks, heaviest)
 
