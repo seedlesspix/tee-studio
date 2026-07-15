@@ -382,6 +382,18 @@ export default function DesignerCanvas({
   // matching mockup (so we never show a blank canvas; the gap is flagged in the
   // template admin's Colors section instead).
   const firstImageUrlRef = useRef<string>('')
+  // The canvas event handlers below are registered ONCE, so they must not read
+  // panel state directly or they'd close over the first render's values forever.
+  // These refs give them a live view of the two things the fit contract needs.
+  const fontSizeRef = useRef(fontSize)
+  const isUppercaseRef = useRef(isUppercase)
+  useEffect(() => { fontSizeRef.current = fontSize }, [fontSize])
+  useEffect(() => { isUppercaseRef.current = isUppercase }, [isUppercase])
+  // The "Your Text" box is the typing surface: the button focuses it, and the
+  // first keystroke with nothing selected spawns the text on the shirt.
+  const textInputRef = useRef<HTMLInputElement>(null)
+  const spawningRef = useRef(false)
+  const pendingTextRef = useRef('')
   // "My Uploads" library — the caller's previously-uploaded images (server
   // returns them scoped to the Shopify customer, or the anonymous session
   // cookie). Files live in Cloudinary; these rows just index them.
@@ -870,6 +882,32 @@ export default function DesignerCanvas({
         obj._originalText = raw
         setTextInput(raw)
         setSelectedTextPreview(raw.trim())
+        // Contain overflow live WITHOUT re-wrapping: mutating the string here
+        // would move Fabric's caret mid-word. Shrink keeps it inside the box;
+        // the full re-wrap happens on exit. (Proper live wrapping on this path
+        // is the v2 Textbox migration.)
+        fitAndConstrain(obj, { wrap: false })
+      })
+
+      // Enter finishes the text rather than inserting a line break.
+      //
+      // A break WOULD appear — and then silently die on exit, because
+      // _originalText collapses newlines and reWrapText re-derives from it. That
+      // doomed break is the same class of trap as the silent-revert bug, so
+      // until v2 makes multi-line real, Enter does something predictable.
+      canvas.on('text:editing:entered', (e: any) => {
+        const obj = e.target
+        const textarea = obj?.hiddenTextarea
+        if (!textarea) return
+        const onKeyDown = (ev: KeyboardEvent) => {
+          if (ev.key !== 'Enter') return
+          ev.preventDefault()
+          ev.stopPropagation()
+          obj.exitEditing()
+          canvas.renderAll()
+        }
+        textarea.addEventListener('keydown', onKeyDown)
+        obj.__enterHandler = onKeyDown
       })
 
       // Leaving edit mode: re-fit to the print area, and drop a text left empty
@@ -878,6 +916,10 @@ export default function DesignerCanvas({
       canvas.on('text:editing:exited', (e: any) => {
         const obj = e.target
         if (!obj) return
+        if (obj.__enterHandler) {
+          obj.hiddenTextarea?.removeEventListener('keydown', obj.__enterHandler)
+          obj.__enterHandler = null
+        }
         const raw = ((obj._originalText ?? obj.text) || '').replace(/\n/g, ' ').trim()
         if (!raw) {
           canvas.remove(obj)
@@ -887,17 +929,7 @@ export default function DesignerCanvas({
           canvas.renderAll()
           return
         }
-        // Read styles off the object, not panel state — this handler is
-        // registered once and must not close over stale values.
-        const { text, fontSize: fitted } = reWrapText(
-          raw,
-          obj.fontSize,
-          obj.fontFamily,
-          obj.fontWeight === 'bold',
-          obj.fontStyle === 'italic',
-        )
-        obj.set({ text, fontSize: fitted })
-        canvas.renderAll()
+        fitAndConstrain(obj)
       })
 
       setFabricCanvas(canvas)
@@ -1260,6 +1292,73 @@ export default function DesignerCanvas({
     return { text: lines.join('\n'), fontSize: autoFontSize }
   }
 
+  const getPrintAreaBounds = () => {
+    const canvasEl = canvasRef.current
+    const overlay = document.querySelector('[data-print-area]') as HTMLElement
+    if (!overlay || !canvasEl) return null
+    const canvasRect = canvasEl.getBoundingClientRect()
+    const overlayRect = overlay.getBoundingClientRect()
+    const scaleX = canvasEl.width / canvasRect.width
+    const scaleY = canvasEl.height / canvasRect.height
+    return {
+      left: (overlayRect.left - canvasRect.left) * scaleX,
+      top: (overlayRect.top - canvasRect.top) * scaleY,
+      right: (overlayRect.right - canvasRect.left) * scaleX,
+      bottom: (overlayRect.bottom - canvasRect.top) * scaleY,
+    }
+  }
+
+  // Largest size at which the string fits the print area WITHOUT re-wrapping.
+  // Used mid-edit on the canvas: changing fontSize leaves the string untouched,
+  // so Fabric's caret index stays valid. reWrapText's size assumes the text gets
+  // wrapped, so it can't be reused here — it would leave a long single line
+  // overflowing at a size it thinks is fine.
+  const shrinkToFitWidth = (
+    text: string, targetFontSize: number, fontFamily: string, bold: boolean, italic: boolean,
+  ): number => {
+    const bounds = getPrintAreaBounds()
+    if (!bounds) return targetFontSize
+    const maxWidth = (bounds.right - bounds.left) * 0.92
+    const ctx = document.createElement('canvas').getContext('2d')!
+    const weight = bold ? 'bold' : 'normal'
+    const style = italic ? 'italic' : 'normal'
+    const widest = (size: number) => {
+      ctx.font = `${style} ${weight} ${size}px ${fontFamily}`
+      return text.split('\n').reduce((max, line) => Math.max(max, ctx.measureText(line).width), 0)
+    }
+    let size = targetFontSize
+    while (size > 8 && widest(size) > maxWidth) size -= 1
+    return size
+  }
+
+  // THE single enforcement point for the print-area contract.
+  //
+  // Two separate mechanisms keep text in the box and both are required:
+  // reWrapText controls SIZE (font size + line breaks), constrainObject controls
+  // POSITION. Doing only the first is how text ended up correctly sized but
+  // still sticking out of the box — every text mutation goes through here.
+  //
+  // wrap:false = shrink only, leaving the string (and the caret) alone.
+  const fitAndConstrain = (obj: any, opts?: { wrap?: boolean }) => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas || !obj) return
+    const raw = ((obj._originalText ?? obj.text) || '').replace(/\n/g, ' ')
+    if (raw.trim()) {
+      const bold = obj.fontWeight === 'bold'
+      const italic = obj.fontStyle === 'italic'
+      const base = isUppercaseRef.current ? raw.toUpperCase() : raw
+      if (opts?.wrap === false) {
+        obj.set({ fontSize: shrinkToFitWidth(obj.text || base, fontSizeRef.current, obj.fontFamily, bold, italic) })
+      } else {
+        const { text, fontSize: fitted } = reWrapText(base, fontSizeRef.current, obj.fontFamily, bold, italic)
+        obj.set({ text, fontSize: fitted })
+      }
+    }
+    const bounds = getPrintAreaBounds()
+    if (bounds) constrainObject(obj, bounds)
+    canvas.renderAll()
+  }
+
   // Recolor selected SVG clipart
   const recolorSvg = (hex: string) => {
     const canvas = fabricCanvasRef.current
@@ -1276,71 +1375,83 @@ export default function DesignerCanvas({
   }
 
 
-  // Start a new text ON the shirt, already in edit mode with the caret blinking.
-  //
-  // This replaces the old "type into a sidebar box, then find + Add to Shirt at
-  // the bottom of the panel" flow — the button sat eight control groups below
-  // the input, which is why customers couldn't work out how to place text.
+  // "+ Add another text" — deselect and hand the caret to the box, so the next
+  // keystroke spawns a fresh text. The box is the typing surface, so starting a
+  // new element is just "clear the box and focus it"; no empty object is created
+  // until there's actually something to show.
   const startNewText = () => {
     const canvas = fabricCanvasRef.current
-    if (!canvas) return
-    import('fabric').then(({ IText }) => {
-      const canvasEl = canvasRef.current
-      const overlay = document.querySelector('[data-print-area]') as HTMLElement
-      let spawnX = 280
-      let spawnY = 378
-      if (overlay && canvasEl) {
-        const canvasRect = canvasEl.getBoundingClientRect()
-        const overlayRect = overlay.getBoundingClientRect()
-        const scaleX = canvasEl.width / canvasRect.width
-        const scaleY = canvasEl.height / canvasRect.height
-        spawnX = (overlayRect.left - canvasRect.left) * scaleX + (overlayRect.width * scaleX) / 2
-        spawnY = (overlayRect.top - canvasRect.top) * scaleY + (overlayRect.height * scaleY) / 2
-      }
-
-      const textObj = new IText('', {
-        left: spawnX,
-        top: spawnY,
-        fontFamily: selectedFont,
-        fontSize,
-        fill: textColor,
-        fontWeight: isBold ? 'bold' : 'normal',
-        fontStyle: isItalic ? 'italic' : 'normal',
-        textAlign: textAlign,
-        charSpacing: letterSpacing * 10,
-        angle: textDirection === 'vertical' ? 90 : 0,
-        originX: 'center',
-        originY: 'center',
-      })
-      ;(textObj as any)._originalText = ''
-      canvas.add(textObj)
-      canvas.setActiveObject(textObj)
-      lastActiveObjectRef.current = textObj
-      _activeObj = textObj
-      setSelectedObjectType('text')
-      setTextInput('')
-      // The whole point of v1: the caret lands on the garment, so the customer
-      // types and watches it appear. An empty text left behind (clicked Add,
-      // then clicked away) is removed by the text:editing:exited handler.
-      textObj.enterEditing()
-      textObj.hiddenTextarea?.focus()
+    if (canvas) {
+      canvas.discardActiveObject()
       canvas.renderAll()
-    })
+    }
+    setTextInput('')
+    setSelectedTextPreview('')
+    setSelectedObjectType(null)
+    textInputRef.current?.focus()
   }
 
-  // The panel's "Your Text" box edits the SELECTED text — the same words the
-  // customer can type directly on the shirt. Either path updates both.
+  // Put a new text on the shirt from the box's first keystroke. Deliberately
+  // does NOT enter Fabric's edit mode: the caret stays in the box, which is what
+  // makes live wrapping safe — we can re-wrap obj.text freely because we never
+  // touch the DOM input's caret.
+  const spawnTextFromBox = async () => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    const { IText } = await import('fabric')
+    // Typed and deleted again before the import resolved — spawning now would
+    // leave an invisible empty object that still counts as design content.
+    if (!pendingTextRef.current.trim()) return
+    const bounds = getPrintAreaBounds()
+    const textObj = new IText('', {
+      left: bounds ? (bounds.left + bounds.right) / 2 : 280,
+      top: bounds ? (bounds.top + bounds.bottom) / 2 : 378,
+      fontFamily: selectedFont,
+      fontSize,
+      fill: textColor,
+      fontWeight: isBold ? 'bold' : 'normal',
+      fontStyle: isItalic ? 'italic' : 'normal',
+      textAlign: textAlign,
+      charSpacing: letterSpacing * 10,
+      angle: textDirection === 'vertical' ? 90 : 0,
+      originX: 'center',
+      originY: 'center',
+    })
+    // Use the latest keystroke, not the one that triggered the spawn — the
+    // dynamic import gives fast typists time to get ahead of us.
+    ;(textObj as any)._originalText = pendingTextRef.current
+    canvas.add(textObj)
+    canvas.setActiveObject(textObj)
+    lastActiveObjectRef.current = textObj
+    _activeObj = textObj
+    setSelectedObjectType('text')
+    fitAndConstrain(textObj)
+  }
+
+  // The "Your Text" box drives the shirt. With a text selected it edits it; with
+  // nothing selected the first keystroke spawns one. Either way the shirt
+  // updates on every keystroke — wrapped and inside the print area.
   const handleTextInputChange = (value: string) => {
     setTextInput(value)
     setSelectedTextPreview(value.trim())
+    pendingTextRef.current = value
+
     const canvas = fabricCanvasRef.current
-    const active = canvas?.getActiveObject() as any
-    if (!active || (active.type !== 'i-text' && active.type !== 'textbox')) return
+    if (!canvas) return
+    const active = canvas.getActiveObject() as any
+    const isText = active && (active.type === 'i-text' || active.type === 'textbox')
+
+    if (!isText) {
+      // Nothing selected: first real keystroke puts a text on the shirt. The
+      // guard stops fast typing from racing the async import into duplicates.
+      if (!value.trim() || spawningRef.current) return
+      spawningRef.current = true
+      void spawnTextFromBox().finally(() => { spawningRef.current = false })
+      return
+    }
+
     active._originalText = value
-    const base = isUppercase ? value.toUpperCase() : value
-    const { text, fontSize: fitted } = reWrapText(base, fontSize, selectedFont, isBold, isItalic)
-    active.set({ text, fontSize: fitted })
-    canvas.renderAll()
+    fitAndConstrain(active)
   }
 
   // Load the caller's "My Uploads" library once on mount. Server scopes it to
@@ -2008,19 +2119,14 @@ export default function DesignerCanvas({
                         {/* TEXT TAB */}
             {activeTab === 'text' && (
               <>
-                {/* The starting affordance, first thing in the panel. It puts a
-                    live text on the shirt rather than committing one from here. */}
-                <button onClick={startNewText}
-                  className="w-full bg-[#dd3333] text-white py-3 rounded font-bold text-sm tracking-wide hover:opacity-85 transition-opacity">
-                  + Add Text
-                </button>
+                {/* The box is the typing surface — always live. The first
+                    keystroke puts the text on the shirt; no button hunt. */}
                 <div>
                   <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Your Text</label>
-                  <input type="text" value={textInput}
+                  <input type="text" value={textInput} ref={textInputRef}
                     onChange={e => handleTextInputChange(e.target.value)}
-                    disabled={selectedObjectType !== 'text'}
-                    placeholder={selectedObjectType === 'text' ? 'Type something...' : 'Nothing selected'}
-                    className="w-full mt-1 bg-gray-100 border border-gray-200 rounded px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333] disabled:bg-gray-50 disabled:text-gray-400 disabled:placeholder-gray-400"
+                    placeholder="Type something..."
+                    className="w-full mt-1 bg-gray-100 border border-gray-200 rounded px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333]"
                   />
                   {/* Teaches the quicker path, and only once it's useful. */}
                   {selectedObjectType === 'text' && (
@@ -2029,6 +2135,11 @@ export default function DesignerCanvas({
                     </p>
                   )}
                 </div>
+                {/* Demoted: the box starts your first text, this starts the next. */}
+                <button onClick={startNewText}
+                  className="w-full border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-[#dd3333] hover:text-[#dd3333] transition-colors">
+                  + Add another text
+                </button>
                 <div>
                   <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Font</label>
                   <div className="flex flex-col gap-1 mt-1 max-h-48 overflow-y-auto pr-1">
