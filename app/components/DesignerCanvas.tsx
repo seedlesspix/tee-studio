@@ -806,9 +806,12 @@ export default function DesignerCanvas({
         const obj = e.selected?.[0]
         if (obj) { lastActiveObjectRef.current = obj; _activeObj = obj }
         if (obj && (obj.type === 'i-text' || obj.type === 'textbox')) {
-          const raw = (obj as any)._originalText || obj.text || ''
-          setSelectedTextPreview(raw.replace(/\n/g, ' ').trim())
+          const raw = ((obj as any)._originalText || obj.text || '').replace(/\n/g, ' ')
+          setSelectedTextPreview(raw.trim())
           setSelectedObjectType('text')
+          // The panel's "Your Text" box is bound to the selection — selecting
+          // text on the shirt fills it in, ready to edit.
+          setTextInput(raw)
         } else if (obj) {
           setSelectedObjectType((obj as any)._isSvg ? 'svg' : 'image')
           if ((obj as any)._isSvg && (obj as any)._currentColor) {
@@ -817,15 +820,19 @@ export default function DesignerCanvas({
             setSelectedSvgColor('')
           }
           setSelectedTextPreview('')
+          setTextInput('')
         }
       })
       canvas.on('selection:updated', (e: any) => {
         const obj = e.selected?.[0]
         if (obj) { lastActiveObjectRef.current = obj; _activeObj = obj }
         if (obj && (obj.type === 'i-text' || obj.type === 'textbox')) {
-          const raw = (obj as any)._originalText || obj.text || ''
-          setSelectedTextPreview(raw.replace(/\n/g, ' ').trim())
+          const raw = ((obj as any)._originalText || obj.text || '').replace(/\n/g, ' ')
+          setSelectedTextPreview(raw.trim())
           setSelectedObjectType('text')
+          // The panel's "Your Text" box is bound to the selection — selecting
+          // text on the shirt fills it in, ready to edit.
+          setTextInput(raw)
         } else if (obj) {
           setSelectedObjectType((obj as any)._isSvg ? 'svg' : 'image')
           if ((obj as any)._isSvg && (obj as any)._currentColor) {
@@ -834,14 +841,63 @@ export default function DesignerCanvas({
             setSelectedSvgColor('')
           }
           setSelectedTextPreview('')
+          setTextInput('')
         } else {
           setSelectedTextPreview('')
           setSelectedObjectType(null)
+          setTextInput('')
         }
       })
       canvas.on('selection:cleared', () => {
         setSelectedTextPreview('')
         setSelectedObjectType(null)
+        setTextInput('')
+      })
+
+      // Keep _originalText in sync with typing done ON the shirt.
+      //
+      // Fabric's IText is editable by default, so customers could already
+      // double-click and retype — but nothing synced it back, and the style
+      // effect re-derives `text` from `_originalText`. Net result: retype on the
+      // shirt, then touch ANY style control, and the words silently reverted to
+      // the previous ones. This is the fix.
+      canvas.on('text:changed', (e: any) => {
+        const obj = e.target
+        if (!obj) return
+        // Strip the newlines reWrapText inserts — _originalText is the raw,
+        // unwrapped string everything else re-derives from.
+        const raw = (obj.text || '').replace(/\n/g, ' ')
+        obj._originalText = raw
+        setTextInput(raw)
+        setSelectedTextPreview(raw.trim())
+      })
+
+      // Leaving edit mode: re-fit to the print area, and drop a text left empty
+      // (clicked "+ Add Text" then clicked away) so it can't linger invisibly or
+      // count as design content on the Next Step check.
+      canvas.on('text:editing:exited', (e: any) => {
+        const obj = e.target
+        if (!obj) return
+        const raw = ((obj._originalText ?? obj.text) || '').replace(/\n/g, ' ').trim()
+        if (!raw) {
+          canvas.remove(obj)
+          setTextInput('')
+          setSelectedTextPreview('')
+          setSelectedObjectType(null)
+          canvas.renderAll()
+          return
+        }
+        // Read styles off the object, not panel state — this handler is
+        // registered once and must not close over stale values.
+        const { text, fontSize: fitted } = reWrapText(
+          raw,
+          obj.fontSize,
+          obj.fontFamily,
+          obj.fontWeight === 'bold',
+          obj.fontStyle === 'italic',
+        )
+        obj.set({ text, fontSize: fitted })
+        canvas.renderAll()
       })
 
       setFabricCanvas(canvas)
@@ -1219,105 +1275,15 @@ export default function DesignerCanvas({
     })
   }
 
-  // Create curved text by rendering to a canvas then adding as Fabric image
-  const createCurvedText = (canvas: any, text: string, direction: 'curve-up' | 'curve-down', spawnX: number, spawnY: number) => {
-    const fSize = fontSize
-    const fontFamily = selectedFont
-    const fill = textColor
-    const fontWeight = isBold ? 'bold' : 'normal'
-    const fontStyle = isItalic ? 'italic' : 'normal'
-    const radius = Math.max(fSize * 1.5, 600)
-    const padding = fSize * 2
 
-    // Create an offscreen canvas to draw curved text
-    const offCanvas = document.createElement('canvas')
-    // Measure text first using a temp canvas to get totalWidth
-    const tempCtx = document.createElement('canvas').getContext('2d')!
-    tempCtx.font = `${fontStyle} ${fontWeight} ${fSize}px ${fontFamily}`
-    const chars = text.split('')
-    const charWidths = chars.map((ch: string) => tempCtx.measureText(ch).width + (letterSpacing || 0))
-    const totalWidth = charWidths.reduce((a: number, b: number) => a + b, 0)
-    const totalAngle = totalWidth / radius
-    const size = Math.min(Math.max(totalWidth + padding * 2, (radius + padding) * 2), 1200)
-    offCanvas.width = size
-    offCanvas.height = size
-    const ctx = offCanvas.getContext('2d')!
-
-    ctx.font = `${fontStyle} ${fontWeight} ${fSize}px ${fontFamily}`
-    ctx.fillStyle = fill
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-
-
-    // Center of the offscreen canvas
-    const cx = size / 2
-    const cy = direction === 'curve-up' ? size * 0.72 : size * 0.28
-
-    const isDown = direction === 'curve-down'
-    const orderedChars = isDown ? [...chars].reverse() : chars
-    const orderedWidths = isDown ? [...charWidths].reverse() : charWidths
-    let currentAngle = -totalAngle / 2
-
-    orderedChars.forEach((ch, idx) => {
-      const charAngle = currentAngle + orderedWidths[idx] / radius / 2
-      ctx.save()
-      ctx.translate(cx, cy)
-      ctx.rotate(charAngle)
-      ctx.translate(0, direction === 'curve-up' ? -radius : radius)
-
-      ctx.fillText(ch, 0, 0)
-      ctx.restore()
-      currentAngle += orderedWidths[idx] / radius
-    })
-
-    // Convert canvas to image and add to Fabric
-    import('fabric').then(({ FabricImage }) => {
-      // Crop offscreen canvas to actual text bounds
-      const cropCanvas = document.createElement('canvas')
-      const cropCtx = cropCanvas.getContext('2d')!
-      const imgData = ctx.getImageData(0, 0, offCanvas.width, offCanvas.height)
-      const pixels = imgData.data
-      let minX = offCanvas.width, minY = offCanvas.height, maxX = 0, maxY = 0
-      for (let y = 0; y < offCanvas.height; y++) {
-        for (let x = 0; x < offCanvas.width; x++) {
-          const alpha = pixels[(y * offCanvas.width + x) * 4 + 3]
-          if (alpha > 10) {
-            minX = Math.min(minX, x); minY = Math.min(minY, y)
-            maxX = Math.max(maxX, x); maxY = Math.max(maxY, y)
-          }
-        }
-      }
-      const pad = fSize * 0.3
-      minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad)
-      maxX = Math.min(offCanvas.width, maxX + pad); maxY = Math.min(offCanvas.height, maxY + pad)
-      cropCanvas.width = Math.max(1, maxX - minX)
-      cropCanvas.height = Math.max(1, maxY - minY)
-      cropCtx.drawImage(offCanvas, minX, minY, cropCanvas.width, cropCanvas.height, 0, 0, cropCanvas.width, cropCanvas.height)
-      const dataUrl = cropCanvas.toDataURL('image/png')
-      FabricImage.fromURL(dataUrl).then((img: any) => {
-        const fabricCanvasEl = canvasRef.current
-        const overlay = document.querySelector('[data-print-area]') as HTMLElement
-        if (overlay && fabricCanvasEl) {
-          const canvasRect = fabricCanvasEl.getBoundingClientRect()
-          const overlayRect = overlay.getBoundingClientRect()
-          const scaleX = fabricCanvasEl.width / canvasRect.width
-          const maxW = overlayRect.width * scaleX * 0.9
-          if (img.width > maxW) img.scaleToWidth(maxW)
-        }
-        img.set({ left: spawnX, top: spawnY, originX: 'center', originY: 'center' })
-        ;(img as any)._isCurvedText = true
-        ;(img as any)._originalText = text
-        canvas.add(img)
-        canvas.setActiveObject(img)
-        lastActiveObjectRef.current = img
-        canvas.renderAll()
-      })
-    })
-  }
-
-
-  const addText = () => {
-    if (!fabricCanvas || !textInput.trim()) return
+  // Start a new text ON the shirt, already in edit mode with the caret blinking.
+  //
+  // This replaces the old "type into a sidebar box, then find + Add to Shirt at
+  // the bottom of the panel" flow — the button sat eight control groups below
+  // the input, which is why customers couldn't work out how to place text.
+  const startNewText = () => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
     import('fabric').then(({ IText }) => {
       const canvasEl = canvasRef.current
       const overlay = document.querySelector('[data-print-area]') as HTMLElement
@@ -1328,29 +1294,15 @@ export default function DesignerCanvas({
         const overlayRect = overlay.getBoundingClientRect()
         const scaleX = canvasEl.width / canvasRect.width
         const scaleY = canvasEl.height / canvasRect.height
-        const paLeft  = (overlayRect.left - canvasRect.left) * scaleX
-        const paTop   = (overlayRect.top  - canvasRect.top)  * scaleY
-        const paWidth  = overlayRect.width  * scaleX
-        const paHeight = overlayRect.height * scaleY
-        spawnX = paLeft + paWidth  / 2
-        spawnY = paTop  + paHeight / 2
-      }
-      const rawText = isUppercase ? textInput.toUpperCase() : textInput
-
-      // Handle curved text separately
-      if (textDirection === 'curve-up' || textDirection === 'curve-down') {
-        createCurvedText(fabricCanvas, rawText, textDirection, spawnX, spawnY)
-        setTextInput('')
-        return
+        spawnX = (overlayRect.left - canvasRect.left) * scaleX + (overlayRect.width * scaleX) / 2
+        spawnY = (overlayRect.top - canvasRect.top) * scaleY + (overlayRect.height * scaleY) / 2
       }
 
-      const { text: wrappedText, fontSize: autoFontSize } = reWrapText(rawText, fontSize, selectedFont, isBold, isItalic)
-
-      const textObj = new IText(wrappedText, {
+      const textObj = new IText('', {
         left: spawnX,
         top: spawnY,
         fontFamily: selectedFont,
-        fontSize: autoFontSize,
+        fontSize,
         fill: textColor,
         fontWeight: isBold ? 'bold' : 'normal',
         fontStyle: isItalic ? 'italic' : 'normal',
@@ -1360,15 +1312,35 @@ export default function DesignerCanvas({
         originX: 'center',
         originY: 'center',
       })
-      // Store original text for uppercase toggle
-      ;(textObj as any)._originalText = textInput.trim()
-      fabricCanvas.add(textObj)
-      fabricCanvas.setActiveObject(textObj)
+      ;(textObj as any)._originalText = ''
+      canvas.add(textObj)
+      canvas.setActiveObject(textObj)
       lastActiveObjectRef.current = textObj
       _activeObj = textObj
-      fabricCanvas.renderAll()
+      setSelectedObjectType('text')
       setTextInput('')
+      // The whole point of v1: the caret lands on the garment, so the customer
+      // types and watches it appear. An empty text left behind (clicked Add,
+      // then clicked away) is removed by the text:editing:exited handler.
+      textObj.enterEditing()
+      textObj.hiddenTextarea?.focus()
+      canvas.renderAll()
     })
+  }
+
+  // The panel's "Your Text" box edits the SELECTED text — the same words the
+  // customer can type directly on the shirt. Either path updates both.
+  const handleTextInputChange = (value: string) => {
+    setTextInput(value)
+    setSelectedTextPreview(value.trim())
+    const canvas = fabricCanvasRef.current
+    const active = canvas?.getActiveObject() as any
+    if (!active || (active.type !== 'i-text' && active.type !== 'textbox')) return
+    active._originalText = value
+    const base = isUppercase ? value.toUpperCase() : value
+    const { text, fontSize: fitted } = reWrapText(base, fontSize, selectedFont, isBold, isItalic)
+    active.set({ text, fontSize: fitted })
+    canvas.renderAll()
   }
 
   // Load the caller's "My Uploads" library once on mount. Server scopes it to
@@ -2036,14 +2008,26 @@ export default function DesignerCanvas({
                         {/* TEXT TAB */}
             {activeTab === 'text' && (
               <>
+                {/* The starting affordance, first thing in the panel. It puts a
+                    live text on the shirt rather than committing one from here. */}
+                <button onClick={startNewText}
+                  className="w-full bg-[#dd3333] text-white py-3 rounded font-bold text-sm tracking-wide hover:opacity-85 transition-opacity">
+                  + Add Text
+                </button>
                 <div>
                   <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Your Text</label>
                   <input type="text" value={textInput}
-                    onChange={e => setTextInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && addText()}
-                    placeholder="Type something..."
-                    className="w-full mt-1 bg-gray-100 border border-gray-200 rounded px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333]"
+                    onChange={e => handleTextInputChange(e.target.value)}
+                    disabled={selectedObjectType !== 'text'}
+                    placeholder={selectedObjectType === 'text' ? 'Type something...' : 'Nothing selected'}
+                    className="w-full mt-1 bg-gray-100 border border-gray-200 rounded px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333] disabled:bg-gray-50 disabled:text-gray-400 disabled:placeholder-gray-400"
                   />
+                  {/* Teaches the quicker path, and only once it's useful. */}
+                  {selectedObjectType === 'text' && (
+                    <p className="mt-1.5 text-[11px] text-gray-500 bg-gray-50 border border-gray-200 rounded px-2 py-1.5 leading-relaxed">
+                      Or <span className="font-semibold text-gray-700">double-click</span> the text on the shirt to edit it there.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Font</label>
@@ -2207,10 +2191,6 @@ export default function DesignerCanvas({
 
                   </div>
                 </div>
-                <button onClick={addText}
-                  className="w-full bg-[#dd3333] text-white py-3 rounded font-bold text-sm tracking-wide hover:opacity-85 transition-opacity">
-                  + Add to Shirt
-                </button>
                 <button onClick={deleteSelected}
                   className="w-full border border-red-800 text-red-400 py-2 rounded text-sm hover:bg-red-900/20 transition-colors">
                   Delete Selected

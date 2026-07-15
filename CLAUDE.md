@@ -648,7 +648,9 @@ enhancement):
   verification).
 - **Switch products mid-design** — change from Cotton Tee to Ring-Spun etc.
   without starting over; preserves design elements, adapts print-area
-  coordinates. Nontrivial UX + data work (see "Larger consideration items").
+  coordinates. Nontrivial UX + data work. **Same underlying capability as
+  [Design Portability](#design-portability-post-phase-3-candidate) under "Named
+  Future Features" — scope the two together, don't build either in isolation.**
 - **Live text preview** — text appears on the shirt in real time as the customer
   types (line break on Enter, no "Add Text" button). Replaces the current
   "type in box, then add to shirt" flow.
@@ -672,9 +674,99 @@ enhancement):
   the print shop.
 
 **Larger consideration items** (flag for discussion, not scoped tonight):
-- **Switch-products-mid-design** and the **AI image generator** are both
-  meaningful net-new features that deserve dedicated discovery conversations
-  before scoping. Not "small fixes" — set expectations accordingly.
+- **Switch-products-mid-design** / **Design Portability** (one capability — see
+  "Named Future Features") and the **AI image generator** are both meaningful
+  net-new features that deserve dedicated discovery conversations before scoping.
+  Not "small fixes" — set expectations accordingly.
+
+## Named Future Features
+
+Real projects, not backlog bullets. Each needs a discovery conversation and
+multi-day scoping before being committed to a phase — listed here so they're
+costed honestly instead of mistaken for small fixes.
+
+### Design Portability (post-Phase-3 candidate)
+
+> **Scope this together with the "Switch products mid-design" backlog item —
+> they are the same underlying capability.** Whichever gets built first should
+> build the shared foundation for both.
+
+**The gap.** A saved design (Day 8) freezes **artwork and product together**.
+Customers want the *artwork* to be portable: design a family-reunion graphic
+once, then put it on a tee, a onesie, and a hoodie. Today that means rebuilding
+the design from scratch on each product.
+
+**Why it isn't a small fix.** Canvas coordinates are tied to the **source
+product's print area**, so artwork isn't separable from placement as the data
+stands today:
+
+- **Separate artwork from placement.** A design must be storable independently of
+  any one product's print-area geometry. Today `canvas_json_front/back` bakes in
+  coordinates for the product it was made on, and `design_orders` freezes a
+  print-area snapshot (`print_area_front/back`) alongside it — deliberately, for
+  print fidelity. Portability needs an artwork representation that is
+  print-area-relative rather than absolute.
+- **Re-placement when print areas differ** in size or aspect ratio. A tee's front
+  area and a onesie's are not the same box, and the per-template print areas
+  (Phase 2/3) make that explicit. Needs a *decided rule*: scale-to-fit?
+  re-center? let the customer adjust against a preview? (Likely "auto-place, then
+  let them nudge" — but that's a product decision to make deliberately, not an
+  implementation detail to stumble into.)
+- **A UX surface** for "apply this design to another product": where it lives (My
+  Designs drawer? the designer? the product page?), and what the customer sees
+  when artwork doesn't fit the new area cleanly.
+
+**Value.** High for the group / team / small-business buyer — reunions, teams,
+staff shirts — who inherently want one graphic across several garment types, and
+who buy in volume.
+
+**Size.** Multi-day. Discovery conversation first, then scope.
+
+### Designer on Mobile — 🚨 LAUNCH GATE (see BUILD_PLAN.md → BLOCKER-2)
+
+**The designer is desktop-only today and this blocks the Phase 6 cutover.** Most
+customers order on phones, so launching desktop-only launches closed to most of
+the store's traffic. `DesignerCanvas.tsx` has **zero** responsive breakpoints and
+a fixed 288px + 256px sidebar pair — 544px of chrome before the shirt, on a
+390px-wide phone.
+
+Phase-sized; gets a dedicated discovery pass **after Phase 3 closes**. Scope
+headings only: responsive layout, touch-first interactions (several affordances
+are hover-only today with no touch equivalent — the My Uploads "+ Add" overlay,
+tile ✕ controls, the My Designs "Open" overlay), and on-screen-keyboard
+management. **Full detail + the sequencing constraint live in BUILD_PLAN.md
+under BLOCKER-2** — that's the canonical entry; this is the pointer.
+
+### Add Text v2 — live-preview typing (named upgrade, post-Phase-3 sign-off)
+
+Day 9 shipped **v1** (see the Day 9 notes): the Add Text button *starts* a text
+on the shirt already in edit mode, so you type and watch it appear. **v2 is the
+rest of Denise's 7/12 ask: Enter = new line.**
+
+Why it's a separate project rather than a follow-on tweak:
+
+- **`reWrapText` deletes newlines by design** (`text.replace(/\n/g,' ')`), then
+  word-wraps to the print area and auto-shrinks the font. Enter=newline requires
+  the wrap loop to preserve *intentional* breaks while still auto-wrapping — a
+  rewrite, not a tweak. Otherwise a customer's line breaks survive until their
+  next style tweak and then silently vanish (the same class as the Day-9
+  silent-revert bug).
+- **The honest fix is migrating to Fabric `Textbox`** (fixed width = print area,
+  native wrapping, Enter free) and moving auto-shrink to blur or an explicit
+  "fit" — live re-wrapping every keystroke fights Fabric's edit mode (mutating
+  `.text` mid-edit disturbs the caret) and makes type size jump while typing.
+- **Curve/arc will still not compose.** `createCurvedText` **rasterizes text to an
+  image**, so there's nothing to type into; curved text even selects as an
+  *image*. Curve stays a post-hoc effect (type → curve → picture; uncurve to
+  re-edit). An honest, permanent gap in "live preview" unless curve rendering is
+  re-architected.
+
+**Sequencing:** deliberately deferred past Phase 3 sign-off — v2 rewrites the
+wrap engine that *every* text object depends on, and doing that immediately
+before the close-out sweep would mean re-testing every text path on both
+products. **Do the Designer-on-Mobile discovery BEFORE v2** (BUILD_PLAN
+BLOCKER-2): they share the on-screen-keyboard problem, so designing v2
+desktop-only would mean reworking it.
 
 ## Deployment Notes
 

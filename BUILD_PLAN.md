@@ -57,6 +57,39 @@ a locked `saved_designs` side table *because* of this — stamping
 which design" world-readable and enumerable. The design *content* remains exposed
 until this blocker closes.
 
+### BLOCKER-2: Designer on Mobile — phase-sized, needs its own discovery pass
+
+> **LAUNCH GATE — the designer is desktop-only today and must work on phones
+> before the Phase 6 cutover. The majority of customers order via mobile;
+> launching desktop-only means launching closed to most of the store's traffic.**
+
+**Must complete before the Phase 6 cutover.** This is **phase-sized** — a project,
+not a polish item — and it gets a **dedicated discovery pass after Phase 3
+closes**. Deliberately NOT scoped in detail here; the gate is what's being
+recorded today.
+
+Verified against the code 2026-07-15: `DesignerCanvas.tsx` has **zero** responsive
+breakpoints (`grep -c 'sm:|md:|lg:'` → 0), and the layout is `h-screen` with a
+fixed **288px** left tool sidebar + **256px** right sidebar — **544px of chrome
+before the shirt**. On a 390px-wide phone the designer is unusable as built.
+
+Scope headings only (to be filled in at discovery):
+
+- **Responsive layout** — the two fixed sidebars must become something else on
+  small screens (drawers? bottom sheet? tabs?), and the canvas needs to own the
+  viewport.
+- **Touch-first interactions** — drag / resize / select assume a mouse. Several
+  affordances are hover-only today and have **no touch equivalent**: the My
+  Uploads "+ Add" overlay, the tile ✕ controls, the My Designs "Open" overlay.
+- **On-screen keyboard management** — the keyboard covers roughly half the
+  viewport, so text editing needs `visualViewport` handling to keep the print
+  area visible while typing.
+
+**Sequencing note — this overlaps Add Text v2.** Add Text v2 (true live-preview
+typing, Textbox migration — see CLAUDE.md "Named Future Features") and this gate
+share the keyboard problem. **Do mobile discovery FIRST**, so v2 isn't designed
+desktop-only and then reworked.
+
 ## Phase Sequence
 
 ### Phase 1: Foundation — Auth & Customer Identity (~1 week) — ✅ Complete (2026-07-11)
@@ -128,6 +161,9 @@ no regressions from later days.
 
 - **Gate: BLOCKER-1 must be closed** (see Blockers above) — do not cut over while
   all non-completed designs are enumerable/writable via the anon key.
+- **Gate: BLOCKER-2 (Designer on Mobile) must be complete** — do not cut over
+  with a desktop-only designer; most customers order on phones.
+- End-to-end testing must cover **phones**, not just desktop browsers.
 - Item 9: Order email verification
 - End-to-end testing across products, sizes, devices
 - Side-by-side comparison with ImprintNext
@@ -138,6 +174,11 @@ no regressions from later days.
 ## Total Estimate
 
 8-10 weeks of focused build work, calendar.
+
+> **This estimate does NOT yet include BLOCKER-2 (Designer on Mobile)**, which is
+> phase-sized and unscoped pending its discovery pass after Phase 3 closes. It is
+> a launch gate, so the calendar to cutover will grow once it's scoped — treat
+> 8-10 weeks as the pre-mobile figure, not the number to launch.
 
 ## Deferred (V1.1)
 
