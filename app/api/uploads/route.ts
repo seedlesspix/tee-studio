@@ -119,6 +119,11 @@ export async function POST(request: NextRequest) {
       source: str(body.source),
       width: num(body.width),
       height: num(body.height),
+      // The file the customer actually uploaded, when it differs from the
+      // display rendition (AI/PSD/EPS/PDF). Cloudinary kept it all along; we
+      // simply weren't recording where.
+      original_url: str(body.originalUrl),
+      original_format: str(body.originalFormat)?.toLowerCase() ?? null,
     })
     .select('id, cloudinary_url, file_name, file_type, width, height')
     .single()

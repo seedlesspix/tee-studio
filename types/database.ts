@@ -115,6 +115,8 @@ export type Database = {
           file_type: string | null
           height: number | null
           id: string
+          original_format: string | null
+          original_url: string | null
           session_id: string | null
           shopify_customer_id: string | null
           source: string | null
@@ -128,6 +130,8 @@ export type Database = {
           file_type?: string | null
           height?: number | null
           id?: string
+          original_format?: string | null
+          original_url?: string | null
           session_id?: string | null
           shopify_customer_id?: string | null
           source?: string | null
@@ -141,6 +145,8 @@ export type Database = {
           file_type?: string | null
           height?: number | null
           id?: string
+          original_format?: string | null
+          original_url?: string | null
           session_id?: string | null
           shopify_customer_id?: string | null
           source?: string | null

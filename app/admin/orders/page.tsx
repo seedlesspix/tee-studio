@@ -11,7 +11,16 @@ type ShippingAddress = {
   country?: string
 }
 
-type UploadedFile = { name: string; type: string; url: string }
+type UploadedFile = {
+  name: string
+  type: string
+  /** The display rendition — for AI/PSD/EPS/PDF this is a flattened PNG. */
+  url: string
+  /** The file the customer actually uploaded, when it differs from `url`.
+   *  Absent on plain photo uploads, where `url` already IS the original. */
+  originalUrl?: string
+  originalFormat?: string
+}
 
 type Order = Omit<Tables<'design_orders'>, 'quantities' | 'uploaded_files' | 'shipping_address'> & {
   quantities: Record<string, number> | null
@@ -322,13 +331,32 @@ export default function OrdersAdmin() {
                         <span className="text-lg">📎</span>
                         <div>
                           <p className="text-sm font-mono text-black">{f.name}</p>
-                          <p className="text-xs text-gray-600">{f.type}</p>
+                          <p className="text-xs text-gray-600">
+                            {f.originalUrl
+                              ? `${f.originalFormat?.toUpperCase() || 'original'} — preview is a flattened PNG`
+                              : f.type}
+                          </p>
                         </div>
                       </div>
-                      <button onClick={() => downloadFile(f.url, f.name)}
-                        className="px-3 py-1.5 rounded text-xs font-mono bg-[#dd3333] text-white hover:bg-red-700 transition-all">
-                        {downloading === f.name ? 'Downloading...' : '↓ Download'}
+                      <div className="flex items-center gap-2 shrink-0">
+                      {/* Vector/PDF uploads are flattened for the canvas. The print
+                          shop needs the file the customer actually gave us, so when
+                          an original exists it's the PRIMARY action. */}
+                      {f.originalUrl && (
+                        <button onClick={() => downloadFile(f.originalUrl!, f.name)}
+                          className="px-3 py-1.5 rounded text-xs font-mono bg-[#dd3333] text-white hover:bg-red-700 transition-all whitespace-nowrap">
+                          {downloading === f.name ? 'Downloading...' : `↓ Original${f.originalFormat ? ` (.${f.originalFormat})` : ''}`}
+                        </button>
+                      )}
+                      <button onClick={() => downloadFile(f.url, f.originalUrl ? `${f.name}.png` : f.name)}
+                        className={`px-3 py-1.5 rounded text-xs font-mono transition-all whitespace-nowrap ${
+                          f.originalUrl
+                            ? 'bg-white text-gray-800 border border-gray-300 hover:border-[#dd3333]'
+                            : 'bg-[#dd3333] text-white hover:bg-red-700'
+                        }`}>
+                        {f.originalUrl ? '↓ PNG' : (downloading === f.name ? 'Downloading...' : '↓ Download')}
                       </button>
+                      </div>
                     </div>
                   ))}
                 </div>

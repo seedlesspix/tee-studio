@@ -377,7 +377,12 @@ export default function DesignerCanvas({
   const lastActiveObjectRef = useRef<any>(null)
   const frontObjectsRef = useRef<any[]>([])
   const backObjectsRef = useRef<any[]>([])
-  const uploadedFilesRef = useRef<{ name: string; url: string; type: string }[]>([])
+  // `url` is the DISPLAY rendition (what's on the canvas). `originalUrl` is the
+  // file the customer actually uploaded — set only when they differ, i.e. when we
+  // converted (AI/PSD/EPS/PDF). The print shop needs the original, not the PNG.
+  const uploadedFilesRef = useRef<
+    { name: string; url: string; type: string; originalUrl?: string; originalFormat?: string }[]
+  >([])
   // Product's first/featured image — the shirt fallback when a color resolves no
   // matching mockup (so we never show a blank canvas; the gap is flagged in the
   // template admin's Colors section instead).
@@ -1512,6 +1517,7 @@ export default function DesignerCanvas({
   const persistUploadToLibrary = async (info: {
     url: string; publicId?: string; fileName: string; fileType?: string
     source: string; width?: number; height?: number
+    originalUrl?: string; originalFormat?: string
   }) => {
     try {
       const res = await fetch('/api/uploads', {
@@ -1526,6 +1532,8 @@ export default function DesignerCanvas({
           source: info.source,
           width: info.width,
           height: info.height,
+          originalUrl: info.originalUrl,
+          originalFormat: info.originalFormat,
         }),
       })
       if (!res.ok) return
@@ -1589,13 +1597,23 @@ export default function DesignerCanvas({
           throw new Error(`Cloudinary: ${errData.error?.message || res.statusText}`)
         }
         const data = await res.json()
-        // Use Cloudinary URL transformation to get PNG version
-        const pngUrl = data.secure_url.replace('/upload/', '/upload/f_png/')
+        // Cloudinary KEEPS the original: secure_url points at the uploaded .ai
+        // itself, and /f_png/ is a delivery-time transformation, not a
+        // destructive conversion. Record the original so the print shop can get
+        // the vector — previously we kept only the PNG rendition.
+        const originalUrl: string = data.secure_url
+        const pngUrl = originalUrl.replace('/upload/', '/upload/f_png/')
         const { FabricImage } = await import('fabric')
         const img = await FabricImage.fromURL(pngUrl, { crossOrigin: 'anonymous' })
         await placeImageOnCanvas(img, fabricCanvas)
         // Index the converted PNG in My Uploads (Cloudinary already hosts it).
-        void persistUploadToLibrary({ url: pngUrl, publicId: data.public_id, fileName: file.name, fileType: 'image/png', source: 'converted', width: data.width, height: data.height })
+        void persistUploadToLibrary({ url: pngUrl, publicId: data.public_id, fileName: file.name, fileType: 'image/png', source: 'converted', width: data.width, height: data.height, originalUrl, originalFormat: ext })
+        // Track for the order. These types were never tracked at all, so a fresh
+        // AI/PSD/EPS upload never reached design_orders.uploaded_files — the print
+        // shop only saw it if the customer happened to re-add it from My Uploads.
+        uploadedFilesRef.current = [...uploadedFilesRef.current, {
+          name: file.name, url: pngUrl, type: 'image/png', originalUrl, originalFormat: ext,
+        }]
       } catch (err: any) {
         alert(`Could not convert ${ext.toUpperCase()} file: ${err.message}`)
       }
@@ -1621,9 +1639,25 @@ export default function DesignerCanvas({
         const { FabricImage } = await import('fabric')
         const img = await FabricImage.fromURL(dataUrl)
         await placeImageOnCanvas(img, fabricCanvas)
-        // Persist the rasterized page to My Uploads via Cloudinary.
-        const uploaded = await uploadToCloudinary(dataUrl)
-        if (uploaded) void persistUploadToLibrary({ url: uploaded.url, publicId: uploaded.publicId, fileName: file.name, fileType: 'image/png', source: 'pdf', width: uploaded.width, height: uploaded.height })
+        // Persist the rasterized page for display, AND the source PDF as the
+        // original. Unlike AI/PSD/EPS (which Cloudinary receives whole), the PDF
+        // is rasterized locally by PDF.js — so its original was never uploaded
+        // anywhere and was genuinely discarded. This uploads it.
+        const [uploaded, original] = await Promise.all([
+          uploadToCloudinary(dataUrl),
+          uploadToCloudinary(file),
+        ])
+        if (uploaded) {
+          void persistUploadToLibrary({
+            url: uploaded.url, publicId: uploaded.publicId, fileName: file.name,
+            fileType: 'image/png', source: 'pdf', width: uploaded.width, height: uploaded.height,
+            originalUrl: original?.url, originalFormat: 'pdf',
+          })
+          uploadedFilesRef.current = [...uploadedFilesRef.current, {
+            name: file.name, url: uploaded.url, type: 'image/png',
+            originalUrl: original?.url, originalFormat: 'pdf',
+          }]
+        }
       } catch (err) {
         alert('Could not load PDF. Make sure it is a valid PDF file.')
       }
@@ -1806,11 +1840,15 @@ export default function DesignerCanvas({
       // 4. Upload any customer-uploaded files
       const uploadedFileUrls = await Promise.all(
         uploadedFilesRef.current.map(async (f, idx) => {
-          if (!f.url.startsWith('data:')) return { name: f.name, url: f.url, type: f.type }
+          // originalUrl rides along so the admin/print shop can reach the vector
+          // rather than only the flattened rendition.
+          const extra = f.originalUrl
+            ? { originalUrl: f.originalUrl, originalFormat: f.originalFormat }
+            : {}
+          if (!f.url.startsWith('data:')) return { name: f.name, url: f.url, type: f.type, ...extra }
           const blob = await fetch(f.url).then(r => r.blob())
-          const ext = f.name.split('.').pop() || 'png'
           const url = await uploadToStorage(blob, `${orderId}/uploads/${idx}_${f.name}`, 'customer-uploads')
-          return { name: f.name, url: url || f.url, type: f.type }
+          return { name: f.name, url: url || f.url, type: f.type, ...extra }
         })
       )
 
