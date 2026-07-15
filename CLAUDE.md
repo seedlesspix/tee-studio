@@ -737,36 +737,43 @@ tile ✕ controls, the My Designs "Open" overlay), and on-screen-keyboard
 management. **Full detail + the sequencing constraint live in BUILD_PLAN.md
 under BLOCKER-2** — that's the canonical entry; this is the pointer.
 
-### Add Text v2 — live-preview typing (named upgrade, post-Phase-3 sign-off)
+### Add Text — ✅ v2 mostly SHIPPED (Day 9.2). Only stacked-arc curve remains.
 
-Day 9 shipped **v1** (see the Day 9 notes): the Add Text button *starts* a text
-on the shirt already in edit mode, so you type and watch it appear. **v2 is the
-rest of Denise's 7/12 ask: Enter = new line.**
+**This entry previously said v2 = "Enter = new line, needs the Fabric `Textbox`
+migration, 1.5–2.5 days". That estimate was correct for the design at the time
+and was then invalidated by a design change — recorded here because the reasoning
+is the reusable part.**
 
-Why it's a separate project rather than a follow-on tweak:
+The v2 cost was never the newline; it was the **caret**. With the caret on the
+canvas, Fabric owned the string, so re-wrapping mid-keystroke moved
+`selectionStart`, and `reWrapText`'s `.replace(/\s+/g,' ').trim()` would have
+eaten the space just typed (you could never type *between* words). That forced
+either length-preserving wrap + index math, or Textbox.
 
-- **`reWrapText` deletes newlines by design** (`text.replace(/\n/g,' ')`), then
-  word-wraps to the print area and auto-shrinks the font. Enter=newline requires
-  the wrap loop to preserve *intentional* breaks while still auto-wrapping — a
-  rewrite, not a tweak. Otherwise a customer's line breaks survive until their
-  next style tweak and then silently vanish (the same class as the Day-9
-  silent-revert bug).
-- **The honest fix is migrating to Fabric `Textbox`** (fixed width = print area,
-  native wrapping, Enter free) and moving auto-shrink to blur or an explicit
-  "fit" — live re-wrapping every keystroke fights Fabric's edit mode (mutating
-  `.text` mid-edit disturbs the caret) and makes type size jump while typing.
-- **Curve/arc will still not compose.** `createCurvedText` **rasterizes text to an
-  image**, so there's nothing to type into; curved text even selects as an
-  *image*. Curve stays a post-hoc effect (type → curve → picture; uncurve to
-  re-edit). An honest, permanent gap in "live preview" unless curve rendering is
-  re-architected.
+Day 9.1's **box-first pivot removed the caret from the canvas** — the DOM
+textarea owns it — and the whole cost collapsed. **Enter = new line shipped in
+Day 9.2 for ~half a day, with NO Textbox migration**: `IText` renders `\n`
+perfectly well, and `reWrapText` just became paragraph-aware (`split('\n')` →
+wrap each paragraph → concat; both shrink loops unchanged, since the height loop
+already counted total lines).
 
-**Sequencing:** deliberately deferred past Phase 3 sign-off — v2 rewrites the
-wrap engine that *every* text object depends on, and doing that immediately
-before the close-out sweep would mean re-testing every text path on both
-products. **Do the Designer-on-Mobile discovery BEFORE v2** (BUILD_PLAN
-BLOCKER-2): they share the on-screen-keyboard problem, so designing v2
-desktop-only would mean reworking it.
+**Lesson worth keeping: when an estimate is dominated by one constraint, name the
+constraint — a later design change may delete it, and the estimate with it.**
+
+**What actually remains of v2 — stacked-arc curve.** Curve and multi-line still
+don't compose: `createCurvedText`/the curve effect lay **every character along a
+single arc** (`rawText.split('')`), so a `\n` measures ~0 and silently vanishes —
+"Ham⏎Cheese" would render as one arc reading "HamCheese". Day 9.2 guards this
+(the Curve slider is disabled for multi-line text with a note, plus a backstop in
+the curve effect), so it fails loudly instead of silently. Making curve work on
+stacked lines means re-architecting the arc renderer for multiple arcs — a real
+project, unscoped, low priority.
+
+**Also deliberately gone:** typing directly *on* the garment. Text is edited in
+the box only (one editing surface, one source of truth). That was the trade that
+made intentional breaks safe — `obj.text` mixes the customer's newlines with the
+wrapper's, and they're the same character, so `_originalText` could never be
+re-derived from it without flattening stacked lines.
 
 ## Deployment Notes
 

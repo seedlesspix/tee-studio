@@ -85,10 +85,14 @@ Scope headings only (to be filled in at discovery):
   viewport, so text editing needs `visualViewport` handling to keep the print
   area visible while typing.
 
-**Sequencing note — this overlaps Add Text v2.** Add Text v2 (true live-preview
-typing, Textbox migration — see CLAUDE.md "Named Future Features") and this gate
-share the keyboard problem. **Do mobile discovery FIRST**, so v2 isn't designed
-desktop-only and then reworked.
+**Sequencing note (updated Day 9.2 — the overlap shrank).** This gate previously
+had to precede "Add Text v2", because live-preview typing put a caret on the
+canvas and shared the on-screen-keyboard problem. Day 9.1/9.2 moved text editing
+into a **DOM textarea** in the panel instead, so typing is now a normal form
+control the OS keyboard already handles well — which is *easier* on mobile than a
+caret on a canvas, not harder. **No sequencing constraint remains**; the keyboard
+work here is now about keeping the print area visible while a normal input has
+focus.
 
 ## Phase Sequence
 

@@ -391,7 +391,7 @@ export default function DesignerCanvas({
   useEffect(() => { isUppercaseRef.current = isUppercase }, [isUppercase])
   // The "Your Text" box is the typing surface: the button focuses it, and the
   // first keystroke with nothing selected spawns the text on the shirt.
-  const textInputRef = useRef<HTMLInputElement>(null)
+  const textInputRef = useRef<HTMLTextAreaElement>(null)
   const spawningRef = useRef(false)
   const pendingTextRef = useRef('')
   // "My Uploads" library — the caller's previously-uploaded images (server
@@ -866,70 +866,19 @@ export default function DesignerCanvas({
         setTextInput('')
       })
 
-      // Keep _originalText in sync with typing done ON the shirt.
+      // ONE editing surface: the box.
       //
-      // Fabric's IText is editable by default, so customers could already
-      // double-click and retype — but nothing synced it back, and the style
-      // effect re-derives `text` from `_originalText`. Net result: retype on the
-      // shirt, then touch ANY style control, and the words silently reverted to
-      // the previous ones. This is the fix.
-      canvas.on('text:changed', (e: any) => {
+      // Fabric's in-canvas edit mode is deliberately off (editable:false below).
+      // With intentional breaks preserved, obj.text mixes two kinds of newline —
+      // the customer's and the wrapper's — and they're the same character, so
+      // _originalText could not be re-derived from it without flattening the
+      // customer's stacked lines. Double-click therefore selects the text and
+      // hands the caret to the box, which is the single source of truth.
+      canvas.on('mouse:dblclick', (e: any) => {
         const obj = e.target
-        if (!obj) return
-        // Strip the newlines reWrapText inserts — _originalText is the raw,
-        // unwrapped string everything else re-derives from.
-        const raw = (obj.text || '').replace(/\n/g, ' ')
-        obj._originalText = raw
-        setTextInput(raw)
-        setSelectedTextPreview(raw.trim())
-        // Contain overflow live WITHOUT re-wrapping: mutating the string here
-        // would move Fabric's caret mid-word. Shrink keeps it inside the box;
-        // the full re-wrap happens on exit. (Proper live wrapping on this path
-        // is the v2 Textbox migration.)
-        fitAndConstrain(obj, { wrap: false })
-      })
-
-      // Enter finishes the text rather than inserting a line break.
-      //
-      // A break WOULD appear — and then silently die on exit, because
-      // _originalText collapses newlines and reWrapText re-derives from it. That
-      // doomed break is the same class of trap as the silent-revert bug, so
-      // until v2 makes multi-line real, Enter does something predictable.
-      canvas.on('text:editing:entered', (e: any) => {
-        const obj = e.target
-        const textarea = obj?.hiddenTextarea
-        if (!textarea) return
-        const onKeyDown = (ev: KeyboardEvent) => {
-          if (ev.key !== 'Enter') return
-          ev.preventDefault()
-          ev.stopPropagation()
-          obj.exitEditing()
-          canvas.renderAll()
-        }
-        textarea.addEventListener('keydown', onKeyDown)
-        obj.__enterHandler = onKeyDown
-      })
-
-      // Leaving edit mode: re-fit to the print area, and drop a text left empty
-      // (clicked "+ Add Text" then clicked away) so it can't linger invisibly or
-      // count as design content on the Next Step check.
-      canvas.on('text:editing:exited', (e: any) => {
-        const obj = e.target
-        if (!obj) return
-        if (obj.__enterHandler) {
-          obj.hiddenTextarea?.removeEventListener('keydown', obj.__enterHandler)
-          obj.__enterHandler = null
-        }
-        const raw = ((obj._originalText ?? obj.text) || '').replace(/\n/g, ' ').trim()
-        if (!raw) {
-          canvas.remove(obj)
-          setTextInput('')
-          setSelectedTextPreview('')
-          setSelectedObjectType(null)
-          canvas.renderAll()
-          return
-        }
-        fitAndConstrain(obj)
+        if (!obj || (obj.type !== 'i-text' && obj.type !== 'textbox')) return
+        textInputRef.current?.focus()
+        textInputRef.current?.select()
       })
 
       setFabricCanvas(canvas)
@@ -1040,6 +989,13 @@ export default function DesignerCanvas({
 
         canvas.on('object:added', (e: any) => {
           if (e.target) applyControls(e.target)
+          // Text is edited in the box, never in-canvas — see the mouse:dblclick
+          // handler. Applied here so RESTORED designs (loaded from canvas JSON,
+          // where editable defaults back to true) are covered too, not just the
+          // ones we create.
+          if (e.target && (e.target.type === 'i-text' || e.target.type === 'textbox')) {
+            e.target.editable = false
+          }
         })
         canvas.on('selection:created', (e: any) => {
           if (e.selected) e.selected.forEach(applyControls)
@@ -1118,6 +1074,12 @@ export default function DesignerCanvas({
     // Get original text
     const rawText = (active as any)._originalText || (active as any).text || ''
     if (!rawText) return
+
+    // The arc renderer lays EVERY character along a single arc (rawText.split('')
+    // below), so a newline would measure ~0 and silently disappear — stacked
+    // lines would run together into one arc. The slider is disabled for
+    // multi-line text in the panel; this is the backstop.
+    if (curveAmount !== 0 && rawText.includes('\n')) return
 
     const spawnX = (active as any).left || 280
     const spawnY = (active as any).top || 350
@@ -1251,13 +1213,16 @@ export default function DesignerCanvas({
       return tmpCtx.measureText(t).width
     }
 
-    // Use original text without existing newlines for re-wrapping
-    const cleanText = text.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim()
-    const words = cleanText.split(' ')
+    // A newline here is an INTENTIONAL break the customer typed (Enter in the
+    // box) and must survive: each break starts a paragraph, and each paragraph
+    // wraps within itself. Collapsing them was the old behaviour, and it's why
+    // Enter used to lay a doomed break that vanished on the next re-wrap.
+    const paragraphs = text.split('\n').map(p => p.replace(/\s+/g, ' ').trim())
+    const words = paragraphs.flatMap(p => p.split(' ')).filter(Boolean)
     let autoFontSize = targetFontSize
 
-    // Reduce font size until longest word fits
-    while (autoFontSize > 8) {
+    // Reduce font size until the longest single word fits (a word can't break)
+    while (autoFontSize > 8 && words.length) {
       const longestWord = words.reduce((a, b) =>
         measureWidth(a, autoFontSize) > measureWidth(b, autoFontSize) ? a : b
       )
@@ -1265,20 +1230,26 @@ export default function DesignerCanvas({
       autoFontSize -= 1
     }
 
-    // Build wrapped lines
+    // Build wrapped lines, paragraph by paragraph
     const buildLines = (size: number) => {
       const lines: string[] = []
-      let currentLine = ''
-      words.forEach(word => {
-        const testLine = currentLine ? currentLine + ' ' + word : word
-        if (measureWidth(testLine, size) > maxWidth && currentLine) {
-          lines.push(currentLine)
-          currentLine = word
-        } else {
-          currentLine = testLine
+      paragraphs.forEach(paragraph => {
+        if (!paragraph) {
+          lines.push('') // a deliberate blank line
+          return
         }
+        let currentLine = ''
+        paragraph.split(' ').forEach(word => {
+          const testLine = currentLine ? currentLine + ' ' + word : word
+          if (measureWidth(testLine, size) > maxWidth && currentLine) {
+            lines.push(currentLine)
+            currentLine = word
+          } else {
+            currentLine = testLine
+          }
+        })
+        if (currentLine) lines.push(currentLine)
       })
-      if (currentLine) lines.push(currentLine)
       return lines
     }
 
@@ -1308,51 +1279,33 @@ export default function DesignerCanvas({
     }
   }
 
-  // Largest size at which the string fits the print area WITHOUT re-wrapping.
-  // Used mid-edit on the canvas: changing fontSize leaves the string untouched,
-  // so Fabric's caret index stays valid. reWrapText's size assumes the text gets
-  // wrapped, so it can't be reused here — it would leave a long single line
-  // overflowing at a size it thinks is fine.
-  const shrinkToFitWidth = (
-    text: string, targetFontSize: number, fontFamily: string, bold: boolean, italic: boolean,
-  ): number => {
-    const bounds = getPrintAreaBounds()
-    if (!bounds) return targetFontSize
-    const maxWidth = (bounds.right - bounds.left) * 0.92
-    const ctx = document.createElement('canvas').getContext('2d')!
-    const weight = bold ? 'bold' : 'normal'
-    const style = italic ? 'italic' : 'normal'
-    const widest = (size: number) => {
-      ctx.font = `${style} ${weight} ${size}px ${fontFamily}`
-      return text.split('\n').reduce((max, line) => Math.max(max, ctx.measureText(line).width), 0)
-    }
-    let size = targetFontSize
-    while (size > 8 && widest(size) > maxWidth) size -= 1
-    return size
-  }
-
   // THE single enforcement point for the print-area contract.
   //
   // Two separate mechanisms keep text in the box and both are required:
   // reWrapText controls SIZE (font size + line breaks), constrainObject controls
   // POSITION. Doing only the first is how text ended up correctly sized but
   // still sticking out of the box — every text mutation goes through here.
-  //
-  // wrap:false = shrink only, leaving the string (and the caret) alone.
-  const fitAndConstrain = (obj: any, opts?: { wrap?: boolean }) => {
+  const fitAndConstrain = (obj: any) => {
     const canvas = fabricCanvasRef.current
     if (!canvas || !obj) return
-    const raw = ((obj._originalText ?? obj.text) || '').replace(/\n/g, ' ')
+    // Legacy/restored objects predate _originalText: seed it flattened, since
+    // they were authored before intentional breaks existed.
+    if (obj._originalText == null) {
+      obj._originalText = (obj.text || '').replace(/\n/g, ' ').trim()
+    }
+    // NOTE: no newline-stripping here — _originalText now carries the
+    // customer's intentional breaks and reWrapText preserves them.
+    const raw: string = obj._originalText || ''
     if (raw.trim()) {
-      const bold = obj.fontWeight === 'bold'
-      const italic = obj.fontStyle === 'italic'
       const base = isUppercaseRef.current ? raw.toUpperCase() : raw
-      if (opts?.wrap === false) {
-        obj.set({ fontSize: shrinkToFitWidth(obj.text || base, fontSizeRef.current, obj.fontFamily, bold, italic) })
-      } else {
-        const { text, fontSize: fitted } = reWrapText(base, fontSizeRef.current, obj.fontFamily, bold, italic)
-        obj.set({ text, fontSize: fitted })
-      }
+      const { text, fontSize: fitted } = reWrapText(
+        base,
+        fontSizeRef.current,
+        obj.fontFamily,
+        obj.fontWeight === 'bold',
+        obj.fontStyle === 'italic',
+      )
+      obj.set({ text, fontSize: fitted })
     }
     const bounds = getPrintAreaBounds()
     if (bounds) constrainObject(obj, bounds)
@@ -1374,6 +1327,10 @@ export default function DesignerCanvas({
     })
   }
 
+
+  // The box is bound to the selected text, so its value tells us whether the
+  // design is stacked — which the curve renderer can't represent.
+  const textIsMultiline = textInput.includes('\n')
 
   // "+ Add another text" — deselect and hand the caret to the box, so the next
   // keystroke spawns a fresh text. The box is the typing surface, so starting a
@@ -1416,6 +1373,8 @@ export default function DesignerCanvas({
       angle: textDirection === 'vertical' ? 90 : 0,
       originX: 'center',
       originY: 'center',
+      // Edited via the box only — see the mouse:dblclick handler.
+      editable: false,
     })
     // Use the latest keystroke, not the one that triggered the spawn — the
     // dynamic import gives fast typists time to get ahead of us.
@@ -1451,6 +1410,16 @@ export default function DesignerCanvas({
     }
 
     active._originalText = value
+    // Emptying the box removes the text — the box IS the text, so leaving the
+    // old words on the shirt (or an invisible empty object that still counts as
+    // design content) would both be wrong. Typing again spawns a fresh one.
+    if (!value.trim()) {
+      canvas.remove(active)
+      setSelectedObjectType(null)
+      setSelectedTextPreview('')
+      canvas.renderAll()
+      return
+    }
     fitAndConstrain(active)
   }
 
@@ -2123,23 +2092,28 @@ export default function DesignerCanvas({
                     keystroke puts the text on the shirt; no button hunt. */}
                 <div>
                   <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Your Text</label>
-                  <input type="text" value={textInput} ref={textInputRef}
+                  <textarea value={textInput} ref={textInputRef} rows={3}
                     onChange={e => handleTextInputChange(e.target.value)}
-                    placeholder="Type something..."
-                    className="w-full mt-1 bg-gray-100 border border-gray-200 rounded px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333]"
+                    placeholder="Type something...&#10;Press Enter for a new line"
+                    className="w-full mt-1 bg-gray-100 border border-gray-200 rounded px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333] resize-y leading-snug"
                   />
                   {/* Teaches the quicker path, and only once it's useful. */}
                   {selectedObjectType === 'text' && (
                     <p className="mt-1.5 text-[11px] text-gray-500 bg-gray-50 border border-gray-200 rounded px-2 py-1.5 leading-relaxed">
-                      Or <span className="font-semibold text-gray-700">double-click</span> the text on the shirt to edit it there.
+                      Or <span className="font-semibold text-gray-700">double-click</span> the text on the shirt to edit it here.
                     </p>
                   )}
                 </div>
-                {/* Demoted: the box starts your first text, this starts the next. */}
-                <button onClick={startNewText}
-                  className="w-full border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-[#dd3333] hover:text-[#dd3333] transition-colors">
-                  + Add another text
-                </button>
+                {/* Only shown when a text is selected — the one state where the
+                    box is occupied and "start a new one" isn't obvious. With
+                    nothing selected the box already starts a new text, so the
+                    button would be noise. */}
+                {selectedObjectType === 'text' && (
+                  <button onClick={startNewText}
+                    className="w-full border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-[#dd3333] hover:text-[#dd3333] transition-colors">
+                    + Add another text
+                  </button>
+                )}
                 <div>
                   <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Font</label>
                   <div className="flex flex-col gap-1 mt-1 max-h-48 overflow-y-auto pr-1">
@@ -2229,20 +2203,30 @@ export default function DesignerCanvas({
                     <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Curve</label>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-800 font-mono">{curveAmount > 0 ? `+${curveAmount}` : curveAmount}</span>
-                      <button onClick={() => setCurveAmount(0)}
-                        className={`text-[10px] px-2 py-0.5 rounded font-mono transition-all ${curveAmount !== 0 ? 'bg-[#dd3333] text-white' : 'bg-gray-200 text-gray-800'}`}>
+                      <button onClick={() => setCurveAmount(0)} disabled={textIsMultiline}
+                        className={`text-[10px] px-2 py-0.5 rounded font-mono transition-all ${
+                          textIsMultiline ? 'bg-gray-100 text-gray-400 cursor-default'
+                            : curveAmount !== 0 ? 'bg-[#dd3333] text-white' : 'bg-gray-200 text-gray-800'
+                        }`}>
                         Straight
                       </button>
                     </div>
                   </div>
                   <input type="range" min="-100" max="100" value={curveAmount}
                     onChange={e => setCurveAmount(Number(e.target.value))}
-                    className="w-full mt-1 accent-[#dd3333]" />
-                  <div className="flex justify-between text-[9px] text-gray-800 font-mono mt-0.5">
-                    <span>⌣ Down</span>
-                    <span>|</span>
-                    <span>⌢ Up</span>
-                  </div>
+                    disabled={textIsMultiline}
+                    className="w-full mt-1 accent-[#dd3333] disabled:opacity-40" />
+                  {textIsMultiline ? (
+                    /* The arc renderer lays every character along ONE arc, so a
+                       stacked design would silently collapse into a single line. */
+                    <p className="text-[10px] text-gray-500 mt-1">Curve works on single-line text.</p>
+                  ) : (
+                    <div className="flex justify-between text-[9px] text-gray-800 font-mono mt-0.5">
+                      <span>⌣ Down</span>
+                      <span>|</span>
+                      <span>⌢ Up</span>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Text Align</label>
