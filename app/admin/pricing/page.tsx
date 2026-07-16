@@ -29,9 +29,6 @@ export default function PricingAdmin() {
   const [addingFor, setAddingFor] = useState<string | null>(null)
   const [newRow, setNewRow] = useState<NewFields>(EMPTY_NEW)
   const [creating, setCreating] = useState(false)
-  // Variant IDs that are SAVED but not reachable in the Online Store's published
-  // catalog — i.e. cart-add would fail on them. Empty until the check returns.
-  const [unreachable, setUnreachable] = useState<Set<string>>(new Set())
 
   const showMessage = (text: string, type: 'success' | 'error' = 'success') => {
     setMessage({ text, type })
@@ -50,19 +47,11 @@ export default function PricingAdmin() {
     setEditValues(vals)
   }
 
-  // Ask whether each saved variant is actually addable to the cart. Checks the
-  // ONLINE STORE's published catalog, not the Storefront API — see the route for
-  // why that distinction is load-bearing.
-  const checkVariants = async (rows: PricingRow[]) => {
-    const ids = rows.map(r => (r.shopify_variant_id ?? '').trim()).filter(Boolean)
-    if (ids.length === 0) return
-    try {
-      const res = await fetch(`/api/admin/variant-check?ids=${encodeURIComponent(ids.join(','))}`)
-      if (!res.ok) return
-      const { checked, missing } = await res.json()
-      if (checked) setUnreachable(new Set<string>(missing))
-    } catch { /* leave unflagged rather than cry wolf */ }
-  }
+  // Phase 4 Day 6: the variant-reachability check (and /api/admin/variant-check)
+  // is deleted with the rest of the Print Charge cart machinery. Checkout no
+  // longer adds Print Charge line items — price_add folds into the design
+  // product's per-shirt price — so shopify_variant_id is legacy config that
+  // can't fail a cart anymore.
 
   useEffect(() => {
     Promise.all([
@@ -74,7 +63,6 @@ export default function PricingAdmin() {
         seedEditValues(p.data)
       }
       if (m.data) setMethods(m.data)
-      if (p.data) void checkVariants(p.data)
       setLoading(false)
     })
   }, [])
@@ -207,8 +195,9 @@ export default function PricingAdmin() {
             Example: $22.00 blank + $12.00 Front + $12.00 Back = <span className="text-[#dd3333]">$46.00 per item</span> for a 2-sided design.
           </p>
           <p className="text-xs text-gray-600 font-mono mt-2">
-            Screen-print rows <span className="text-black">require a Shopify Variant ID</span> — cart-add fails without it.
-            Embroidery is dormant: its cost is baked into the base product price, so its Variant ID is left blank and ignored at checkout.
+            These charges are <span className="text-black">folded into the per-shirt price</span> at checkout.
+            The Shopify Variant ID field is legacy (pre&ndash;Phase 4 cart) — checkout no longer uses it.
+            Embroidery is dormant: its cost is baked into the base product price.
           </p>
         </div>
 
@@ -241,20 +230,13 @@ export default function PricingAdmin() {
                             onChange={e => setEditValues(prev => ({ ...prev, [row.id]: { ...prev[row.id], label: e.target.value } }))}
                             className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm text-black outline-none focus:border-[#dd3333] font-mono mt-1"
                           />
-                          <label className="text-[10px] text-gray-600 font-mono uppercase mt-2 block">Shopify Variant ID</label>
+                          <label className="text-[10px] text-gray-600 font-mono uppercase mt-2 block">Shopify Variant ID <span className="normal-case text-gray-400">(legacy — unused by checkout)</span></label>
                           <input
                             value={editValues[row.id]?.shopify_variant_id ?? ''}
                             onChange={e => setEditValues(prev => ({ ...prev, [row.id]: { ...prev[row.id], shopify_variant_id: e.target.value } }))}
-                            placeholder={method === 'screen_print' ? 'required — e.g. 53029191057724' : 'dormant — leave blank'}
+                            placeholder="legacy — leave blank"
                             className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-xs text-black outline-none focus:border-[#dd3333] font-mono mt-1 placeholder-gray-400"
                           />
-                          {unreachable.has((row.shopify_variant_id ?? '').trim()) && (
-                            <p className="mt-1.5 text-[10px] font-mono text-[#dd3333] leading-relaxed"
-                               title="Checked against the Online Store's published catalog — the same surface cart-add uses. Not the Storefront API: the two sales channels are published independently, so a Storefront check would flag working configs.">
-                              ⚠ not reachable in the Online Store — cart-add will fail.
-                              Check the product is <span className="font-bold">published to the Online Store channel</span>.
-                            </p>
-                          )}
                         </div>
                         <div className="w-28 shrink-0">
                           <label className="text-[10px] text-gray-600 font-mono uppercase">Add to price</label>

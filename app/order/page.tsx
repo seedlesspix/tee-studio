@@ -1,7 +1,6 @@
 'use client'
 import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { addItemsToShopifyCart, getStoreOrigin, resolvePrintChargeVariant, type CartItem } from '../lib/shopify'
 import type { Tables } from '@/types/database'
 
 type DesignOrder = Omit<Tables<'design_orders'>, 'quantities'> & {
@@ -68,108 +67,32 @@ function OrderPage() {
   const backCharge = design?.print_charge_back
     ?? (backDesigned ? (bothSides ? printChargeTotal / 2 : printChargeTotal) : 0)
 
+  // Phase 4 Day 6 (revised): one call renders the design as an ephemeral
+  // Shopify product (per-size variants at the folded per-shirt price) and
+  // joins it to the CUSTOMER'S REAL storefront cart — where it mixes with
+  // other designs and off-the-shelf products for one checkout, done natively
+  // from /cart when they finish shopping. One honest line per size; the old
+  // Print Charge line-item machinery stays gone.
   const handleAddToCart = async () => {
     if (!design || totalQty === 0) { setError('Please select at least one size and quantity.'); return }
     setAdding(true)
     setError('')
 
-    // 1. Persist the chosen quantities and total to design_orders (status:
-    //    ordering) via the server route — public RLS update policy is gone.
-    await fetch(`/api/design-orders/${design.id}`, {
-      method: 'PATCH',
+    const res = await fetch(`/api/design-orders/${design.id}/add-to-cart`, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        quantities,
-        total_qty: totalQty,
-        total_price: parseFloat(total),
-        notes: notes.trim() || null,
-        status: 'ordering',
-      }),
-    })
+      body: JSON.stringify({ quantities, notes: notes.trim() || null }),
+    }).catch(() => null)
 
-    // 2. Build line items for Shopify — one per non-zero size
-    const variantId = design.shopify_variant_id?.split('/').pop() || ''
-    const baseProps: Record<string, string> = {
-      _design_order_id: design.id,
-      _print_charge: `$${(design.print_charge ?? 0).toFixed(2)}`,
-      _color: design.selected_color ?? '',
-      'Custom Design': 'Yes',
-    }
-    if (design.canvas_png_front) baseProps._design_preview_front = design.canvas_png_front
-    if (design.canvas_png_back)  baseProps._design_preview_back  = design.canvas_png_back
-
-    const items: CartItem[] = Object.entries(quantities)
-      .filter(([_, qty]) => qty > 0)
-      .map(([size, qty]) => ({
-        variantId,
-        quantity: qty,
-        properties: { ...baseProps, _size: size },
-      }))
-
-    // 3. Add Print Charge line items for screen_print designs.
-    //    - Embroidery (and any non-screen_print method): skip entirely. The
-    //      surcharge is baked into the base product price for those today.
-    //      To activate: see CLAUDE.md "designer_pricing operational rules".
-    //    - One Print Charge per side that has rendered content
-    //      (canvas_png_front / canvas_png_back). Front-only products like
-    //      hats naturally only get a Front Print charge.
-    //    - Quantity = total shirts (the surcharge is per shirt, not per size).
-    //    - Resolve ALL variants before adding any line items so a missing
-    //      variant fails loud without leaving the cart half-populated.
-    if (design.print_method === 'screen_print') {
-      const printChargeProps: Record<string, string> = {
-        _design_order_id: design.id,
-        _for_design: design.product_title ?? '',
-      }
-
-      if (design.canvas_png_front) {
-        const front = await resolvePrintChargeVariant('screen_print', 1)
-        if (!front.ok) { setError(front.error); setAdding(false); return }
-        items.push({
-          variantId: front.variantId,
-          quantity: totalQty,
-          properties: { ...printChargeProps, _side: 'Front' },
-        })
-      }
-
-      if (design.canvas_png_back) {
-        const back = await resolvePrintChargeVariant('screen_print', 2)
-        if (!back.ok) { setError(back.error); setAdding(false); return }
-        items.push({
-          variantId: back.variantId,
-          quantity: totalQty,
-          properties: { ...printChargeProps, _side: 'Back' },
-        })
-      }
-    }
-
-    // 4. Add to the customer's Shopify session cart via /cart/add.js
-    const result = await addItemsToShopifyCart(items)
-
-    if (!result.ok) {
-      setError(`Could not add to cart: ${result.error}`)
+    if (!res || !res.ok) {
+      const detail = res ? await res.json().catch(() => null) : null
+      setError(detail?.error ?? 'Could not add to cart — please try again.')
       setAdding(false)
       return
     }
 
-    // 4. Mark order as cart_created. shopify_cart_url is now NULL — the AJAX
-    //    endpoint doesn't give us a per-cart URL; the cart lives in cookies.
-    await fetch(`/api/design-orders/${design.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'cart_created', shopify_cart_url: null }),
-    })
-
-    // 5. Redirect to the storefront cart page
-    let storeOrigin: string
-    try {
-      storeOrigin = getStoreOrigin()
-    } catch {
-      // We just succeeded with addItemsToShopifyCart, so this shouldn't fire,
-      // but fall back to the bare /cart path rather than crashing.
-      storeOrigin = ''
-    }
-    window.location.href = `${storeOrigin}/cart`
+    const { cartUrl } = (await res.json()) as { cartUrl: string }
+    window.location.href = cartUrl
   }
 
   if (loading) return (
@@ -333,14 +256,15 @@ function OrderPage() {
           {/* Error */}
           {error && <p className="text-red-400 text-sm font-mono text-center">{error}</p>}
 
-          {/* Add to Cart Button */}
+          {/* Add to Cart — lands in the customer's real storefront cart,
+              alongside other designs and off-the-shelf products */}
           <button onClick={handleAddToCart} disabled={adding || totalQty === 0}
             className="w-full py-4 rounded-xl bg-[#dd3333] text-white font-black text-lg tracking-wide hover:bg-red-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
             {adding ? 'Adding to Cart...' : `Add to Cart → ${totalQty > 0 ? `(${totalQty} item${totalQty > 1 ? 's' : ''})` : ''}`}
           </button>
 
           <p className="text-xs text-gray-800 font-mono text-center">
-            You'll be able to review your order before checkout
+            Keep shopping or check out from your cart when you&apos;re ready
           </p>
         </div>
       </div>

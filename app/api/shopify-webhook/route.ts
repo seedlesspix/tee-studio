@@ -85,21 +85,23 @@ export async function POST(request: NextRequest) {
     line_items,
   } = body
 
-  // 6. Find design_order_id from line item attributes
-  let designOrderId: string | null = null
-  for (const item of line_items || []) {
-    const attr = (item.properties || []).find(
-      (p: any) => p.name === '_design_order_id'
-    )
-    if (attr?.value) {
-      designOrderId = attr.value
-      break
-    }
-  }
+  // 6. Collect EVERY design_order_id in the order (Phase 4 Day 6: mixed
+  // carts are first-class — one order can hold several designs alongside
+  // off-the-shelf products; each design line carries its own id). Taking
+  // only the first would leave later designs stranded in cart_created.
+  const designOrderIds = [
+    ...new Set(
+      (line_items || [])
+        .map((item: any) =>
+          (item.properties || []).find((p: any) => p.name === '_design_order_id')?.value
+        )
+        .filter((v: any): v is string => typeof v === 'string' && v.length > 0)
+    ),
+  ] as string[]
 
-  if (!designOrderId) {
-    console.error(
-      `Webhook: orders/paid for Shopify order ${orderNumber} (${shopifyOrderId}) had no _design_order_id — likely a non-Tee-Studio product`
+  if (designOrderIds.length === 0) {
+    console.log(
+      `Webhook: orders/paid for Shopify order ${orderNumber} (${shopifyOrderId}) had no _design_order_id — off-the-shelf-only order, skipped`
     )
     return NextResponse.json(
       { message: 'No design order ID found — order skipped' },
@@ -117,25 +119,37 @@ export async function POST(request: NextRequest) {
     ? `${billing_address.first_name || ''} ${billing_address.last_name || ''}`.trim()
     : email?.split('@')[0] || ''
 
-  const { error } = await supabase
-    .from('design_orders')
-    .update({
-      shopify_order_id: String(shopifyOrderId),
-      shopify_order_number: String(orderNumber),
-      customer_name: customerName,
-      customer_email: email || '',
-      customer_phone: phone || '',
-      billing_address: billing_address || null,
-      shipping_address: shipping_address || null,
-      status: 'completed',
-    })
-    .eq('id', designOrderId)
+  // One update per design row. Any failure → 500 so Shopify retries the
+  // delivery; completed rows are naturally idempotent (same values re-set).
+  const failures: string[] = []
+  for (const designOrderId of designOrderIds) {
+    const { error } = await supabase
+      .from('design_orders')
+      .update({
+        shopify_order_id: String(shopifyOrderId),
+        shopify_order_number: String(orderNumber),
+        customer_name: customerName,
+        customer_email: email || '',
+        customer_phone: phone || '',
+        billing_address: billing_address || null,
+        shipping_address: shipping_address || null,
+        status: 'completed',
+      })
+      .eq('id', designOrderId)
 
-  if (error) {
-    console.error('Webhook update error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) {
+      console.error(`Webhook update error for design ${designOrderId}:`, error)
+      failures.push(designOrderId)
+    } else {
+      console.log(`Webhook: linked Shopify order ${orderNumber} → design ${designOrderId}`)
+    }
   }
 
-  console.log(`Webhook: linked Shopify order ${orderNumber} → design ${designOrderId}`)
-  return NextResponse.json({ success: true })
+  if (failures.length > 0) {
+    return NextResponse.json(
+      { error: `Failed to update ${failures.length}/${designOrderIds.length} design(s)` },
+      { status: 500 }
+    )
+  }
+  return NextResponse.json({ success: true, designs: designOrderIds.length })
 }

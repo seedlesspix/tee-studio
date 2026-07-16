@@ -5,8 +5,7 @@ import {
   getRedirectUri,
 } from '../../../lib/customer-account'
 
-// Node runtime — we use node:crypto for randomness. Matches the existing
-// /api/cart-add precedent.
+// Node runtime — we use node:crypto for randomness.
 export const runtime = 'nodejs'
 
 // GET /api/customer/login?return_to=<path>

@@ -116,9 +116,29 @@ Storage:
 
 ### designer_pricing operational rules
 
-> **When adding a new row to `designer_pricing`, both `price_add` AND `shopify_variant_id` must be set, or cart-add will fail with a clear error message for that print method × sides combination.**
+> **⚡ PHASE 4 (2026-07-16) RETIRED THE PRINT CHARGE CART MACHINERY.** A
+> finished design now becomes an **ephemeral Shopify product** whose per-size
+> variants carry the design's full `price_per_item` (blank + print charges
+> folded in), published to the Online Store with `seo.hidden=1`, and joins the
+> **customer's real session cart** via
+> `POST /api/design-orders/[id]/add-to-cart` (their own `/cart/add.js`,
+> cookies forwarded — the app lives at create.tshirtdeli.com, same site as the
+> store). Designs mix with off-the-shelf products in one cart / one checkout;
+> the webhook processes every `_design_order_id` in an order. There are **no
+> Print Charge line items** anymore, and
+> **`designer_pricing.shopify_variant_id` is legacy config that checkout never
+> reads** (the admin field is labeled accordingly). `price_add` is still fully
+> live — the designer sums it into `price_per_item` at design time. Deleted,
+> not bypassed: `addItemsToShopifyCart`, `resolvePrintChargeVariant`,
+> `/api/cart-add`, `/api/admin/variant-check` + the pricing admin's
+> reachability badge. Blank products are **designer-only** (Option A,
+> 2026-07-16): never sold standalone, so a blank line can never coexist with
+> its folded design product (no double-charge shape). The historical rules
+> below are kept for context on rows/orders created before Phase 4.
 
-The `shopify_variant_id` column points at a Shopify Print Charge product variant. When a customer adds a screen-print design to their cart, the cart-add flow looks up this variant per side that has rendered content (`canvas_png_front` → `(screen_print, sides=1)`; `canvas_png_back` → `(screen_print, sides=2)`) and adds a separate Print Charge line item with quantity equal to the total shirt count. A NULL `shopify_variant_id` is treated as a configuration error — the resolver in `app/lib/shopify.ts` aborts the entire cart-add (no partial cart state) and surfaces a "missing Shopify variant ID" message to the customer.
+> **(Historical, pre-Phase 4)** When adding a new row to `designer_pricing`, both `price_add` AND `shopify_variant_id` had to be set, or cart-add failed with a clear error message for that print method × sides combination.
+
+The `shopify_variant_id` column points at a Shopify Print Charge product variant. In the pre-Phase-4 flow, when a customer added a screen-print design to their cart, the cart-add flow looked up this variant per side that has rendered content (`canvas_png_front` → `(screen_print, sides=1)`; `canvas_png_back` → `(screen_print, sides=2)`) and added a separate Print Charge line item with quantity equal to the total shirt count. A NULL `shopify_variant_id` was treated as a configuration error — the resolver aborted the entire cart-add (no partial cart state) and surfaced a "missing Shopify variant ID" message to the customer.
 
 > **⚠️ A populated `shopify_variant_id` is NOT enough — the variant must also be
 > PUBLISHED to the Online Store sales channel.** Phase 3 sign-off hit
@@ -145,12 +165,11 @@ represents the print, not the garment. It is a business decision, not an
 oversight: don't "fix" it. Per-product pricing remains expressible through the
 pricing admin if the business ever changes course.
 
-**Embroidery is intentionally dormant.** The Shopify Print Charge product has a third variant for embroidery (variant ID `53029191123260`), but the embroidery rows in `designer_pricing` are left with `shopify_variant_id = NULL` on purpose. Embroidery products currently bake the embroidery cost into the base product price (a $32 polo includes embroidery, not $22 + $10 surcharge). Wiring up the embroidery variant would double-charge customers. The cart-add code path in `handleAddToCart` checks `print_method === 'screen_print'` and skips the Print Charge step entirely for any other method.
+**Embroidery is intentionally dormant.** Embroidery products currently bake the embroidery cost into the base product price (a $32 polo includes embroidery, not $22 + $10 surcharge), so the embroidery rows in `designer_pricing` carry `price_add = 0` in effect. (Historical: the Shopify Print Charge product had a third variant for embroidery, `53029191123260`, deliberately left unwired — moot since Phase 4 retired Print Charge variants from checkout entirely.)
 
-**To switch embroidery to a surcharge model in the future:**
+**To switch embroidery to a surcharge model in the future (post-Phase 4, much simpler):**
 1. Lower base product prices in Shopify by the embroidery cost (e.g., $32 polo → $22).
-2. Populate `shopify_variant_id` on the embroidery row(s) in `designer_pricing` (use `53029191123260` for the existing 1-side row, create a 2-side variant in Shopify if needed).
-3. Remove the `print_method === 'screen_print'` guard in `handleAddToCart` (in `app/order/page.tsx`).
+2. Set `price_add` on the embroidery row(s) in `designer_pricing`. That's it — the designer folds `price_add` into `price_per_item`, and the ephemeral checkout product carries the folded price. No Shopify variant, no cart code change.
 
 **Terminology note.** Customer-facing UI uses the word **"print"**; the internal database key in `designer_pricing.print_method_key` and `design_orders.print_method` remains `screen_print`. Cosmetic-only inconsistency, not functional. Rename later if it causes confusion.
 

@@ -363,6 +363,46 @@ product created and deleted):**
   those gates*, not before.
 - `productDelete` cost: 10 pts.
 
+**⚡ Day-6 REQUIREMENT CORRECTION (2026-07-16, Denise): designs go to the CART,
+not straight to checkout.** This is a cart store — customers combine several
+designs and off-the-shelf products into ONE order. The Mechanism-A pieces that
+assumed a standalone server-side Storefront cart were revised after a live
+grounding pass:
+
+- **Carts have an owning channel (new probe finding, sibling to "name the
+  surface").** The Online Store session cart and Storefront-API carts are the
+  SAME object (the `cart` cookie token IS a Storefront cart id, and each
+  surface filters the lines to its own channel's publications) — but line
+  ELIGIBILITY follows the cart's owning channel, not the API caller's:
+  `/cart/add.js` AND Storefront `cartLinesAdd` both reject headless-only
+  variants for a session cart. **Mixed carts therefore force Online Store
+  publication of design products. No API path routes around it.**
+- **Visibility requirement REVISED (approved by Denise):** from
+  "channel-invisible" to **minimized + time-bound** — `seo.hidden=1` at
+  creation (no store search / sitemap), no collections (ops check: no
+  catch-all automated collections), no Headless publication at all, and the
+  Day-7 retention job ends the exposure. Residual: `/products.json` + direct
+  URL during the customer's shopping window only. Still strictly better than
+  ImprintNext (visible in all channels indefinitely until manual exclusion).
+- **The cart handoff is the customer's own `/cart/add.js`** — the prod app
+  lives at **create.tshirtdeli.com**, same site as the store, so Shopify's
+  `.tshirtdeli.com` cart cookie reaches our routes and
+  `/api/design-orders/[id]/add-to-cart` forwards it (cookie plumbing
+  resurrected from the retired proxy, incl. the Set-Cookie Domain rewrite).
+  One `items[]` POST, all sizes, `_design_order_id` property per line; the
+  route is idempotent (reads the cart first; a design already in the cart →
+  `alreadyInCart`, quantities are then edited natively on /cart).
+- **Blank-vs-designed: Option A (Denise).** Blank products are designer-only —
+  never sold standalone. The double-charge shape is structurally impossible:
+  the blank line never exists; only the design product (folded price) does.
+  Theme walkthrough must confirm blank-product pages suppress the native
+  add-to-cart (the `blank-product`-tag gating in buy-buttons.liquid).
+- **Webhook now processes EVERY `_design_order_id` in an order** (multi-design
+  + mixed orders are first-class; taking only the first would strand later
+  designs in `cart_created`). Verified with a synthetic signed order: 2
+  designs across 3 lines + 1 off-the-shelf line → both rows completed, dedupe
+  held, off-the-shelf ignored.
+
 **Day-by-day (security sequencing approved: lock first, build on locked ground):**
 
 | Day | Work |
@@ -371,7 +411,7 @@ product created and deleted):**
 | 1 | ✅ **DONE 2026-07-16** (9e1a270, 95bc9bd). All probes green — see "Day 1 probe results" above. **ORDERS_PAID registered**: subscription gid …1985565327676 → tee-studio.vercel.app/api/shopify-webhook, created 16:56Z, query-back verified. Residual: first REAL order delivery is the empirical proof Shopify signs with the client secret — watch prod logs for "HMAC verified via SHOPIFY_ADMIN_CLIENT_SECRET"; ImprintNext orders 200-skip harmlessly (no _design_order_id) |
 | 2–3 | ✅ **DONE 2026-07-16** (587ed99 + 2fe1c46, migration 20260716164236). **BLOCKER-1 CLOSED** — all anon design_orders access behind /api/design-orders + /api/designs/draft (service role); three public policies dropped; post-checks green (anon list [], insert 401, blanket update 0 rows, draft-by-UUID restore 200 on prod, admin_all sole survivor). Third table on the locked pattern |
 | 4–5 | ✅ Service + route **DONE 2026-07-16, e2e-verified vs the live store** (throwaway design → `POST /api/design-orders/[id]/checkout` → ephemeral product w/ per-size variants @ folded price → headless-only publish → Storefront cart → checkoutUrl loads; Online Store 404 + absent from /products.json; failure path deletes the product — atomic toward Shopify). `app/lib/design-products.ts` + checkout route. **Tag-search gotcha for cleanup jobs: colon-valued tags must be QUOTED** — `tag:'design_order:<uuid>'` finds it, unquoted silently returns nothing |
-| 6 | Order page becomes the cart; checkout handoff; retire the Print-Charge cart path |
+| 6 | ✅ **BUILT + smoke-verified 2026-07-16 (revised shape) — awaiting Denise's walkthrough before push.** Order page's one button → `/api/design-orders/[id]/add-to-cart` → design joins the customer's REAL session cart mixed with off-the-shelf ($126 = tee + 3× design, per-size lines, properties threaded); idempotent second click; unknown-size 400; notes persisted; atomic product-delete on cart-add failure. Print-Charge machinery deleted (routes, resolvers, admin badge, `getStoreOrigin` restored for the new handoff). Webhook multi-design fix verified. Straight-to-checkout `/checkout` route deleted |
 | 7 | Cleanup jobs: `_design_product` retention (aggressive **after the paid-or-cart-expired gates — see Day-1 probe 7b: deletion silently empties live carts**) + the draft cron **with the `saved_designs` NOT-EXISTS exclusion** |
 | 8 | Webhook e2e on a real test order; attribution; admin order view against dynamic products |
 | 9–10 | Full e2e on **both products** (onesie sweep discipline); buffer; phase checklist |
