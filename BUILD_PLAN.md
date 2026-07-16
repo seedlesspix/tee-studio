@@ -462,6 +462,23 @@ grounding pass:
 | 4–5 | ✅ Service + route **DONE 2026-07-16, e2e-verified vs the live store** (throwaway design → `POST /api/design-orders/[id]/checkout` → ephemeral product w/ per-size variants @ folded price → headless-only publish → Storefront cart → checkoutUrl loads; Online Store 404 + absent from /products.json; failure path deletes the product — atomic toward Shopify). `app/lib/design-products.ts` + checkout route. **Tag-search gotcha for cleanup jobs: colon-valued tags must be QUOTED** — `tag:'design_order:<uuid>'` finds it, unquoted silently returns nothing |
 | 6 | ✅ **BUILT + smoke-verified 2026-07-16 (revised shape) — awaiting Denise's walkthrough before push.** Order page's one button → `/api/design-orders/[id]/add-to-cart` → design joins the customer's REAL session cart mixed with off-the-shelf ($126 = tee + 3× design, per-size lines, properties threaded); idempotent second click; unknown-size 400; notes persisted; atomic product-delete on cart-add failure. Print-Charge machinery deleted (routes, resolvers, admin badge, `getStoreOrigin` restored for the new handoff). Webhook multi-design fix verified. Straight-to-checkout `/checkout` route deleted |
 | 7 | Cleanup jobs: `_design_product` retention (aggressive **after the paid-or-cart-expired gates — see Day-1 probe 7b: deletion silently empties live carts**) + the draft cron **with the `saved_designs` NOT-EXISTS exclusion** |
+
+**🚨 ORDER VISIBILITY — GATES PHASE 5 GROUNDING (found Day 7, 2026-07-16).**
+Orders containing Tee Studio design products (#16986/87/88) are **whole-object
+INVISIBLE to the app** on every Admin API surface — `order(id:){id}` returns
+null, they're absent from `orders` lists/searches (by window, by email), REST
+404s — while every other order, including a NEWER off-the-shelf one (#16989),
+is visible. Ruled out: test orders (`test:true` search empty; visible orders
+`test:false`), field-level PCD redaction (minimal `{id}` query still null),
+recency. Correlation is exact: contains-design-products (all three are also
+Denise-as-buyer — inseparable until a real customer buys). Leading suspect:
+**Protected Customer Data approval** for new Dev Dashboard apps (request it in
+the app's API-access settings, then re-probe). **Phase 5 fulfillment reads
+orders — this must be resolved before Phase 5 is grounded.** Consequence
+already absorbed: the Day-7 retention job dropped its per-order paid gate
+(can't gate deletions on a surface that lies) in favor of a uniform 14-day
+expiry gate. Denise 30-sec check for the record: open #16987 in admin —
+gateway used, any banner (Test/Review) on the order page.
 | 8 | Webhook e2e on a real test order; attribution; admin order view against dynamic products |
 | 9–10 | Full e2e on **both products** (onesie sweep discipline); buffer; phase checklist |
 
