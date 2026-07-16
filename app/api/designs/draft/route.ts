@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '../../../lib/supabase/server'
+import { serviceClient } from '../../../lib/customer-library'
 import {
   DESIGN_STATE_COLUMNS,
   designStateToRow,
@@ -29,8 +29,10 @@ export const runtime = 'nodejs'
 // a future nightly cleanup can find abandoned drafts by
 // status='draft' AND created_at < now() - interval '7 days' (Phase 4).
 //
-// RLS: design_orders allows public insert/read of non-completed rows, so the
-// anon server client is sufficient — drafts carry no PII.
+// RLS: the public design_orders policies are DROPPED (Phase 4 BLOCKER-1
+// lockdown) — this route runs on the service role, and its own guards
+// (status='draft' forced on insert, status='draft' required on read) are the
+// access control. Drafts carry no PII.
 
 // The snapshot shape + its row mapping are shared with /api/designs (My
 // Designs) via lib/design-state, so adding a column updates both paths at once.
@@ -61,7 +63,7 @@ export async function POST(request: NextRequest) {
   }
 
   const id = crypto.randomUUID()
-  const supabase = await createClient()
+  const supabase = serviceClient()
 
   const { error } = await supabase.from('design_orders').insert({
     id,
@@ -86,7 +88,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid draft id' }, { status: 400 })
   }
 
-  const supabase = await createClient()
+  const supabase = serviceClient()
   const { data, error } = await supabase
     .from('design_orders')
     .select(DESIGN_STATE_COLUMNS)

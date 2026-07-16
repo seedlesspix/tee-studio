@@ -283,15 +283,20 @@ export default function DesignerCanvas({
       const canvas = (window as any)._fabricCanvas
       if (!canvas) { if (attempts > 20) clearInterval(poll); return }
       clearInterval(poll)
-      supabase.from('design_orders')
-        // uploaded_files too: without it uploadedFilesRef starts EMPTY on this
-        // path, so the used-files filter has nothing to match against and the
-        // order carries zero files no matter how good the stamps are. (This one
-        // predates the filter — an Edit-Design round trip has always wiped
-        // uploaded_files; the filter just made it visible.)
-        .select('canvas_json_front, canvas_json_back, uploaded_files')
-        .eq('id', designId).single()
-        .then(async ({ data }) => {
+      // BLOCKER-1 lockdown: reads flow through the server route (service
+      // role) — the public RLS read policy is gone. Same URL-as-key
+      // semantics: the exact UUID is required, enumeration is impossible.
+      // uploaded_files rides along: without it uploadedFilesRef starts EMPTY
+      // on this path, so the used-files filter has nothing to match against
+      // and the order carries zero files no matter how good the stamps are.
+      fetch(`/api/design-orders/${designId}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then(async (payload) => {
+          const data = payload?.order as {
+            canvas_json_front: string | null
+            canvas_json_back: string | null
+            uploaded_files: unknown
+          } | undefined
           if (!data) return
           try {
             const { util } = await import('fabric')
@@ -1915,9 +1920,14 @@ export default function DesignerCanvas({
         })
       )
 
-      // 5. Save to design_orders table
-      const { supabase } = await import('../lib/supabase')
-      const { data: order, error } = await supabase.from('design_orders').insert({
+      // 5. Save to design_orders via the server route (service role) — the
+      // public RLS insert policy is gone (BLOCKER-1 lockdown). The route
+      // forces status='draft' and rejects order-linkage/PII columns, so this
+      // payload can't be abused to forge anything beyond a draft.
+      const saveRes = await fetch('/api/design-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
         id: orderId,
         shopify_product_id: product?.id || '',
         shopify_variant_id: selectedVariant?.id || '',
@@ -1956,10 +1966,13 @@ export default function DesignerCanvas({
         price_per_item: pricePerItem,
         total_qty: totalQty,
         total_price: parseFloat(total),
-        status: 'draft'
-      }).select().single()
+        }),
+      })
 
-      if (error) { console.error('Order save error:', error); return null }
+      if (!saveRes.ok) {
+        console.error('Order save error:', saveRes.status, await saveRes.text().catch(() => ''))
+        return null
+      }
       console.log('Design saved:', orderId)
 
       // Cart creation happens on the order page (/order), where the customer

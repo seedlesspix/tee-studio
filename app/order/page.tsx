@@ -1,7 +1,6 @@
 'use client'
 import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { supabase } from '../lib/supabase'
 import { addItemsToShopifyCart, getStoreOrigin, resolvePrintChargeVariant, type CartItem } from '../lib/shopify'
 import type { Tables } from '@/types/database'
 
@@ -24,10 +23,14 @@ function OrderPage() {
 
   useEffect(() => {
     if (!designId) return
-    supabase.from('design_orders').select('*').eq('id', designId).single()
-      .then(({ data, error }) => {
-        if (error || !data) { setError('Design not found'); setLoading(false); return }
-        const order = data as DesignOrder
+    // BLOCKER-1 lockdown: reads flow through the server route (service role)
+    // — the public RLS read policy is gone. Same URL-as-key semantics.
+    fetch(`/api/design-orders/${designId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((payload) => {
+        const data = payload?.order as DesignOrder | undefined
+        if (!data) { setError('Design not found'); setLoading(false); return }
+        const order = data
         setDesign(order)
         setNotes(order.notes ?? '')
         const initQty: Record<string, number> = {}
@@ -70,14 +73,19 @@ function OrderPage() {
     setAdding(true)
     setError('')
 
-    // 1. Persist the chosen quantities and total to design_orders (status: ordering)
-    await supabase.from('design_orders').update({
-      quantities,
-      total_qty: totalQty,
-      total_price: parseFloat(total),
-      notes: notes.trim() || null,
-      status: 'ordering',
-    }).eq('id', design.id)
+    // 1. Persist the chosen quantities and total to design_orders (status:
+    //    ordering) via the server route — public RLS update policy is gone.
+    await fetch(`/api/design-orders/${design.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        quantities,
+        total_qty: totalQty,
+        total_price: parseFloat(total),
+        notes: notes.trim() || null,
+        status: 'ordering',
+      }),
+    })
 
     // 2. Build line items for Shopify — one per non-zero size
     const variantId = design.shopify_variant_id?.split('/').pop() || ''
@@ -146,10 +154,11 @@ function OrderPage() {
 
     // 4. Mark order as cart_created. shopify_cart_url is now NULL — the AJAX
     //    endpoint doesn't give us a per-cart URL; the cart lives in cookies.
-    await supabase.from('design_orders').update({
-      status: 'cart_created',
-      shopify_cart_url: null,
-    }).eq('id', design.id)
+    await fetch(`/api/design-orders/${design.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'cart_created', shopify_cart_url: null }),
+    })
 
     // 5. Redirect to the storefront cart page
     let storeOrigin: string
