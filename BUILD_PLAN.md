@@ -292,16 +292,35 @@ gap. Launch benefit, not implementation detail.
   wrong, the conclusion holds on arithmetic: a cart-add costs ~40–60 pts).
 - Admin app scopes (final, granted exactly): **write_products,
   write_publications, read_orders.** Fallbacks if day-1 probes demand
-  (write_inventory, write_files) are a 2-minute config edit on the same app.
-  Webhook ORDERS_PAID registers via the app (HMAC = the app's API secret key →
-  SHOPIFY_WEBHOOK_SECRET). New env: SHOPIFY_ADMIN_ACCESS_TOKEN (Sensitive),
-  SHOPIFY_ADMIN_DOMAIN (the permanent .myshopify.com domain).
+  (write_inventory, write_files) are a config edit on the same app.
+- **Credential model (corrected 2026-07-17 against live docs — legacy custom
+  apps CANNOT be created after 2026-01-01; new apps come from the Dev
+  Dashboard):** the app is "Tee Studio Server" (already created in the Dev
+  Dashboard). There is NO static shpat_ token. The server holds **client
+  credentials** and mints short-lived Admin tokens itself:
+  `POST https://{shop}.myshopify.com/admin/oauth/access_token` with
+  `grant_type=client_credentials&client_id&client_secret` → `{access_token,
+  scope, expires_in: 86399}` (24h). Doc-verified: grant is for org-owned apps on
+  org-owned stores; the app must be **installed on the store first** (custom
+  distribution → install link); scopes come from the app's Dashboard/TOML config,
+  and the token response's `scope` field is the day-1 proof all three landed.
+  Env: **SHOPIFY_ADMIN_CLIENT_ID** (not secret), **SHOPIFY_ADMIN_CLIENT_SECRET**
+  (Sensitive; rotatable in the Dashboard — an upgrade over the one-time reveal),
+  **SHOPIFY_ADMIN_DOMAIN**. The Day-1 admin client adds a mint-and-cache token
+  helper (~23h TTL). The **"app automation token (CI/CD workflows only)" is NOT
+  the server credential** — it deploys app config, it cannot make Admin data
+  calls; never wire it into the app.
+- Webhook ORDERS_PAID still registers via `webhookSubscriptionCreate`
+  (doc-verified: TOML or GraphQL both supported). HMAC secret for Dashboard apps
+  is expected to be the **client secret** — empirically verified day 1 (the
+  route logs HMAC failures loudly); the separate SHOPIFY_WEBHOOK_SECRET var
+  retires in favor of the client secret once confirmed.
 
 **Day-by-day (security sequencing approved: lock first, build on locked ground):**
 
 | Day | Work |
 |---|---|
-| 0 | **Denise:** custom app + 3 scopes + secrets via terminal drill + domain confirm; check the Storefront token's app has cart scopes *(blocks day 1)* |
+| 0 | **Denise:** Dev Dashboard app "Tee Studio Server" — set the 3 scopes, choose custom distribution, install on the store (scope-approval screen), client ID/secret via terminal drill, domain confirm; check the Storefront token's app has cart scopes *(blocks day 1)* |
 | 1 | Grounding against the REAL store: admin client, publication/channel identification, create→publish→cart probe on a throwaway product, inventory/files scope probes, webhook registration + HMAC round-trip, measured productSet cost |
 | 2–3 | **BLOCKER-1 — lock first**: the three `design_orders` call sites → service-role routes; policy-drop migration (show-and-approve) |
 | 4–5 | Dynamic-product service (`productSet`: per-size variants, single price, previews as media, `_design_product` tag) + headless publish + Storefront cart flow, on locked ground |
