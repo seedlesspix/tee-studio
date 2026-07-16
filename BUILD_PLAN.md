@@ -260,23 +260,59 @@ Each lives somewhere canonical; this is the index, not the detail.
 | Persistent / shared print-color panel | Design-note quality | CLAUDE.md → Phase 3+ Backlog |
 | Print pricing flat per side | ✅ **Decided 2026-07-15, not open** — a onesie print costs the same as a tee print | CLAUDE.md → designer_pricing ("don't fix this") |
 
-### Phase 4: Cart Architecture Replacement (~2 weeks, heaviest)
+### Phase 4: Cart Architecture Replacement (~2 weeks, heaviest) — PLAN APPROVED 2026-07-17, awaiting day-0 credentials
 
-- **BLOCKER-1: `design_orders` server-mediated access** (see Blockers above) — must
-  close here; gates the Phase 6 cutover.
-- Item 11: Dynamic product creation via Shopify Admin API
-- Item 10: Cart-add proxy modification
-- Item 12: Cleanup job — **must exclude designs with a `saved_designs` row**
-  (`ON DELETE CASCADE` would silently destroy customers' saved work; see CLAUDE.md)
-- Item 7: Cart Liquid customization
-  - **Recorded cart UX expectation (Denise, Phase 3 sign-off):** the current cart
-    shows **two lines** (garment + print charge) which reads as awkward — the
-    wanted outcome is **one line, one price, with the design imagery as the
-    product**. She arrived at this independently while testing; it is Phase 4's
-    dynamic-product architecture described in customer terms, so it belongs here
-    rather than as a cosmetic cart-styling ticket.
-- Item 8: Checkout (verify defaults; no work)
+**Business context, worth naming:** today with ImprintNext every customer design
+becomes a product **live in all channels** — visible on the all-products page
+until Denise manually excludes them in batches. Phase 4's channel-invisible
+creation **deletes that chore entirely** and closes a live storefront-quality
+gap. Launch benefit, not implementation detail.
 
+**Architecture (approved):**
+
+- **Ephemeral-product philosophy: our DB is the source of truth; Shopify
+  products are disposable renderings of it.** Nothing may ever depend on a
+  design-product surviving — a reorder RECREATES the product from the stored
+  design (the "reorder-recreates" model, which dissolved the 90-day-archive
+  question). Cleanup can therefore be aggressive.
+- **Mechanism A — headless-channel-only publication + Storefront API cart.**
+  Dynamic products publish ONLY to the Storefront token's channel (never
+  browsable); purchase via `cartCreate`/`cartLinesAdd` → `checkoutUrl` → standard
+  Shopify checkout. `cart/add.js` and the Print Charge product leave the design
+  purchase path. Channel independence is proven in this store (Phase 3).
+- **The Order Options page becomes the cart** — one line per size, one price,
+  design imagery as the product (Denise's recorded expectation, delivered by us
+  rather than fought through Liquid). Item 7 (Cart Liquid) dissolves into
+  order-page polish. Accepted trade: custom + regular purchases are two checkouts.
+- **Price display: a single variant price** (all size variants carry the same
+  price — garment + print baked in, uniform across sizes).
+- **Per-size variants on the dynamic product close BLOCKER-3.**
+- Rate limits: no engineering needed — Grow shares the Standard 100 pts/s
+  GraphQL tier (verified against live docs 2026-07-17; the tier premise was
+  wrong, the conclusion holds on arithmetic: a cart-add costs ~40–60 pts).
+- Admin app scopes (final, granted exactly): **write_products,
+  write_publications, read_orders.** Fallbacks if day-1 probes demand
+  (write_inventory, write_files) are a 2-minute config edit on the same app.
+  Webhook ORDERS_PAID registers via the app (HMAC = the app's API secret key →
+  SHOPIFY_WEBHOOK_SECRET). New env: SHOPIFY_ADMIN_ACCESS_TOKEN (Sensitive),
+  SHOPIFY_ADMIN_DOMAIN (the permanent .myshopify.com domain).
+
+**Day-by-day (security sequencing approved: lock first, build on locked ground):**
+
+| Day | Work |
+|---|---|
+| 0 | **Denise:** custom app + 3 scopes + secrets via terminal drill + domain confirm; check the Storefront token's app has cart scopes *(blocks day 1)* |
+| 1 | Grounding against the REAL store: admin client, publication/channel identification, create→publish→cart probe on a throwaway product, inventory/files scope probes, webhook registration + HMAC round-trip, measured productSet cost |
+| 2–3 | **BLOCKER-1 — lock first**: the three `design_orders` call sites → service-role routes; policy-drop migration (show-and-approve) |
+| 4–5 | Dynamic-product service (`productSet`: per-size variants, single price, previews as media, `_design_product` tag) + headless publish + Storefront cart flow, on locked ground |
+| 6 | Order page becomes the cart; checkout handoff; retire the Print-Charge cart path |
+| 7 | Cleanup jobs: `_design_product` retention (aggressive, per reorder-recreates) + the draft cron **with the `saved_designs` NOT-EXISTS exclusion** |
+| 8 | Webhook e2e on a real test order; attribution; admin order view against dynamic products |
+| 9–10 | Full e2e on **both products** (onesie sweep discipline); buffer; phase checklist |
+
+**Parallel track (BLOCKER-2 constraint #6): desktop shaping** — Denise + strategy
+partner, runs alongside days 1–10, zero file collision with server work. Output
+deadline: before the mobile build starts. Denise's wishlist is accumulating there.
 ### Phase 5: Fulfillment Backend (~2-3 weeks)
 
 > **DEFINITION OF DONE (Denise, 2026-07-15): the final deliverable is ONE USABLE
