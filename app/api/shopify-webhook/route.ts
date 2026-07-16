@@ -6,7 +6,6 @@ export async function POST(request: NextRequest) {
   // 1. Validate required env vars exist (fail fast with a clear error)
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const webhookSecret = process.env.SHOPIFY_WEBHOOK_SECRET
 
   if (!supabaseUrl || !serviceRoleKey) {
     console.error('Webhook: missing Supabase env vars')
@@ -15,8 +14,21 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   }
-  if (!webhookSecret) {
-    console.error('Webhook: missing SHOPIFY_WEBHOOK_SECRET')
+
+  // Dual-secret HMAC (Phase 4 Day 1): webhooks registered by the Dev Dashboard
+  // app via webhookSubscriptionCreate are signed with the APP CLIENT SECRET;
+  // any admin-registered subscription is signed with the legacy store webhook
+  // secret. Try both, log which matched — once prod logs show the client
+  // secret consistently matching, SHOPIFY_WEBHOOK_SECRET retires.
+  const secretCandidates: Array<[name: string, secret: string]> = []
+  if (process.env.SHOPIFY_ADMIN_CLIENT_SECRET) {
+    secretCandidates.push(['SHOPIFY_ADMIN_CLIENT_SECRET', process.env.SHOPIFY_ADMIN_CLIENT_SECRET])
+  }
+  if (process.env.SHOPIFY_WEBHOOK_SECRET) {
+    secretCandidates.push(['SHOPIFY_WEBHOOK_SECRET', process.env.SHOPIFY_WEBHOOK_SECRET])
+  }
+  if (secretCandidates.length === 0) {
+    console.error('Webhook: no webhook-signing secret configured (SHOPIFY_ADMIN_CLIENT_SECRET / SHOPIFY_WEBHOOK_SECRET)')
     return NextResponse.json(
       { error: 'Server misconfigured: webhook secret missing' },
       { status: 500 }
@@ -27,18 +39,27 @@ export async function POST(request: NextRequest) {
   //    Do NOT use request.json() here, it would re-serialize and break HMAC.
   const rawBody = await request.text()
 
-  // 3. Verify HMAC signature
+  // 3. Verify HMAC signature against each candidate secret
   const headerHmac = request.headers.get('x-shopify-hmac-sha256')
   if (!headerHmac) {
     return NextResponse.json({ error: 'Missing HMAC header' }, { status: 401 })
   }
 
-  const computed = createHmac('sha256', webhookSecret).update(rawBody, 'utf8').digest()
   const provided = Buffer.from(headerHmac, 'base64')
+  const matched = secretCandidates.find(([, secret]) => {
+    const computed = createHmac('sha256', secret).update(rawBody, 'utf8').digest()
+    return computed.length === provided.length && timingSafeEqual(computed, provided)
+  })
 
-  if (computed.length !== provided.length || !timingSafeEqual(computed, provided)) {
+  if (!matched) {
+    // Loud on purpose — repeated HMAC failures make Shopify auto-remove the
+    // subscription, so this line is the canary.
+    console.error(
+      `Webhook: HMAC verification FAILED (topic=${request.headers.get('x-shopify-topic')}) — tried: ${secretCandidates.map(([n]) => n).join(', ')}`
+    )
     return NextResponse.json({ error: 'Invalid HMAC signature' }, { status: 401 })
   }
+  console.log(`Webhook: HMAC verified via ${matched[0]}`)
 
   // 4. Only act on orders/paid. ACK other topics with 200 so Shopify stops retrying.
   const topic = request.headers.get('x-shopify-topic')

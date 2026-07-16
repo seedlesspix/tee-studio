@@ -301,9 +301,14 @@ gap. Launch benefit, not implementation detail.
   `POST https://{shop}.myshopify.com/admin/oauth/access_token` with
   `grant_type=client_credentials&client_id&client_secret` → `{access_token,
   scope, expires_in: 86399}` (24h). Doc-verified: grant is for org-owned apps on
-  org-owned stores; the app must be **installed on the store first** (custom
-  distribution → install link); scopes come from the app's Dashboard/TOML config,
-  and the token response's `scope` field is the day-1 proof all three landed.
+  org-owned stores; the app must be **installed on the store first**. Install
+  path as actually clicked 2026-07-16 (there is NO "Distribution" menu in the
+  current Dev Dashboard): app **Overview page → Installs card → "Install app"
+  button → store approval screen** — scopes appear there as consumer-grouped
+  categories; ours verified matching the three via the expansion chevrons.
+  Scopes come from the app's Dashboard/TOML config, and the token response's
+  `scope` field is the day-1 proof all three landed (confirmed on day 1:
+  `read_orders,write_products,write_publications`, exact match).
   Env: **SHOPIFY_ADMIN_CLIENT_ID** (not secret), **SHOPIFY_ADMIN_CLIENT_SECRET**
   (Sensitive; rotatable in the Dashboard — an upgrade over the one-time reveal),
   **SHOPIFY_ADMIN_DOMAIN**. The Day-1 admin client adds a mint-and-cache token
@@ -316,6 +321,48 @@ gap. Launch benefit, not implementation detail.
   route logs HMAC failures loudly); the separate SHOPIFY_WEBHOOK_SECRET var
   retires in favor of the client secret once confirmed.
 
+**Day 1 probe results (2026-07-16, all against the LIVE store; throwaway
+product created and deleted):**
+
+- **Token mint works**: client-credentials grant → `expires_in 86399`, scope
+  `read_orders,write_products,write_publications` — exact match, proof of
+  install + grant. (Day-0 landing hiccup: the secret arrived **double-pasted**
+  — `read -rs` echoes nothing, so a second paste lands silently; the stored
+  value was the same 38-char secret twice. Detected by length/shape, repaired
+  locally without display. **Add a length self-check to any future secret
+  drill**, and Denise must re-enter the Vercel copy fresh.)
+- **Channel map**: Online Store `Publication/2110128158`, ImprintNext
+  `…/270630945084`, **Headless `…/291451601212` = the Storefront token's
+  channel** (proven empirically: publish to Headless only → `getProduct`
+  visible).
+- **`productSet` creates channel-invisible by default**: 0 publications on
+  creation; storefront URL 404, absent from `/products.json`, Storefront API
+  null. The hard requirement costs nothing — no "hide it" step exists or is
+  needed. Per-size variants + single price + **Supabase-hosted image accepted
+  as product media with NO `write_files` scope**. Cost: **23 pts actual**
+  (bucket 2000, restore 100/s → ~86 products/second sustained; a whole cart of
+  designs is trivial).
+- **Headless-only publish keeps Online Store blind**: after
+  `publishablePublish` (10 pts), Storefront API serves the product while the
+  storefront URL still 404s and `/products.json` still omits it.
+- **`cartCreate` works with the existing public Storefront token** (it already
+  has cart write scopes — the day-0 "check cart boxes" item is moot). Line
+  attributes carry; `checkoutUrl` lands on the primary domain and the checkout
+  page loads (200 terminal at `/checkouts/cn/…`) **for a product published to
+  zero visible channels** — checkout is channel-agnostic.
+- **Inventory defaults are sellable**: `tracked: false`, policy DENY,
+  qty 0 — purchasable with no stock management and no `write_inventory` scope.
+- **🚨 RETENTION-JOB CONSTRAINT (probe 7b): deleting a product SILENTLY
+  EMPTIES any live cart holding it** — `totalQuantity` drops to 0, no error,
+  the checkout URL still loads but hollow. Same silent-destruction class as
+  the draft-cron/saved_designs cascade. The Day-7 `_design_product` retention
+  job must therefore NEVER age-delete a product that could still be in an open
+  cart: delete only after the order is paid (webhook-confirmed) or after the
+  cart's maximum lifetime (~10 days) has safely elapsed since last cart
+  activity referencing it. "Aggressive" retention means aggressive *after
+  those gates*, not before.
+- `productDelete` cost: 10 pts.
+
 **Day-by-day (security sequencing approved: lock first, build on locked ground):**
 
 | Day | Work |
@@ -325,7 +372,7 @@ gap. Launch benefit, not implementation detail.
 | 2–3 | **BLOCKER-1 — lock first**: the three `design_orders` call sites → service-role routes; policy-drop migration (show-and-approve) |
 | 4–5 | Dynamic-product service (`productSet`: per-size variants, single price, previews as media, `_design_product` tag) + headless publish + Storefront cart flow, on locked ground |
 | 6 | Order page becomes the cart; checkout handoff; retire the Print-Charge cart path |
-| 7 | Cleanup jobs: `_design_product` retention (aggressive, per reorder-recreates) + the draft cron **with the `saved_designs` NOT-EXISTS exclusion** |
+| 7 | Cleanup jobs: `_design_product` retention (aggressive **after the paid-or-cart-expired gates — see Day-1 probe 7b: deletion silently empties live carts**) + the draft cron **with the `saved_designs` NOT-EXISTS exclusion** |
 | 8 | Webhook e2e on a real test order; attribution; admin order view against dynamic products |
 | 9–10 | Full e2e on **both products** (onesie sweep discipline); buffer; phase checklist |
 
