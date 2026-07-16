@@ -57,42 +57,91 @@ a locked `saved_designs` side table *because* of this — stamping
 which design" world-readable and enumerable. The design *content* remains exposed
 until this blocker closes.
 
-### BLOCKER-2: Designer on Mobile — phase-sized, needs its own discovery pass
+### BLOCKER-2: Designer on Mobile — DISCOVERY COMPLETE (2026-07-16), scoped
 
 > **LAUNCH GATE — the designer is desktop-only today and must work on phones
 > before the Phase 6 cutover. The majority of customers order via mobile;
 > launching desktop-only means launching closed to most of the store's traffic.**
 
-**Must complete before the Phase 6 cutover.** This is **phase-sized** — a project,
-not a polish item — and it gets a **dedicated discovery pass after Phase 3
-closes**. Deliberately NOT scoped in detail here; the gate is what's being
-recorded today.
+**Status: discovery done (58 findings, file:line-evidenced, 7-agent audit +
+independent verification). Shape approved by Denise 2026-07-16. Estimate ~2–2.5
+weeks. Build slot: AFTER Phase 4 (see "Sequencing after Phase 3").**
 
-Verified against the code 2026-07-15: `DesignerCanvas.tsx` has **zero** responsive
-breakpoints (`grep -c 'sm:|md:|lg:'` → 0), and the layout is `h-screen` with a
-fixed **288px** left tool sidebar + **256px** right sidebar — **544px of chrome
-before the shirt**. On a 390px-wide phone the designer is unusable as built.
+**What breaks today (the blockers, precisely):**
 
-Scope headings only (to be filled in at discovery):
+- **The shirt renders in a 0px-wide box.** 288px + 256px of `shrink-0` sidebars
+  vs a 390px viewport; the `flex-1` canvas section has min-width 0 and collapses
+  to exactly zero (`DesignerCanvas.tsx:2210/:2213/:2529/:2699`). A phone customer
+  sees the tool panel and a clipped sliver of the price column — never the garment.
+- **"Next Step" is the first thing clipped.** Six header occupants in one nowrap
+  row (intrinsic min ~500px), overflow hidden — the rightmost casualty is the only
+  path to checkout (`:2151-2206`).
+- **Nothing scrolls.** `overflow-hidden` at three nesting levels; clipped content
+  is unreachable except by undiscoverable pinch-zoom panning.
+- **The 680×850 stage is hardcoded in three coupled places** (wrapper style
+  `:2572`, Fabric init `:802-807`, px→% constant `:675`).
 
-- **Responsive layout** — the two fixed sidebars must become something else on
-  small screens (drawers? bottom sheet? tabs?), and the canvas needs to own the
-  viewport.
-- **Touch-first interactions** — drag / resize / select assume a mouse. Several
-  affordances are hover-only today and have **no touch equivalent**: the My
-  Uploads "+ Add" overlay, the tile ✕ controls, the My Designs "Open" overlay.
-- **On-screen keyboard management** — the keyboard covers roughly half the
-  viewport, so text editing needs `visualViewport` handling to keep the print
-  area visible while typing.
+**What already works (verified — this halves the project):** the 680×850
+coordinate space is device-independent and saved designs are display-independent;
+the bounds math and Fabric's pointer math are both CSS-scale-invariant (the
+property that makes scale-the-display viable); Day 9's box-first typing is
+mobile-correct at its core (DOM textarea, no canvas caret); constrain handlers are
+input-agnostic; zero keyboard shortcuts exist to lose; iOS tap-to-upload verified
+working; MyDesigns drawer + panel internals already fluid; admin cleanly scopes out.
 
-**Sequencing note (updated Day 9.2 — the overlap shrank).** This gate previously
-had to precede "Add Text v2", because live-preview typing put a caret on the
-canvas and shared the on-screen-keyboard problem. Day 9.1/9.2 moved text editing
-into a **DOM textarea** in the panel instead, so typing is now a normal form
-control the OS keyboard already handles well — which is *easier* on mobile than a
-caret on a canvas, not harder. **No sequencing constraint remains**; the keyboard
-work here is now about keeping the print area visible while a normal input has
-focus.
+**Majors beyond the layout:** hover-only ✕ deletes on upload/design tiles (hidden
+but tappable, no confirm); 24px selection handles vs ~44px touch targets;
+double-click-only text re-edit; the 320px saved-link popover unclamped; order page
+fixed two-column (`order/page.tsx:196/:234`); zero keyboard-awareness
+(no visualViewport anywhere); PLUS a perf batch the audit surfaced: 2.5MB
+unsubsetted fonts + 21 Google families with no font-display and measurement that
+doesn't await font load; Curve slider does a full raster rebuild per input event;
+phone photos ingested at full resolution; zero page-lifecycle persistence (a
+backgrounded Safari tab silently loses the design).
+
+**The approved shape (Denise, 2026-07-16):** shirt-first — the garment owns the
+viewport; the existing four tool tabs (Text/Upload/Art/Style) become a **bottom
+sheet** (peek/half/full); **price + Next Step become a fixed bottom bar** so the
+checkout path can never be clipped again; when the text box focuses, the sheet
+collapses to the docked textarea and the shirt scales into the strip above the
+keyboard (possible only because Day 9 moved the caret into a DOM textarea). One
+breakpoint; desktop untouched.
+
+**Reference baseline — the live ImprintNext mobile designer** (screenshots on
+file, 2026-07-16). Customers are already trained on: shirt dominant with dashed
+print area; bottom tool tab bar (Product/Text/Design/Image/Idea); tap-selection
+showing **finger-sized corner controls** (move / rotate / scale / trash as large
+tap squares); a **contextual editing strip** replacing the tab bar when an object
+is selected (Back/Type/Size/Font/Shape/Color with font-category chips); front/back
+thumbnails + color dropdown above the tools; price + Next pinned **top**.
+Record two uses: **(a) familiarity baseline** — the approved shape speaks the same
+grammar, so customers transfer; the one deliberate deviation is the checkout bar
+at the **bottom** (thumb reach) instead of IN's top. **(b) capability checklist**
+— IN's selected-object handles and contextual text strip are finger-sized and
+functional; Tee Studio mobile must meet that bar, not just render.
+
+**Estimate: ~2–2.5 weeks** (≈1.5–2 without the perf batch). Core relayout 3–4d ·
+touch affordances 1.5–2d · keyboard mode 1d · order page 0.5–1d · real-device QA
+2d · perf batch (fonts/curve/photo-downscale/persistence — benefits desktop too,
+can land separately) 1.5–2d.
+
+**Named constraints — if one falls, the number moves:**
+1. **680×850 coordinate space kept; display CSS-scaled.** Fallback if device
+   testing falsifies: zoom recipe + bounds-helper rework, +1–2d. (Open item for
+   first device test: whether `canvasEl.width` includes devicePixelRatio under
+   Fabric 7 retina scaling — one audit claims yes, empirical desktop behavior says
+   no; either way the nine duplicated conversion sites consolidate into one helper.)
+2. **Box-first typing stays** — keyboard work is viewport management, not editing
+   rework.
+3. **The four tabs are relocated, not redesigned** — a mobile-native tool rethink
+   is a different project.
+4. **Admin stays desktop** (verified: no customer flow touches /admin).
+5. **One breakpoint; desktop untouched above it.**
+6. **Desktop STRUCTURE is settled before the mobile build starts.** Denise has a
+   desktop layout/options shaping conversation coming — **slot it in the Phase 4
+   window, explicitly.** Panel CONTENTS may keep evolving (the sheet inherits
+   them); desktop STRUCTURAL/layout changes after the mobile build would reopen
+   priced questions.
 
 ### BLOCKER-3: the cart sends ONE variant for EVERY size
 
@@ -279,10 +328,10 @@ Reasoning, recorded so it isn't re-litigated:
 
 8-10 weeks of focused build work, calendar.
 
-> **This estimate does NOT yet include BLOCKER-2 (Designer on Mobile)**, which is
-> phase-sized and unscoped pending its discovery pass after Phase 3 closes. It is
-> a launch gate, so the calendar to cutover will grow once it's scoped — treat
-> 8-10 weeks as the pre-mobile figure, not the number to launch.
+> **BLOCKER-2 (Designer on Mobile) is now scoped at ~2–2.5 weeks** (discovery
+> completed 2026-07-16; see the blocker entry for the inventory, approved shape,
+> and named constraints). Add it to the 8–10 week figure — it slots AFTER Phase 4
+> per "Sequencing after Phase 3".
 
 ## Deferred (V1.1)
 
