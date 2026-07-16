@@ -90,11 +90,20 @@ export async function createDesignProduct(
       input: {
         title: input.title,
         status: 'ACTIVE', // sellable; invisible until published
-        // seo.hidden=1: out of Online Store search + sitemap even once
-        // published (the visibility-minimization half of the Day-6 trade).
+        // seo.hidden=1: out of Online Store search + sitemap once published.
+        // Live-verified (control-pair probe 2026-07-16): hides search, but
+        // NOT the auto /collections/all browse page — that's what the
+        // productType below closes.
         metafields: [
           { namespace: 'seo', key: 'hidden', type: 'number_integer', value: '1' },
         ],
+        // A merchant-created collection with handle `all` REPLACES Shopify's
+        // auto all-products collection, and automated-collection rules
+        // support "Product type is not equal to" — this type is the
+        // discriminator that keeps design products out of /collections/all
+        // (Denise-side collection, see BUILD_PLAN Day 6). Also gives admin
+        // product-list filtering for free.
+        productType: 'Custom Design',
         tags: [DESIGN_PRODUCT_TAG, `design_order:${input.designOrderId}`],
         productOptions: [
           {

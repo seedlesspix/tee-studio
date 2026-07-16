@@ -384,6 +384,18 @@ grounding pass:
   Day-7 retention job ends the exposure. Residual: `/products.json` + direct
   URL during the customer's shopping window only. Still strictly better than
   ImprintNext (visible in all channels indefinitely until manual exclusion).
+- **`seo.hidden` live-verified with a control pair (2026-07-16): it is NOT
+  zero-channel invisibility.** Search: conclusively hidden (control indexed
+  within 20s and visible in predictive + full-page search; hidden probe
+  absent from both). **But BOTH probes appeared in `/collections/all`** — the
+  auto-generated all-products browse page at a guessable URL. Fix shipped +
+  pending: design products now carry **`productType: 'Custom Design'`**, and
+  **Denise creates an automated collection with handle `all`** (rule:
+  *Product type is not equal to `Custom Design`*) — a merchant collection
+  handled `all` REPLACES the auto one, so /collections/all stops listing
+  design products. **Walkthrough must re-verify /collections/all after that
+  collection exists.** Sitemap check was lag-inconclusive (doc-based
+  confidence; low stakes given retention deletes products in days).
 - **The cart handoff is the customer's own `/cart/add.js`** — the prod app
   lives at **create.tshirtdeli.com**, same site as the store, so Shopify's
   `.tshirtdeli.com` cart cookie reaches our routes and
