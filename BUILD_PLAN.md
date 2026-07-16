@@ -396,6 +396,25 @@ grounding pass:
   design products. **Walkthrough must re-verify /collections/all after that
   collection exists.** Sitemap check was lag-inconclusive (doc-based
   confidence; low stakes given retention deletes products in days).
+- **Direct-URL purchasability window: ACCEPTED — Denise's explicit call,
+  2026-07-16 (post-walkthrough).** A design product's `/products/custom-…`
+  URL stays live and purchasable from creation until the Day-7 retention job
+  deletes it (paid-or-cart-expired gates). Chosen residual of the cart
+  revision, now decided rather than inherited: browse/search/collections are
+  closed; the raw URL (and `/products.json`) remain reachable during the
+  shopping window. Do not "fix" this without a new decision.
+- **Walkthrough #7 post-mortem (events-log-proven):** purchase flips NOTHING
+  product-side. The confusion had two real sources: **(a)** Shopify
+  AUTO-published each new product to the **United States market catalog**
+  (benign, required by Markets) and the **Microsoft Copilot channel**
+  (real off-site syndication — **Denise turns off that channel's auto-publish
+  of new products**, then a probe re-verifies); **(b)** Denise manually
+  excluded walkthrough products from the Online Store (the ImprintNext-era
+  reflex) — that reflex must retire for `Custom Design` products: excluding a
+  product still in a live cart silently empties those cart lines (probe-7b
+  class). Note: our `resourcePublicationsV2` reads CANNOT see Copilot/Markets
+  publications — blind surface (see CLAUDE.md full-replace/blind-surface
+  rule).
 - **The cart handoff is the customer's own `/cart/add.js`** — the prod app
   lives at **create.tshirtdeli.com**, same site as the store, so Shopify's
   `.tshirtdeli.com` cart cookie reaches our routes and

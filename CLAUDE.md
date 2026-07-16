@@ -271,6 +271,28 @@ Compare versions in `supabase/migrations/` filenames against the output of MCP `
 3. User designs stored to `design_orders` table
 4. Cart creation via Shopify Storefront API
 
+## Full-replace APIs reset unspecified fields — always re-assert the full intended state
+
+This project has now hit the same bug shape three times; treat it as a
+standing rule, not a one-off:
+
+1. **Fabric `canvas.toJSON(props)`** silently ignores its argument — custom
+   props vanished from saves until the writer switched to `toObject(props)`.
+2. **Shopify `productSet`** is a full-replace operation. Creating is safe, but
+   **any future call that UPDATES an existing product by id must re-assert the
+   complete intended state** — `productType: 'Custom Design'`, the
+   `seo.hidden=1` metafield, both tags, status — or the omitted fields reset
+   and the product silently reappears in search / `/collections/all`. This
+   matters for reorder-recreates and any Day-7+ product mutation.
+3. **Blind API surfaces are the read-side twin**: `resourcePublicationsV2`
+   through our app never shows channels the app can't see (Microsoft Copilot,
+   Markets catalogs), and an app's `webhookSubscriptions` query never shows
+   admin-created webhooks. "Verified absent" on a filtered surface is not
+   verified absent.
+
+Rule of thumb: before trusting a write, ask "is this a full replace?"; before
+trusting a read, ask "what does this surface refuse to show me?"
+
 ## Known Issues / Tech Debt
 
 ### Architecture & Structure

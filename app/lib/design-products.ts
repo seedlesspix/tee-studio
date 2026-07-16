@@ -69,6 +69,12 @@ export type DesignProduct = {
   variantsBySize: Record<string, string> // size → variant GID
 }
 
+// ⚠ productSet is a FULL-REPLACE operation (see CLAUDE.md "Full-replace APIs
+// reset unspecified fields"). This function only ever CREATES. If a future
+// path updates an existing product by id (reorder-recreates, retention), it
+// must re-assert the complete intended state — productType, the seo.hidden
+// metafield, BOTH tags, status — or the omissions silently reset and the
+// product reappears in search / collections.
 export async function createDesignProduct(
   input: CreateDesignProductInput
 ): Promise<DesignProduct> {
