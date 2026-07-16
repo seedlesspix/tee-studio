@@ -406,15 +406,33 @@ grounding pass:
 - **Walkthrough #7 post-mortem (events-log-proven):** purchase flips NOTHING
   product-side. The confusion had two real sources: **(a)** Shopify
   AUTO-published each new product to the **United States market catalog**
-  (benign, required by Markets) and the **Microsoft Copilot channel**
-  (real off-site syndication — **Denise turns off that channel's auto-publish
-  of new products**, then a probe re-verifies); **(b)** Denise manually
-  excluded walkthrough products from the Online Store (the ImprintNext-era
-  reflex) — that reflex must retire for `Custom Design` products: excluding a
-  product still in a live cart silently empties those cart lines (probe-7b
-  class). Note: our `resourcePublicationsV2` reads CANNOT see Copilot/Markets
-  publications — blind surface (see CLAUDE.md full-replace/blind-surface
-  rule).
+  (benign, required by Markets) and **"Microsoft Copilot"**; **(b)** Denise
+  manually excluded walkthrough products from the Online Store (the
+  ImprintNext-era reflex) — that reflex must retire for `Custom Design`
+  products: excluding a product still in a live cart silently empties those
+  cart lines (probe-7b class). Note: our `resourcePublicationsV2` reads CANNOT
+  see Copilot/Markets publications — blind surface (see CLAUDE.md
+  full-replace/blind-surface rule).
+- **"Microsoft Copilot" RESOLVED (2026-07-16, doc-verified): no action
+  needed.** It is not an installed app/sales channel — it's **Shopify-managed
+  agentic syndication ("Shopify Catalog")**, admin location **Sales channels →
+  Agentic → Microsoft Copilot** (which is why it isn't in the channel list).
+  The publish event carries no channel id and no api_client_id (Shopify-
+  authored catalog membership). Per Shopify's docs, **`seo.hidden = 1` hides a
+  product from ALL agentic storefronts including Copilot/Shopify Catalog** —
+  and every design product already ships with `seo.hidden=1` (39cca76). The
+  "included on Microsoft Copilot" event is catalog membership; the Catalog's
+  discovery layer filters seo.hidden products from what AI surfaces see.
+  **Leave the Agentic channel ON** (a store-wide opt-out would also pull the
+  real off-the-shelf products out of Copilot discovery). Definitive
+  per-product publication check ran via `publishedOnPublication` against
+  every enumerable publication (6 app channels + MarketCatalog `United
+  States`/Publication 112239083836): the tested design product is live ONLY
+  on the US market catalog — benign Markets membership. Copilot has no
+  API-enumerable publication; the admin product page's Publishing card is the
+  only per-product surface that names it. Residual (same accepted class as
+  the direct-URL window): docs note AI channels may still reference pages via
+  ordinary web crawling.
 - **The cart handoff is the customer's own `/cart/add.js`** — the prod app
   lives at **create.tshirtdeli.com**, same site as the store, so Shopify's
   `.tshirtdeli.com` cart cookie reaches our routes and
