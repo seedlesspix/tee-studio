@@ -690,7 +690,9 @@ Captured for later scoping; not yet slotted into a specific day.
 - **Delete Orders** — an option to delete/archive order rows in admin.
 - **Order statistics** — best-selling products/colors/sizes over any given time
   period. Requires reporting queries + an admin dashboard component. Scope for a
-  dedicated "Admin Reporting" mini-phase.
+  dedicated "Admin Reporting" mini-phase. **Scope this together with
+  [Decal Designs](#decal-designs--catalog-split--sell-through-tracking-post-phase-4-candidate)
+  Part 3 (units-sold-per-decal) — they are one reporting surface, not two.**
 - **Rename "Screen Print" → "Print"** everywhere (methods dropdown, admin,
   customer-facing labels). Fits Phase 3 polish, small change. (Note: the
   internal DB key `screen_print` stays; this is display-only — see the
@@ -858,6 +860,58 @@ the box only (one editing surface, one source of truth). That was the trade that
 made intentional breaks safe — `obj.text` mixes the customer's newlines with the
 wrapper's, and they're the same character, so `_originalText` could never be
 re-derived from it without flattening stacked lines.
+
+### Decal Designs — catalog split + sell-through tracking (post-Phase-4 candidate)
+
+**Real project, three parts scoped TOGETHER — not Phase 4.** Sequencing: candidate
+for the desktop-shaping block or a small dedicated pass before the Phase 6
+cutover. **Part 2's capture is the one time-sensitive piece — it must precede
+launch volume** (see the flag under Part 2). Reporting half joins the
+[Order statistics / "Admin Reporting"](#phase-3-backlog--denise-notes-71226)
+backlog item — build them as one reporting effort.
+
+**Context.** "Decals" are pre-made **design** artwork the customer places on a
+garment (distinct from generic clipart, and distinct from Shopify pre-made
+*products*). Today decal designs live in the `clipart_items` pool
+undifferentiated, so the designer can't present them separately and orders don't
+record which decals were used.
+
+**Part 1 — Clipart/Designs split in the designer** (designer polish scope). Add a
+type distinction to `clipart_items` (clipart vs. design) so the designer presents
+**"Designs"** as its own browsable section separate from generic clipart. Decals
+live **entirely in the Design Tool admin as tagged items — NO reference back to
+Shopify pre-made products.** (Denise runs pre-made *product* sell-through via
+Shopify product-type reports separately; that is a different surface and stays
+separate.)
+
+**Part 2 — Capture decal numbers on orders** (backend completeness).
+> **🚨 FLAG — capture must land BEFORE launch volume.** Every order placed without
+> decal-number capture is a sell-through data point **lost forever** — it can't
+> be backfilled from canvas state after the fact reliably, and never for orders
+> already completed. Prioritize Part 2 ahead of the rest if launch is near.
+
+Mechanics — reuse Phase 3's proven machinery wholesale:
+- Add a **decal-number field** to design-type `clipart_items`.
+- Stamp each placed canvas object with its decal number using the **same
+  `_uploadSrc` stamp technique** the Phase 3 used-files filter uses (see
+  `CANVAS_CUSTOM_PROPS` in `DesignerCanvas.tsx` and the "used-files filter" note
+  under Phase 3 — a new custom prop, e.g. `_decalNumber`, added to the persisted
+  props list).
+- At cart-add, collect the **LIST of decals used** (multiple allowed — front +
+  back, and multiple per side) onto the order row — the **same list-capture
+  machinery as used-uploads** (`uploaded_files` shape → a parallel
+  `decals_used` list). List, not scalar: one design routinely uses several.
+
+**Part 3 — Reporting.**
+- **Primary: units sold per decal over a date range.** Straightforward once Part
+  2 captures the list — sum order quantities grouped by decal number.
+- **Bonus, ZERO extra capture: adult-vs-kids popularity per decal.**
+  Cross-reference the decal list against the **`template_id` already on each
+  order** (Phase 2 — templates carry the product identity, so adult tee vs. baby
+  onesie is already known per order). Join decals × template → per-decal
+  age-segment popularity, for free.
+- **Joins the "Admin Reporting" backlog** (order statistics / best-selling
+  products/colors/sizes) — one reporting effort, one dashboard, not two.
 
 ## Deployment Notes
 
