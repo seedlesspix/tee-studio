@@ -758,11 +758,61 @@ Real projects, not backlog bullets. Each needs a discovery conversation and
 multi-day scoping before being committed to a phase — listed here so they're
 costed honestly instead of mistaken for small fixes.
 
-### Design Portability (post-Phase-3 candidate)
+### Design Portability — ⭐ PROMOTED IN-SCOPE FOR LAUNCH (Denise, 2026-07-28)
+
+> **PROMOTED from deferred candidate to launch-scope during the desktop-shaping
+> pass.** The desktop redesign's **"Products" rail is the auto-re-fit version,
+> not switch-and-warn** — Denise's deliberate call, spending available runway on
+> customer experience (online is a large share of the business; a design left
+> hanging off the edge after a garment switch is exactly the friction to
+> eliminate). This IS the "Switch products mid-design" capability, now committed.
+> **Grounded 2026-07-28** (see the coordinate-model findings below); re-fit
+> behavior options presented to Denise as a visual decision aid before build.
 
 > **Scope this together with the "Switch products mid-design" backlog item —
 > they are the same underlying capability.** Whichever gets built first should
 > build the shared foundation for both.
+
+**Coordinate-model ground truth (2026-07-28, verified against the code).**
+Object `left/top/scaleX/scaleY` in `canvas_json_front/back` are **100% absolute
+to the fixed 680×850 canvas, with zero link to the print area** — no
+print-area-relative field, no object→area pointer, and the constraint logic
+(`constrainObject`/`fitAndConstrain`) only *clamps* absolute coords, never
+computes a box-relative fraction. BUT the print area itself **is** already in a
+portable per-product system: `product_template_print_areas` stores natural px +
+inches, and `design_orders.print_area_front/back` freezes that snapshot — so the
+source box is reconstructable. **Net: the data foundation is ~half-there; the
+artwork↔box relationship is the net-new part.** A port must reconstruct the
+source box, compute each object's `(center − origin)/size` fraction, and
+re-project onto the target box under a **decided re-fit rule**. Per-type
+behavior: **plain text re-fits cleanly** (`reWrapText` already re-derives size by
+measuring the target overlay — but that couples re-fit to the target product's
+print-area overlay being mounted first, no headless path); **images/clipart**
+scale by the fit rule; **stroke width** needs explicit handling; **curved text is
+the hard case** — it's rasterized to a baked PNG at fixed radius/font-size, so it
+must be *re-rendered* (re-invoke the curve renderer with new params via the
+preserved `_originalText`/`_isCurvedText`), not transformed, and still can't do
+multiline. Blast radius: every constrain/spawn/align/text-reflow/export/restore
+path assumes absolute 680×850 (anchors in the 2026-07-28 grounding).
+
+**Re-fit rule (Denise's decision — visual aid built 2026-07-28).** Three rules
+shown on a real adult-tee→onesie example: **A Proportional** (scale-to-fit +
+re-center — distortion-free, guarantees inside-the-box; RECOMMENDED, "auto-fit
+then land in the designer to nudge"), **B Stretch-to-fill** (fills the box but
+distorts letters/spacing on a different aspect ratio), **C Keep-size** (overflows
+a smaller box — the anti-pattern). Recommendation: A + drop into the editor.
+Open questions routed to Denise: confirm A; optional manual "fill the box";
+curved-text behavior (re-curve vs straighten-and-flag); **switch-only vs also
+re-opening a saved design onto another product** (launch scope = switch-only);
+per-side re-fit (front/back each to their own box).
+
+**Implementation note — cheaper path for launch.** A **switch-time transform**
+(compute relative on the fly, re-project, write absolute coords back onto the
+live objects before the PNG/SVG re-render) avoids a storage-model migration and
+is the launch scope. Making `canvas_json` *natively* relative (so any saved
+design re-opens on any product) is the fuller version — bigger, deferrable.
+**Depends on the desktop restructure landing component-first** (needs the
+multi-product designer + a mountable target print-area overlay).
 
 **The gap.** A saved design (Day 8) freezes **artwork and product together**.
 Customers want the *artwork* to be portable: design a family-reunion graphic
@@ -793,7 +843,11 @@ stands today:
 staff shirts — who inherently want one graphic across several garment types, and
 who buy in volume.
 
-**Size.** Multi-day. Discovery conversation first, then scope.
+**Size.** Grounded 2026-07-28 as a real multi-day feature (~7–10 dev-days for the
+switch-time re-fit; curved text is the risk item). Depends on the desktop
+restructure being done component-first. Scoped INTO the desktop-redesign build
+sequence (see BUILD_PLAN → "Desktop redesign — grounded build sequence"). Awaiting
+Denise's re-fit-rule decision (visual aid published) before build.
 
 ### Recolorable single-color vector uploads (post-Phase-3 candidate)
 

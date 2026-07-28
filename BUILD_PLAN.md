@@ -540,8 +540,99 @@ confirmation.
 | 9–10 | Full e2e on **both products** (onesie sweep discipline); buffer; phase checklist |
 
 **Parallel track (BLOCKER-2 constraint #6): desktop shaping** — Denise + strategy
-partner, runs alongside days 1–10, zero file collision with server work. Output
-deadline: before the mobile build starts. Denise's wishlist is accumulating there.
+partner, ran alongside Phase 4. **Structure SEALED 2026-07-28** (deli-voice
+decision + labels-as-data). Grounded below.
+
+### Desktop redesign — grounded build sequence (SEALED 2026-07-28; grounding pass done, awaiting Denise's re-fit-rule decision)
+
+**Sealed structure:** left ICON RAIL (Products · Text · Upload Art · Art [Decals a
+subset] · Names & Numbers) · account cluster · **selection-aware panel** ·
+on-garment CTAs · desktop-only Layers & Names/Numbers · fixed action bar with
+steps **"Build It → Order It → Pick Up / Ship"** · font categories ·
+**labels-as-data** (all UI strings configurable). Voice: light seasoning —
+clarity is the requirement, deli flavor only in the flow steps + empty-shirt
+greeting ("Let's build it"); rail + knobs stay plain. These are shipping
+DEFAULTS, editable later via the language admin.
+
+**Grounding verdict (2026-07-28): the reskin is ~1/5 of the work.** The current
+`DesignerCanvas.tsx` is a 2,799-line monolith — one ~640-line JSX return
+(:2160-2797), no panel sub-components, panel keyed off `activeTab` not selection,
+`window`/module-global canvas handles, DOM-measured print-area geometry, fixed
+`w-72`/`w-64` (288+256px) columns, **zero responsive breakpoints**, hardcoded
+680×850 in 3 places. Estimate-movers: (a) safely decoupling the monolith into
+`<Rail>/<SelectionPanel>/<CanvasStage>/<ActionBar>/<Sheet>` while not breaking
+the globals + re-testing every constrain/wrap/align path; (b) inverting
+tab-driven → selection-driven rendering (selection *state* already exists); (c)
+three NET-NEW rail features with zero backing code — **Products (now the auto-
+re-fit Design Portability project — see below)**, **Names & Numbers**, **Layers**;
+(d) the fixed stepper spanning the today-two-page designer→/order flow.
+
+**Mobile-translation check (constraint #6 sharpened): rail→bottom-bar /
+panel→sheet rotates cleanly ONLY IF the desktop build is component-first.** The
+mapping is conceptually sound (rail content = self-contained scroll column →
+sheet; right ORDER panel = pure summary → sheet; canvas math is ratio-based so it
+survives a *scaled* wrapper if aspect holds). But today: 0 breakpoints, fixed
+680×850 wrapper overflows a 390px phone, delete controls are hover-only (✕ at
+`opacity-0 group-hover`, **no touch path**), globals assume one canvas in a fixed
+tree. **So "desktop STRUCTURE settled" must mean desktop SHIPPED AS DECOUPLED
+COMPONENTS** — then BLOCKER-2 mobile is "re-slot the same components + responsive
+canvas + touch affordances" (the scoped ~2–2.5wk). Restyle-in-place instead and
+mobile repays the decoupling. The restructure's 4–6d spine is partly a *shared*
+cost with mobile.
+
+**Rough cost (constraints named; pre-final-scoping):**
+- Restructure spine (decouple monolith): **4–6 d** (priced on re-testing DOM
+  geometry + not breaking globals — the risky part).
+- Selection-driven panel inversion: **1–2 d**. Icon rail: **0.5–1 d**. Fixed
+  action bar + stepper: **1–2 d** (net-new; may merge/bridge designer+/order).
+  On-garment CTAs: **0.5–1 d**. Font categories: **0.5 d**. Decals-as-Art: ~0.5 d.
+  → **restructure subtotal ~8–12 d.**
+- Net-new rail features: **Names & Numbers 2–4 d** (scope-dependent), **Layers
+  1–2 d**, **Products = Design Portability (multi-day, see below)**.
+
+**⭐ Products rail = Design Portability, PROMOTED IN-SCOPE (Denise, 2026-07-28).**
+Auto-re-fit artwork to the new print area on garment switch — NOT switch-and-warn.
+Grounded: object coords are 100% absolute-to-680×850 with no print-area linkage;
+the print area IS in a portable per-product system (px+inches) so the source box
+is reconstructable; the port computes each object's `(center−origin)/size`
+fraction and re-projects onto the target box. **~7–10 dev-days** for the
+switch-time transform (writes absolute coords back before PNG/SVG re-render — no
+storage migration; the natively-relative `canvas_json` version is the bigger,
+deferrable one). **Curved text is the risk** (rasterized/baked → must re-render,
+not transform; no multiline). Depends on the restructure landing component-first
+(needs multi-product load + a mountable target print-area overlay). Full
+coordinate-model + per-type behavior in CLAUDE.md → "Design Portability".
+**Re-fit RULE is Denise's decision — visual aid published** (adult-tee→onesie,
+rules A Proportional [rec] / B Stretch / C Keep-size). Awaiting her answers on:
+confirm A; optional manual fill-the-box; curved-text behavior; switch-only vs
+also saved-design-onto-any-product (launch = switch-only); per-side re-fit.
+
+**Language editor admin (labels-as-data) — cheap IF folded into the rebuild.**
+~130–160 UI strings, all inline JSX literals, nothing centralized (except
+color/font labels already in Supabase). Admin CRUD pattern + the designer's
+config-fetch-on-mount + the `db.length ? db : fallback` idiom are all reusable.
+**Fold the string extraction INTO the restructure** (emit `t('key')` as each panel
+is rewritten — don't extract ~140 sites twice) → the language-editor admin panel
+is then a **~1–1.5 d bolt-on** (new `designer_labels` table + RLS migration
+[show-and-approve] + seed + colors-style CRUD). Standalone-now instead: ~3–4 d
+(extraction dominates and gets partly thrown away). Gotchas: ~12 interpolation/
+plural strings need tokens; scope boundary (order page duplicates some; admin
+itself?); tab labels are derived from state keys; don't double-source color/font
+labels; missing-key fallback to hardcoded English.
+
+**Proposed sequence:** **1)** restructure component-first + fold in labels-as-data
+extraction → **2)** language-editor admin (cheap bolt-on) → **3)** Design
+Portability (Products rail, after Denise picks the re-fit rule) → **4)** Names &
+Numbers + Layers → then **BLOCKER-2 mobile** inherits the decoupled components,
+then Phase 5. Visual theming (colors/icons admin) stays DEFERRED; only the
+LANGUAGE editor is scoped-now.
+
+**Open decisions before build (from the grounding):** (1) re-fit rule [visual aid
+sent]; (2) does the stepper span designer+/order or designer-only; (3) Names &
+Numbers scope (single vs roster/bulk); (4) language editor surface coverage
+(designer only, or + order + admin); (5) commit to component-first desktop so
+mobile inherits it.
+
 ### Phase 5: Fulfillment Backend (~2-3 weeks)
 
 > **DEFINITION OF DONE (Denise, 2026-07-15): the final deliverable is ONE USABLE
