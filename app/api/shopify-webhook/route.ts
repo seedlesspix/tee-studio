@@ -82,6 +82,13 @@ export async function POST(request: NextRequest) {
     phone,
     billing_address,
     shipping_address,
+    // Fulfillment method, captured VERBATIM (Phase 4). For pickup the line's
+    // title is the pickup location (e.g. "Bucktown"); for ship it's the
+    // carrier (e.g. "UPS 3 Day Select®"). The pickup/ship discriminator is
+    // derived in the admin display layer from this raw data, not guessed
+    // here. This is the ONLY capture point — design-product orders are
+    // invisible to the app via the Admin API, so it's unrecoverable if missed.
+    shipping_lines,
     line_items,
   } = body
 
@@ -133,6 +140,7 @@ export async function POST(request: NextRequest) {
         customer_phone: phone || '',
         billing_address: billing_address || null,
         shipping_address: shipping_address || null,
+        shipping_lines: shipping_lines ?? null,
         status: 'completed',
       })
       .eq('id', designOrderId)

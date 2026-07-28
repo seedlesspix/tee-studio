@@ -184,6 +184,7 @@ export type Database = {
           selected_color: string | null
           selected_color_hex: string | null
           shipping_address: Json | null
+          shipping_lines: Json | null
           shopify_cart_url: string | null
           shopify_order_id: string | null
           shopify_order_number: string | null
@@ -226,6 +227,7 @@ export type Database = {
           selected_color?: string | null
           selected_color_hex?: string | null
           shipping_address?: Json | null
+          shipping_lines?: Json | null
           shopify_cart_url?: string | null
           shopify_order_id?: string | null
           shopify_order_number?: string | null
@@ -268,6 +270,7 @@ export type Database = {
           selected_color?: string | null
           selected_color_hex?: string | null
           shipping_address?: Json | null
+          shipping_lines?: Json | null
           shopify_cart_url?: string | null
           shopify_order_id?: string | null
           shopify_order_number?: string | null
