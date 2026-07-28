@@ -672,17 +672,17 @@ workflow wins). **Two carries into the D0 build:**
    BLOCKER-2's component inheritance clean. Implication: build each panel as a
    self-contained stackable section (no cross-panel layout coupling; the sheet
    orders them content-entry → knobs).
-2. **Red vocabulary — make red mean ONE learnable thing.** The mockup overloads
-   red (#dd3333) across brand wordmark, active rail item, primary buttons,
-   selected color swatch, active step. CLAUDE.md's standing convention is
-   **red = primary action button** (app-wide: admin, order page). **Proposed
-   resolution (pending Denise — her note was cut off at "active/selected
-   vs."):** red = ACTION (primary CTAs: Add, Next Step); every "selected /
-   active / current" state gets a QUIET non-red treatment (surface fill + white/
-   neutral marker) so red isn't also state; the selected color swatch uses a
-   neutral/white ring (not a red outline) so selection reads independent of the
-   color red; brand wordmark red is read-once identity. AWAITING Denise's
-   confirmation of which single meaning red carries.
+2. **Red vocabulary — LOCKED (Denise, 2026-07-28): red means ONE thing —
+   primary ACTION.** The D0 color-vocabulary rule:
+   - **Red (#dd3333) = "act / go"** — primary action buttons ONLY (Add text,
+     Next Step). Honors CLAUDE.md's app-wide "primary buttons are red bg white
+     text" convention (fighting it would ripple everywhere for no gain).
+   - **Selected / active / current** → QUIET non-red (surface fill + neutral
+     marker): active rail item, current step dot, etc. — never red.
+   - **Selected color swatch** → neutral/white ring, NOT a red outline (so
+     selection reads the same on any color, and red-swatch ≠ red-state).
+   - **Brand wordmark** red → read-once identity, out of the work area.
+   - **Customer palette** red → artwork domain, separate.
 
 ### Phase 5: Fulfillment Backend (~2-3 weeks)
 

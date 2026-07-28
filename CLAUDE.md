@@ -254,6 +254,15 @@ Compare versions in `supabase/migrations/` filenames against the output of MCP `
 - **Admin + admin-login**: light UI palette (white surfaces, gray-100/200/300, black text)
 - Accent: `#dd3333` (red) — primary buttons everywhere are red bg with white text
 - Responsive breakpoints: `sm:`, `md:` prefixes
+- **Designer red-vocabulary rule (LOCKED for the desktop redesign, 2026-07-28):**
+  red means **one** thing — **primary ACTION** (Add text, Next Step, primary
+  CTAs). It is NOT used for selected/active/current state: those get a **quiet
+  non-red** treatment (surface fill + neutral marker) — active rail item, current
+  step dot, etc. The **selected color swatch** uses a neutral/white ring, never a
+  red outline (so selection reads the same on any color, and red-the-swatch ≠
+  red-the-state). Brand wordmark red is read-once identity; the customer's print
+  palette (which includes red) is artwork, a separate domain. Apply this to all
+  new designer UI.
 
 ### TypeScript Usage
 - **Interfaces** for component props and API responses (inline, not in separate files)
