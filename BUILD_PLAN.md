@@ -644,11 +644,21 @@ Numbers + Layers → then **BLOCKER-2 mobile** inherits the decoupled components
 then Phase 5. Visual theming (colors/icons admin) stays DEFERRED; only the
 LANGUAGE editor is scoped-now.
 
-**Open decisions before build (from the grounding):** (1) re-fit rule [visual aid
-sent]; (2) does the stepper span designer+/order or designer-only; (3) Names &
-Numbers scope (single vs roster/bulk); (4) language editor surface coverage
-(designer only, or + order + admin); (5) commit to component-first desktop so
-mobile inherits it.
+**Sub-decisions — ALL SETTLED during shaping (Denise, 2026-07-28):** (1) re-fit
+rule = **A Proportional, both paths, saved=A** [decided]; (2) stepper =
+**DESIGNER-ONLY** (two pages stay separate, Edit Design bridges back); (3) Names
+& Numbers = **ROSTER/BULK** (single is a roster of one); (4) language coverage =
+**DESIGNER + ORDER PAGE** (customer-facing flow, not admin labels); (5)
+component-first D0 = **YES, LOCKED** (the spine that makes mobile inherit the
+decoupling).
+
+**Timeline owned (Denise):** ~4–6.5wk desktop + ~2–2.5wk mobile + Phase 5 ≈
+two-plus months to launch — the deliberate cost of launching the full sealed
+structure WITH Design Portability; live ImprintNext keeps taking orders through
+it. **Flex point named:** D2 (Design Portability, ~9–13d) is the one
+self-contained enhancement — the tool works completely without it. It stays IN
+launch scope per Denise's call, but is the natural fast-follow candidate IF
+timeline pressure ever appears (no action now; just naming where the flex lives).
 
 ### Phase 5: Fulfillment Backend (~2-3 weeks)
 
