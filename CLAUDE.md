@@ -827,6 +827,17 @@ path assumes absolute 680×850 (anchors in the 2026-07-28 grounding).
   the single-design order flow entirely; entry lives in the My Designs drawer as
   "use on another product" → product picker → designer opens re-fit.
 
+**D2-scoping fact (Denise, 2026-07-28): print-area RATIO is fixed within a
+garment category.** The print box adjusts position/size per mockup, but its
+aspect ratio stays constant across garments in the same category. **So Design
+Portability re-fitting WITHIN a category is nearly a no-op** (same ratio →
+proportional scale only, no reshaping); the **real transform happens ACROSS
+categories** (tee-ratio → onesie-ratio). This simplifies D2: the hard
+different-aspect-ratio re-projection is only needed on cross-category switches;
+intra-category is a trivial uniform scale. Ground it when D2 is scoped. (Also
+why print-area PRESETS weren't worth building — few garments per style, so
+individual template setup is fine.)
+
 **Implementation note — cheaper path for launch.** A **switch-time transform**
 (compute relative on the fly, re-project, write absolute coords back onto the
 live objects before the PNG/SVG re-render) avoids a storage-model migration and
