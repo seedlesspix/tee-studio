@@ -660,6 +660,30 @@ self-contained enhancement — the tool works completely without it. It stays IN
 launch scope per Denise's call, but is the natural fast-follow candidate IF
 timeline pressure ever appears (no action now; just naming where the flex lives).
 
+**D0 layout APPROVED 2026-07-28** (mockup published). Two panels confirmed
+(tool panel left + selection-aware panel right) — Denise's call knowing the
+mobile gap is small (both one- and two-panel collapse to a single bottom sheet
+on 390px, so two-panel isn't meaningfully harder to translate; better desktop
+workflow wins). **Two carries into the D0 build:**
+1. **Build the two panels MOBILE-AWARE from the start** — they merge into ONE
+   bottom sheet on mobile (content-entry + adjustment knobs in sequence/flip,
+   NOT side-by-side). Treat "these become one sheet" as a known constraint now,
+   so nothing in the two-panel desktop design fights the merge later. Keeps
+   BLOCKER-2's component inheritance clean. Implication: build each panel as a
+   self-contained stackable section (no cross-panel layout coupling; the sheet
+   orders them content-entry → knobs).
+2. **Red vocabulary — make red mean ONE learnable thing.** The mockup overloads
+   red (#dd3333) across brand wordmark, active rail item, primary buttons,
+   selected color swatch, active step. CLAUDE.md's standing convention is
+   **red = primary action button** (app-wide: admin, order page). **Proposed
+   resolution (pending Denise — her note was cut off at "active/selected
+   vs."):** red = ACTION (primary CTAs: Add, Next Step); every "selected /
+   active / current" state gets a QUIET non-red treatment (surface fill + white/
+   neutral marker) so red isn't also state; the selected color swatch uses a
+   neutral/white ring (not a red outline) so selection reads independent of the
+   color red; brand wordmark red is read-once identity. AWAITING Denise's
+   confirmation of which single meaning red carries.
+
 ### Phase 5: Fulfillment Backend (~2-3 weeks)
 
 > **DEFINITION OF DONE (Denise, 2026-07-15): the final deliverable is ONE USABLE
