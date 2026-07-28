@@ -108,6 +108,21 @@ const STATUS_COLORS: Record<string, string> = {
   completed: 'bg-green-100 text-green-800',
 }
 
+// DISPLAY-ONLY label for the stored status. The stored value 'completed'
+// fires at PAYMENT (webhook), before anything is printed — showing staff
+// "Completed" would falsely read as "made and done", so the pill shows
+// "Paid". The underlying status value is unchanged and every status check
+// (readback rules, filters, cart-link gate, webhook) still keys off the real
+// stored strings — this only maps stored → shown text.
+const STATUS_LABELS: Record<string, string> = {
+  draft: 'Draft',
+  ordering: 'Ordering',
+  cart_created: 'In Cart',
+  completed: 'Paid',
+}
+const statusLabel = (status: string | null) =>
+  STATUS_LABELS[status ?? 'draft'] ?? status ?? 'Draft'
+
 export default function OrdersAdmin() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
@@ -286,7 +301,7 @@ export default function OrdersAdmin() {
                         ) : null
                       })()}
                       <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono uppercase ${STATUS_COLORS[first.status ?? 'draft'] || 'bg-gray-200 text-gray-800'}`}>
-                        {first.status === 'cart_created' ? 'in cart' : first.status}
+                        {statusLabel(first.status)}
                       </span>
                     </div>
                   </div>
@@ -353,7 +368,7 @@ export default function OrdersAdmin() {
                     </span>
                   )}
                   <span className={`px-3 py-1.5 rounded-full text-xs font-mono uppercase font-bold ${STATUS_COLORS[first.status ?? 'draft'] || 'bg-gray-200 text-gray-800'}`}>
-                    {first.status === 'cart_created' ? 'In Cart' : first.status}
+                    {statusLabel(first.status)}
                   </span>
                   {first.shopify_cart_url && first.status !== 'completed' && (
                     <a href={first.shopify_cart_url} target="_blank" rel="noreferrer"
