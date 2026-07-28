@@ -1991,6 +1991,40 @@ export default function DesignerCanvas({
     if (active) { fabricCanvas.remove(active); fabricCanvas.renderAll() }
   }
 
+  // ── CanvasStage parity harness hook (DEV-ONLY, ?parity=1) ──────────────────
+  // READ-ONLY instrumentation for the extraction gate. Exposes the canvas + the
+  // load-bearing geometry/export functions on window.__parity so the
+  // golden-master fixtures can characterize them identically before/after the
+  // CanvasStage extraction. Purely ADDITIVE and parity-NEUTRAL — it only
+  // EXPOSES existing functions, changes no geometry — and it MOVES WITH
+  // CanvasStage during extraction (same hook drives both main and the branch).
+  // Gated on ?parity=1 so it never touches normal use. Driven from the browser
+  // console: `await window.__parity.run()` (downloads parity-<product>-<side>.json).
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (new URLSearchParams(window.location.search).get('parity') !== '1') return
+    const api = {
+      get canvas() { return fabricCanvasRef.current },
+      CANVAS_CUSTOM_PROPS,
+      constrainObject,
+      getPrintAreaBounds,
+      reWrapText,
+      exportCanvasSVG,
+      exportCanvasPNG,
+      get shirtImg() { return shirtImgRef.current },
+      container: { W: 680, H: 850 },
+      currentSide: () => shirtView,
+      productLabel: (productTitle || 'product').replace(/[^a-z0-9]+/gi, '-').toLowerCase(),
+    }
+    ;(window as unknown as { __parity: unknown }).__parity = {
+      ...api,
+      run: async () => {
+        const { runParityFixtures } = await import('../lib/parityFixtures')
+        return runParityFixtures(api as unknown as import('../lib/parityFixtures').ParityApi)
+      },
+    }
+  })
+
   const unitPrice = selectedVariant
     ? parseFloat(selectedVariant.price.amount)
     : productPrice || 18
