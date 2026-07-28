@@ -260,7 +260,60 @@ Each lives somewhere canonical; this is the index, not the detail.
 | Persistent / shared print-color panel | Design-note quality | CLAUDE.md → Phase 3+ Backlog |
 | Print pricing flat per side | ✅ **Decided 2026-07-15, not open** — a onesie print costs the same as a tee print | CLAUDE.md → designer_pricing ("don't fix this") |
 
-### Phase 4: Cart Architecture Replacement (~2 weeks, heaviest) — PLAN APPROVED 2026-07-17, awaiting day-0 credentials
+### Phase 4: Cart Architecture Replacement — ✅ COMPLETE, SIGNED OFF 2026-07-28
+
+> **✅ PHASE 4 SIGNED OFF ON PRODUCTION 2026-07-28.** All Days 0–10 landed on
+> prod with real paid orders (#16986–#17037). **What shipped — and the one
+> approved architecture change:** the plan's "Mechanism A (headless-only
+> publication, Storefront server cart, two checkouts)" was **corrected at Day 6
+> to Denise's real requirement** — designs join the customer's OWN storefront
+> cart (Online-Store-published ephemeral product + their own `/cart/add.js`,
+> cookies forwarded via the same-site create.tshirtdeli.com), mixing with
+> off-the-shelf products in **ONE** checkout. The bullets below are the
+> as-approved plan; the "⚡ Day-6 REQUIREMENT CORRECTION" block is the shipped
+> truth. **Phase 4 delivered:**
+> - **Real cart, one-line-one-price.** Order Options → the customer's live cart;
+>   each design is one product line at a single folded per-shirt price (blank +
+>   print). No Print Charge line items — that whole machinery is deleted, not
+>   bypassed (`addItemsToShopifyCart`, `resolvePrintChargeVariant`,
+>   `getStoreOrigin`'s cart use, `/api/cart-add`, `/api/admin/variant-check`, the
+>   pricing reachability badge). Mixed carts verified (design + off-the-shelf →
+>   one checkout).
+> - **BLOCKER-1 CLOSED** — the enumerable/writable `design_orders` hole shut:
+>   all anon access behind service-role routes, three public policies dropped
+>   (migration 20260716164236). Third table on the locked pattern.
+> - **BLOCKER-3 dead by construction** — per-size variants on the ephemeral
+>   product; size is a real variant, never a text property. Silent wrong-size
+>   fulfilment is structurally impossible.
+> - **Channel-invisible products** — created to 0 channels, `seo.hidden=1`,
+>   `productType: 'Custom Design'` + a merchant `all` collection rule keep them
+>   out of search AND `/collections/all`. Kills the ImprintNext manual-exclude
+>   chore. (Accepted residual: direct-URL purchasability window — see below.)
+> - **Webhook proven + deduplicated** — ORDERS_PAID signed with the CLIENT
+>   secret (empirically confirmed on #17037: one `HMAC verified via
+>   SHOPIFY_ADMIN_CLIENT_SECRET` line), the legacy admin subscription deleted so
+>   exactly one fires per order, dual-secret verification kept as drift
+>   detection, subscription repointed to create.tshirtdeli.com. Processes EVERY
+>   `_design_order_id` in an order (multi-design mixed carts first-class).
+> - **Retention job live** — daily cron (`vercel.json`), CRON_SECRET-gated,
+>   14-day expiry gate (never deletes a product a live cart could hold), plus
+>   the draft cron with the `saved_designs` NOT-EXISTS exclusion. Both
+>   dry-run-verified against real data.
+> - **Fulfillment PICKUP/SHIP badge** — captured `shipping_lines` at order-paid
+>   (migration 20260728125809; ONLY capture path since design orders are
+>   API-invisible), discriminator derived from real orders (#17036 pickup /
+>   #17035 ship): `shipping_address` presence. Admin shows badge + location/
+>   carrier in list and detail.
+> - **Admin order view completeness** — full ship/bill address, grouped
+>   multi-design orders ("one order, pack together"), and **"Paid" not
+>   "Completed"** on the status pill (fires at payment, before printing).
+>
+> **Commits:** 9e1a270, 95bc9bd, 587ed99, 2fe1c46, 088190b, fe9af07, 39cca76,
+> 54f1435, ec75582, 8dcd62c, 2bd5bc2, c265af2, adb2e01, f655051, 84a8aab,
+> 4d81294, d5671d1. **Migrations:** 20260716164236 (lock design_orders),
+> 20260728125809 (shipping_lines).
+
+**(Original plan header: Cart Architecture Replacement — PLAN APPROVED 2026-07-17.)**
 
 **Business context, worth naming:** today with ImprintNext every customer design
 becomes a product **live in all channels** — visible on the all-products page
@@ -460,25 +513,29 @@ grounding pass:
 | 1 | ✅ **DONE 2026-07-16** (9e1a270, 95bc9bd). All probes green — see "Day 1 probe results" above. **ORDERS_PAID registered**: subscription gid …1985565327676 → tee-studio.vercel.app/api/shopify-webhook, created 16:56Z, query-back verified. Residual: first REAL order delivery is the empirical proof Shopify signs with the client secret — watch prod logs for "HMAC verified via SHOPIFY_ADMIN_CLIENT_SECRET"; ImprintNext orders 200-skip harmlessly (no _design_order_id) |
 | 2–3 | ✅ **DONE 2026-07-16** (587ed99 + 2fe1c46, migration 20260716164236). **BLOCKER-1 CLOSED** — all anon design_orders access behind /api/design-orders + /api/designs/draft (service role); three public policies dropped; post-checks green (anon list [], insert 401, blanket update 0 rows, draft-by-UUID restore 200 on prod, admin_all sole survivor). Third table on the locked pattern |
 | 4–5 | ✅ Service + route **DONE 2026-07-16, e2e-verified vs the live store** (throwaway design → `POST /api/design-orders/[id]/checkout` → ephemeral product w/ per-size variants @ folded price → headless-only publish → Storefront cart → checkoutUrl loads; Online Store 404 + absent from /products.json; failure path deletes the product — atomic toward Shopify). `app/lib/design-products.ts` + checkout route. **Tag-search gotcha for cleanup jobs: colon-valued tags must be QUOTED** — `tag:'design_order:<uuid>'` finds it, unquoted silently returns nothing |
-| 6 | ✅ **BUILT + smoke-verified 2026-07-16 (revised shape) — awaiting Denise's walkthrough before push.** Order page's one button → `/api/design-orders/[id]/add-to-cart` → design joins the customer's REAL session cart mixed with off-the-shelf ($126 = tee + 3× design, per-size lines, properties threaded); idempotent second click; unknown-size 400; notes persisted; atomic product-delete on cart-add failure. Print-Charge machinery deleted (routes, resolvers, admin badge, `getStoreOrigin` restored for the new handoff). Webhook multi-design fix verified. Straight-to-checkout `/checkout` route deleted |
-| 7 | Cleanup jobs: `_design_product` retention (aggressive **after the paid-or-cart-expired gates — see Day-1 probe 7b: deletion silently empties live carts**) + the draft cron **with the `saved_designs` NOT-EXISTS exclusion** |
+| 6 | ✅ **SHIPPED + walkthrough-verified on prod (fe9af07, 39cca76).** Design joins the customer's REAL cart mixed with off-the-shelf, ONE checkout ($126 = tee + 3× design verified). Real completed purchase in the walkthrough (order → admin as Paid, correct order #). seo.hidden + `productType`/`all`-collection close search AND /collections/all (control-pair verified). Print-Charge machinery deleted. |
+| 7 | ✅ **DONE (2bd5bc2, c265af2).** Retention cron (14-day expiry gate — never touches a product a live cart could hold; the per-order paid gate was dropped because design orders are API-invisible) + draft cron with the `saved_designs` NOT-EXISTS exclusion; both dry-run-verified, CRON_SECRET set, LIVE (prod authorizes 200). |
+| 8 | ✅ **DONE.** Webhook e2e proven on real orders; multi-design attribution verified (#16987 → 2 rows, shared order id). Admin order view grouped + full reference. **Legacy admin webhook deleted; #17037 confirmed ONE canary via client secret** — SHOPIFY_WEBHOOK_SECRET retired (code keeps dual-secret as drift detection). |
+| 9–10 | ✅ **DONE.** Both-product real orders (#17035 ship / #17036 pickup); fulfillment badge derived from real data; "Paid" relabel; admin completeness. Phase signed off 2026-07-28. |
 
-**🚨 ORDER VISIBILITY — GATES PHASE 5 GROUNDING (found Day 7, 2026-07-16).**
-Orders containing Tee Studio design products (#16986/87/88) are **whole-object
-INVISIBLE to the app** on every Admin API surface — `order(id:){id}` returns
-null, they're absent from `orders` lists/searches (by window, by email), REST
-404s — while every other order, including a NEWER off-the-shelf one (#16989),
-is visible. Ruled out: test orders (`test:true` search empty; visible orders
-`test:false`), field-level PCD redaction (minimal `{id}` query still null),
-recency. Correlation is exact: contains-design-products (all three are also
-Denise-as-buyer — inseparable until a real customer buys). Leading suspect:
-**Protected Customer Data approval** for new Dev Dashboard apps (request it in
-the app's API-access settings, then re-probe). **Phase 5 fulfillment reads
-orders — this must be resolved before Phase 5 is grounded.** Consequence
-already absorbed: the Day-7 retention job dropped its per-order paid gate
-(can't gate deletions on a surface that lies) in favor of a uniform 14-day
-expiry gate. Denise 30-sec check for the record: open #16987 in admin —
-gateway used, any banner (Test/Review) on the order page.
+**ORDER VISIBILITY — DIAGNOSED; NOT a Phase-5 blocker (2026-07-28).**
+Orders linked to a logged-in customer account are **whole-object invisible to
+the app** via the Admin API (`order(id:){id}` → null; absent from lists;
+guest-checkout orders like #16989 stay visible). **Mechanism: the app lacks
+the `read_customers` scope** (token grants only read_orders/write_products/
+write_publications) — NOT the 60-day window, NOT a PCD review lead-time.
+**Custom apps get Protected Customer Data auto-granted (no Shopify review)**, so
+if we ever want API order access it's a scope-add + reinstall, not a launch
+prerequisite. **Phase 5 is NOT blocked**: the webhook already captures name +
+full shipping + billing + `shipping_lines` into `design_orders` at order-paid
+(the ONLY path for design orders, and proven — a synthetic HMAC-signed order
+delivered `Sam Shipping, 742 Evergreen Terrace…` into the row; real ship
+#17035 has a full shipping_address captured). Phase 5 reads fulfillment from
+our DB, not the API. Absorbed consequence: the retention job uses a uniform
+14-day expiry gate (a deletion gate can't depend on an API surface that hides
+the orders). Deferred (not blocking): if reconciliation ever wants API order
+reads, add `read_customers`; and the diagnostic #16987 linked-customer-vs-guest
+confirmation.
 | 8 | Webhook e2e on a real test order; attribution; admin order view against dynamic products |
 | 9–10 | Full e2e on **both products** (onesie sweep discipline); buffer; phase checklist |
 
