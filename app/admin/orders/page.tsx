@@ -3,12 +3,23 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { Tables } from '@/types/database'
 
-type ShippingAddress = {
+// The full Shopify address shape as captured verbatim by the webhook (both
+// billing_address and shipping_address). We surface ALL of it for the print
+// shop — data we already hold costs nothing to show.
+type Address = {
+  first_name?: string
+  last_name?: string
+  name?: string
+  company?: string
   address1?: string
+  address2?: string
   city?: string
   province?: string
+  province_code?: string
   zip?: string
   country?: string
+  country_code?: string
+  phone?: string
 }
 
 type UploadedFile = {
@@ -22,10 +33,34 @@ type UploadedFile = {
   originalFormat?: string
 }
 
-type Order = Omit<Tables<'design_orders'>, 'quantities' | 'uploaded_files' | 'shipping_address'> & {
+type Order = Omit<Tables<'design_orders'>, 'quantities' | 'uploaded_files' | 'shipping_address' | 'billing_address'> & {
   quantities: Record<string, number> | null
   uploaded_files: UploadedFile[] | null
-  shipping_address: ShippingAddress | null
+  shipping_address: Address | null
+  billing_address: Address | null
+}
+
+// Render a captured address as the print shop needs to read it: recipient name,
+// company, both street lines, city/state/zip, country, phone — skipping only
+// the fields Shopify didn't send (no guessing, no empty lines).
+function AddressBlock({ label, addr }: { label: string; addr: Address }) {
+  const recipient = addr.name || [addr.first_name, addr.last_name].filter(Boolean).join(' ')
+  const cityLine = [addr.city, [addr.province_code || addr.province, addr.zip].filter(Boolean).join(' ')]
+    .filter(Boolean).join(', ')
+  return (
+    <div className="mt-1 pt-2 border-t border-gray-200">
+      <p className="text-gray-600 text-xs mb-1">{label}</p>
+      <p className="text-xs text-black leading-relaxed">
+        {recipient && <>{recipient}<br /></>}
+        {addr.company && <>{addr.company}<br /></>}
+        {addr.address1 && <>{addr.address1}<br /></>}
+        {addr.address2 && <>{addr.address2}<br /></>}
+        {cityLine && <>{cityLine}<br /></>}
+        {addr.country && <>{addr.country}<br /></>}
+        {addr.phone && <span className="text-gray-600">tel {addr.phone}</span>}
+      </p>
+    </div>
+  )
 }
 
 // Phase 4 grouping fix: one Shopify order can hold SEVERAL designs (mixed
@@ -262,6 +297,9 @@ export default function OrdersAdmin() {
                     <h2 className="text-xl font-bold text-black">Draft Order</h2>
                   )}
                   {!multi && <p className="text-xs font-mono text-gray-600 mt-0.5">{first.id}</p>}
+                  {first.shopify_order_id && (
+                    <p className="text-xs font-mono text-gray-500 mt-0.5">Shopify order {first.shopify_order_id}</p>
+                  )}
                   <p className="text-xs text-gray-500 mt-0.5">{formatDate(first.created_at)}</p>
                 </div>
                 <div className="flex gap-2 items-center">
@@ -294,16 +332,8 @@ export default function OrdersAdmin() {
                       {first.customer_phone && (
                         <div className="flex justify-between"><span className="text-gray-600">Phone</span><span>{first.customer_phone}</span></div>
                       )}
-                      {first.shipping_address && (
-                        <div className="mt-1 pt-2 border-t border-gray-200">
-                          <p className="text-gray-600 text-xs mb-1">Ship to</p>
-                          <p className="text-xs text-black leading-relaxed">
-                            {first.shipping_address.address1}<br />
-                            {first.shipping_address.city}, {first.shipping_address.province} {first.shipping_address.zip}<br />
-                            {first.shipping_address.country}
-                          </p>
-                        </div>
-                      )}
+                      {first.shipping_address && <AddressBlock label="Ship to" addr={first.shipping_address} />}
+                      {first.billing_address && <AddressBlock label="Bill to" addr={first.billing_address} />}
                     </div>
                   ) : (
                     <p className="text-xs text-gray-500 italic">No customer info yet — order not completed</p>
