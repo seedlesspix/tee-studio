@@ -684,6 +684,33 @@ workflow wins). **Two carries into the D0 build:**
    - **Brand wordmark** red → read-once identity, out of the work area.
    - **Customer palette** red → artwork domain, separate.
 
+**D0 build step 1 — CanvasStage extraction (parity-gated, APPROVED 2026-07-28).**
+Move-not-rewrite; preserve the canvas container box exactly (the geometry
+measures `[data-print-area]` via getBoundingClientRect); staged globals removal
+(1a move + bridge `window._fabricCanvas`/`_alignObject`/`_printAreaData` → 1b
+replace with ref/context), parity-gated each. **Nothing else splits until
+CanvasStage is proven.**
+
+**Parity protocol (golden-master diff-to-zero + DOM-rect invariant).** Baseline
+on `main` → extract → diff to zero → DOM-rect invariant → human backstop → only
+then split. **13-fixture golden set** (10 geometry paths + 3 history-earned):
+1 text-centered · 2 text-to-each-edge (constrain clamp) · 3 scale-past-box
+(max-scale clamp) · 4 multi-line (reWrapText) · 5 curved text · 6 clipart
+place+scale · 7 align L/C/R · 8 back-side design · 9 tee AND onesie (two print
+areas) · 10 restore-from-saved-JSON · **11 DIFFERENTLY-LETTERBOXED mockup**
+(mockup aspect ≠ 680×850 forces the objectFit:contain offset — the Phase-3 Day-3
+containment-aware px→% transform; tee+onesie may be similar-ratio, needs a
+genuinely different-ratio mockup) · **12 CUSTOM-PROP SURVIVAL** (extends 10:
+assert exported JSON retains ALL `CANVAS_CUSTOM_PROPS` — `_uploadSrc`,
+`_originalText`, `_isCurvedText`, `_currentColor`, `_isSvg`; toObject/toJSON
+dropping props bit twice in Phase 3 — diff the custom props, not just coords) ·
+**13 SIDE-SLOT ROUTING** (extends 8: assert the back design exports to the BACK
+slot not the front — Phase-3 Day-4 wrong-side bug; geometry-correct isn't enough,
+assert the routing). Captured per fixture: object left/top/scaleX/scaleY/angle +
+print-area bounds (canvas px) + reWrap font-size/line-count + PNG hash + SVG +
+JSON (incl. custom props). Gate: ZERO diff across all 13 on both products, both
+sides, restore, curve; DOM-rect invariant holds; human side-by-side matches.
+
 ### Phase 5: Fulfillment Backend (~2-3 weeks)
 
 > **DEFINITION OF DONE (Denise, 2026-07-15): the final deliverable is ONE USABLE
