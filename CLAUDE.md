@@ -795,24 +795,60 @@ preserved `_originalText`/`_isCurvedText`), not transformed, and still can't do
 multiline. Blast radius: every constrain/spawn/align/text-reflow/export/restore
 path assumes absolute 680×850 (anchors in the 2026-07-28 grounding).
 
-**Re-fit rule (Denise's decision — visual aid built 2026-07-28).** Three rules
-shown on a real adult-tee→onesie example: **A Proportional** (scale-to-fit +
-re-center — distortion-free, guarantees inside-the-box; RECOMMENDED, "auto-fit
-then land in the designer to nudge"), **B Stretch-to-fill** (fills the box but
-distorts letters/spacing on a different aspect ratio), **C Keep-size** (overflows
-a smaller box — the anti-pattern). Recommendation: A + drop into the editor.
-Open questions routed to Denise: confirm A; optional manual "fill the box";
-curved-text behavior (re-curve vs straighten-and-flag); **switch-only vs also
-re-opening a saved design onto another product** (launch scope = switch-only);
-per-side re-fit (front/back each to their own box).
+**Re-fit rule — DECIDED (Denise, 2026-07-28; visual aid published).**
+- **A Proportional** (scale-to-fit + re-center) is the auto rule. **No
+  stretch-to-fill option** — customers never get a control that distorts their
+  design; they hand-resize instead.
+- **Curved text: re-curve automatically**, shift-if-it-shifts accepted. Denise
+  accepts a **v1 caveat on curved text** (esp. multiline-curved) — flag the
+  limitation honestly in the UI if one exists, don't block on perfecting it.
+- **Front and back each re-fit to their own box.**
+- **BOTH paths are launch-scope** (scope change 2026-07-28): (i)
+  switch-garment-mid-design AND (ii) **re-open a saved design onto any product**
+  — the latter was previously the "deferrable bigger engine" but is
+  launch-ESSENTIAL because it's literally how families/teams order (one reunion
+  graphic onto unisex + women's + youth). The two share one re-fit engine; (ii)
+  hooks it into the restore/open path (source box = the saved row's frozen
+  `print_area` snapshot + `template_id`; reconstructable, so no dependence on the
+  original product still existing).
+- **Saved-design-to-multiple-styles UX = option (a)** (Denise chose A): open a
+  saved design onto ONE chosen target product → re-fit → order → repeat per
+  style. NOT the multi-product batch flow (option b: select design + N products,
+  re-fit + add all at once) — (b) is a costed fast-follow, not launch. (a) reuses
+  the single-design order flow entirely; entry lives in the My Designs drawer as
+  "use on another product" → product picker → designer opens re-fit.
 
 **Implementation note — cheaper path for launch.** A **switch-time transform**
 (compute relative on the fly, re-project, write absolute coords back onto the
 live objects before the PNG/SVG re-render) avoids a storage-model migration and
-is the launch scope. Making `canvas_json` *natively* relative (so any saved
-design re-opens on any product) is the fuller version — bigger, deferrable.
-**Depends on the desktop restructure landing component-first** (needs the
-multi-product designer + a mountable target print-area overlay).
+is the launch scope — **and it covers BOTH (i) and (ii-a)**: (ii) re-projects at
+open-time from the saved row's frozen `print_area` snapshot onto the chosen
+target box, one product at a time, so no native-relative storage is needed.
+Making `canvas_json` *natively* relative is only required by option (b)'s
+batch-onto-N-products at scale, and even that can loop the switch-time transform
+— so the natively-relative model stays deferrable. **Depends on the desktop
+restructure landing component-first** (needs the multi-product designer + a
+mountable target print-area overlay).
+
+**Launch cost (re-estimated 2026-07-28 after the scope change):**
+- **Re-fit engine** (shared foundation — coordinate transform, per-type
+  handling, curve re-render, both-sides): **~7–10 dev-days**. Curved text is the
+  risk item.
+- **(i) switch-garment-mid-design** entry (Products rail picker in-session):
+  included in the engine estimate.
+- **(ii-a) saved-design → one chosen product** (LAUNCH, Denise's choice):
+  **+2–3 d** on top of the engine — hook re-fit into the restore/open path + a
+  "use on another product" picker in My Designs. Reuses the single-design order
+  flow (order one, repeat per style). **→ launch total ~9–13 dev-days.**
+- **(ii-b) "multi-product batch apply"** (select design + N target products →
+  re-fit all → add all to cart together): **NAMED POST-LAUNCH enhancement,
+  data-earned** — build later only if usage shows repeat-per-style annoys
+  customers enough to justify it. Cost if/when: **+4–6 d** over the engine
+  (multi-select UI, batch re-fit + N-preview, batch cart-add looping the Phase-4
+  add-to-cart route with per-item atomicity/idempotency); delta over (a) ≈ +2–3 d.
+  Rationale for deferring: (a) already delivers the delight; (b) only adds
+  throughput, and building (a) first proves the re-fit core in isolation before
+  any batch wrapper.
 
 **The gap.** A saved design (Day 8) freezes **artwork and product together**.
 Customers want the *artwork* to be portable: design a family-reunion graphic

@@ -590,22 +590,39 @@ cost with mobile.
 - Net-new rail features: **Names & Numbers 2–4 d** (scope-dependent), **Layers
   1–2 d**, **Products = Design Portability (multi-day, see below)**.
 
-**⭐ Products rail = Design Portability, PROMOTED IN-SCOPE (Denise, 2026-07-28).**
-Auto-re-fit artwork to the new print area on garment switch — NOT switch-and-warn.
-Grounded: object coords are 100% absolute-to-680×850 with no print-area linkage;
-the print area IS in a portable per-product system (px+inches) so the source box
-is reconstructable; the port computes each object's `(center−origin)/size`
-fraction and re-projects onto the target box. **~7–10 dev-days** for the
-switch-time transform (writes absolute coords back before PNG/SVG re-render — no
-storage migration; the natively-relative `canvas_json` version is the bigger,
-deferrable one). **Curved text is the risk** (rasterized/baked → must re-render,
-not transform; no multiline). Depends on the restructure landing component-first
-(needs multi-product load + a mountable target print-area overlay). Full
-coordinate-model + per-type behavior in CLAUDE.md → "Design Portability".
-**Re-fit RULE is Denise's decision — visual aid published** (adult-tee→onesie,
-rules A Proportional [rec] / B Stretch / C Keep-size). Awaiting her answers on:
-confirm A; optional manual fill-the-box; curved-text behavior; switch-only vs
-also saved-design-onto-any-product (launch = switch-only); per-side re-fit.
+**⭐ Products rail = Design Portability, PROMOTED IN-SCOPE + re-fit rule DECIDED
+(Denise, 2026-07-28).** Auto-re-fit artwork proportionally (scale-to-fit +
+re-center) — NO stretch option, re-curve curved text auto (v1 caveat OK, esp.
+multiline-curved), front/back each to their own box. Grounded: object coords are
+100% absolute-to-680×850 with no print-area linkage; the print area IS portable
+(px+inches) so the source box is reconstructable; the port computes each
+object's `(center−origin)/size` fraction and re-projects onto the target box via
+a **switch-time transform** (writes absolute coords back before PNG/SVG
+re-render — no storage migration). **Curved text is the risk** (baked raster →
+re-render not transform; no multiline). Full model in CLAUDE.md → "Design
+Portability". **Visual re-fit decision aid published.**
+
+**SCOPE CHANGE 2026-07-28 — launch = the BIGGER engine, both paths:** (i)
+switch-garment-mid-design AND (ii) **re-open a saved design onto any product**
+(previously "deferrable" — now launch-ESSENTIAL: it's how families/teams order
+one graphic across unisex/women's/youth). One shared engine; (ii) hooks it into
+the restore/open path off the saved row's frozen `print_area` snapshot.
+**Saved-to-multiple-styles UX = option (a), FINAL** (Denise, 2026-07-28): open
+onto ONE chosen product → re-fit → order → repeat per style (reuses the
+single-design flow; entry = "use on another product" in My Designs). **Rationale
+for the record:** (a) delivers the entire delight — a design re-fitting cleanly
+onto a different garment IS the magic moment; (b) only adds throughput (~saves
+seconds on a task customers happily spend minutes on) at multi-day cost + batch
+edge-cases. (a) also lets the hard re-fit core be built and proven in isolation
+before any batch wrapper. **Option (b) "multi-product batch apply" is a NAMED
+POST-LAUNCH enhancement** — build later IF real usage shows repeat-per-style is
+annoying enough to justify it (data-earned, not pre-launch-guessed).
+
+**Re-estimated launch cost (path A):** re-fit **engine ~7–10 d** (incl. (i)
+switch-mid-design) **+ (ii-a) saved→one-product ~2–3 d = ~9–13 dev-days launch.**
+Switch-time transform — no storage migration; natively-relative `canvas_json`
+remains deferred. (Post-launch (b) batch would be ~+4–6 d over the engine, ≈+2–3 d
+delta over (a).)
 
 **Language editor admin (labels-as-data) — cheap IF folded into the rebuild.**
 ~130–160 UI strings, all inline JSX literals, nothing centralized (except
