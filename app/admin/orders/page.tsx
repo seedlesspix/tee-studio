@@ -33,11 +33,38 @@ type UploadedFile = {
   originalFormat?: string
 }
 
-type Order = Omit<Tables<'design_orders'>, 'quantities' | 'uploaded_files' | 'shipping_address' | 'billing_address'> & {
+// One entry from the order's captured shipping_lines. `title` is the
+// customer-facing method: a pickup LOCATION ("Bucktown") or a carrier
+// ("UPS® Ground"). Captured verbatim by the webhook.
+type ShippingLine = {
+  title?: string
+  code?: string
+  source?: string
+}
+
+type Order = Omit<Tables<'design_orders'>, 'quantities' | 'uploaded_files' | 'shipping_address' | 'billing_address' | 'shipping_lines'> & {
   quantities: Record<string, number> | null
   uploaded_files: UploadedFile[] | null
   shipping_address: Address | null
   billing_address: Address | null
+  shipping_lines: ShippingLine[] | null
+}
+
+// Pickup vs ship, derived from REAL order data (verified against #17036 pickup
+// / #17035 ship, 2026-07-28):
+//   - a pickup order has a shipping_line but NO shipping_address (nothing to
+//     ship) — its title is the pickup location;
+//   - a ship order has a shipping_address — its title is the carrier.
+// shipping_address presence is the semantic discriminator (not the title
+// string). Legacy orders captured before shipping_lines existed return null
+// here → no badge, never a wrong one.
+type Fulfillment = { isPickup: boolean; method: string }
+function fulfillmentOf(order: Order): Fulfillment | null {
+  const lines = order.shipping_lines
+  if (!lines || lines.length === 0) return null
+  const method = lines.map(l => l.title).filter(Boolean).join(', ')
+  const hasShipTo = !!(order.shipping_address && (order.shipping_address.address1 || order.shipping_address.zip))
+  return { isPickup: !hasShipTo, method: method || (hasShipTo ? 'Shipping' : 'Pickup') }
 }
 
 // Render a captured address as the print shop needs to read it: recipient name,
@@ -247,9 +274,21 @@ export default function OrdersAdmin() {
                     ) : (
                       <span className="text-[10px] font-mono text-gray-500">{first.id.split('-')[0]}...</span>
                     )}
-                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono uppercase shrink-0 ${STATUS_COLORS[first.status ?? 'draft'] || 'bg-gray-200 text-gray-800'}`}>
-                      {first.status === 'cart_created' ? 'in cart' : first.status}
-                    </span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {(() => {
+                        const lf = fulfillmentOf(first)
+                        return lf ? (
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono uppercase font-bold ${
+                            lf.isPickup ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            {lf.isPickup ? 'pickup' : 'ship'}
+                          </span>
+                        ) : null
+                      })()}
+                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono uppercase ${STATUS_COLORS[first.status ?? 'draft'] || 'bg-gray-200 text-gray-800'}`}>
+                        {first.status === 'cart_created' ? 'in cart' : first.status}
+                      </span>
+                    </div>
                   </div>
                   {first.customer_name && (
                     <p className="text-sm font-medium text-black truncate">{first.customer_name}</p>
@@ -283,6 +322,7 @@ export default function OrdersAdmin() {
         ) : (() => {
           const first = selected.rows[0]
           const multi = selected.rows.length > 1
+          const fulfillment = fulfillmentOf(first)
           return (
             <div className="p-6 flex flex-col gap-5 max-w-4xl">
               {/* Order header — once per ORDER, not per design */}
@@ -303,6 +343,15 @@ export default function OrdersAdmin() {
                   <p className="text-xs text-gray-500 mt-0.5">{formatDate(first.created_at)}</p>
                 </div>
                 <div className="flex gap-2 items-center">
+                  {/* Fulfillment badge — the first thing the team needs on a
+                      pickup-heavy shop. Purple = PICKUP, blue = SHIP. */}
+                  {fulfillment && (
+                    <span className={`px-3 py-1.5 rounded-full text-xs font-mono uppercase font-black ${
+                      fulfillment.isPickup ? 'bg-purple-600 text-white' : 'bg-blue-600 text-white'
+                    }`}>
+                      {fulfillment.isPickup ? '🏬 Pickup' : '📦 Ship'}
+                    </span>
+                  )}
                   <span className={`px-3 py-1.5 rounded-full text-xs font-mono uppercase font-bold ${STATUS_COLORS[first.status ?? 'draft'] || 'bg-gray-200 text-gray-800'}`}>
                     {first.status === 'cart_created' ? 'In Cart' : first.status}
                   </span>
@@ -331,6 +380,12 @@ export default function OrdersAdmin() {
                       )}
                       {first.customer_phone && (
                         <div className="flex justify-between"><span className="text-gray-600">Phone</span><span>{first.customer_phone}</span></div>
+                      )}
+                      {fulfillment && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">{fulfillment.isPickup ? 'Pickup at' : 'Ship via'}</span>
+                          <span className="font-semibold">{fulfillment.method}</span>
+                        </div>
                       )}
                       {first.shipping_address && <AddressBlock label="Ship to" addr={first.shipping_address} />}
                       {first.billing_address && <AddressBlock label="Bill to" addr={first.billing_address} />}
