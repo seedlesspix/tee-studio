@@ -5,6 +5,7 @@ let _activeObj: any = null
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import ClipartPanel from './ClipartPanel'
+import CanvasStage from './CanvasStage'
 import { getProduct } from '../lib/shopify'
 import { buildColorImageMap, getColorImages } from '../lib/productImages'
 import { toPctContain, CANVAS_W, CANVAS_H } from '../lib/printAreaGeometry'
@@ -2591,42 +2592,7 @@ export default function DesignerCanvas({
               Clear All
             </button>
           </div>
-          <div className="relative" style={{ width: 680, height: 850 }}>
-            <img
-              ref={shirtImgRef}
-              alt="Shirt preview"
-              crossOrigin="anonymous"
-              style={{
-                position: 'absolute',
-                top: 0, left: 0,
-                width: '100%', height: '100%',
-                objectFit: 'contain',
-                pointerEvents: 'none',
-                zIndex: 0,
-              }}
-            />
-
-            <canvas
-              ref={canvasRef}
-              style={{ position: 'absolute', top: 0, left: 0 }}
-            />
-            {printArea && (
-              <div data-print-area="true" style={{
-                position: 'absolute',
-                left: `${printArea.xPct}%`,
-                top: `${printArea.yPct}%`,
-                width: `${printArea.widthPct}%`,
-                height: `${printArea.heightPct}%`,
-                border: '1.5px dashed rgba(0,0,0,0.7)',
-                borderRadius: '2px',
-                pointerEvents: 'none',
-                zIndex: 2,
-                boxShadow: '0 0 0 1.5px rgba(255,255,255,0.7)',
-              }}>
-
-              </div>
-            )}
-          </div>
+          <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} />
 
           {/* Front / Back toggle */}
           <div className="absolute bottom-5 flex gap-2">
