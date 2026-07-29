@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase'
 import ClipartPanel from './ClipartPanel'
 import { getProduct } from '../lib/shopify'
 import { buildColorImageMap, getColorImages } from '../lib/productImages'
+import { toPctContain } from '../lib/printAreaGeometry'
 import { CustomerAuthButton } from './CustomerAuthButton'
 import MyUploadsPanel, { type UploadItem } from './MyUploadsPanel'
 import MyDesignsDrawer, { type SavedDesign } from './MyDesignsDrawer'
@@ -677,38 +678,12 @@ export default function DesignerCanvas({
                   // box (scaled + offset), then express that as a % of the
                   // container. Ignoring this stretched the box on the boxed axis
                   // and shifted it by the missing offset.
-                  const CONTAINER_W = 680, CONTAINER_H = 850
-                  const containerAspect = CONTAINER_W / CONTAINER_H
-                  const imageAspect = natural.w / natural.h
-                  const toPct = (a: any) => {
-                    if (!a) return null
-                    const fx = a.x_px / natural.w
-                    const fy = a.y_px / natural.h
-                    const fw = a.width_px / natural.w
-                    const fh = a.height_px / natural.h
-                    let xFrac: number, yFrac: number, wFrac: number, hFrac: number
-                    if (imageAspect >= containerAspect) {
-                      // Fills container width; letterboxed top/bottom.
-                      const rhFrac = containerAspect / imageAspect  // rendered height / container height
-                      const offY = (1 - rhFrac) / 2
-                      xFrac = fx;  wFrac = fw
-                      yFrac = offY + fy * rhFrac
-                      hFrac = fh * rhFrac
-                    } else {
-                      // Fills container height; pillarboxed left/right.
-                      const rwFrac = imageAspect / containerAspect  // rendered width / container width
-                      const offX = (1 - rwFrac) / 2
-                      yFrac = fy;  hFrac = fh
-                      xFrac = offX + fx * rwFrac
-                      wFrac = fw * rwFrac
-                    }
-                    return {
-                      xPct: xFrac * 100,
-                      yPct: yFrac * 100,
-                      widthPct: wFrac * 100,
-                      heightPct: hFrac * 100,
-                    }
-                  }
+                  // Containment transform now lives in ../lib/printAreaGeometry
+                  // (shared + unit-tested at synthetic aspect ratios; pinned so
+                  // the CanvasStage extraction can't silently shift it). Same
+                  // math as before, verbatim.
+                  const toPct = (a: any) =>
+                    a ? toPctContain(a, natural.w, natural.h, 680, 850) : null
                   const frontArea = pickSide('front')
                   const backArea = pickSide('back')
                   const pa = { front: toPct(frontArea), back: toPct(backArea) }
