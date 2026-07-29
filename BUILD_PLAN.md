@@ -684,6 +684,15 @@ workflow wins). **Two carries into the D0 build:**
    - **Brand wordmark** red → read-once identity, out of the work area.
    - **Customer palette** red → artwork domain, separate.
 
+**✅ 1a step 1 (CanvasStage DOM extraction) — PARITY GREEN 2026-07-28.** Branch
+`d0-canvasstage`; the 680×850 stage DOM moved verbatim. Golden (prod) vs branch
+(preview) re-captured at MATCHED DPR (2/1360) = byte-identical across all 6
+product/sides on every field — printAreaBounds, constrain, reWrap, AND pngHash
+(pixel-identical composite), plus the invariants. Extraction proven
+geometry-neutral. Remaining: 1a step 2 (canvas lifecycle + geometry + exports
+into CanvasStage, globals bridged) → parity; 1b (replace globals w/ ref/context)
+→ parity; human backstop; then merge on review. Not yet merged to main.
+
 **D0 build step 1 — CanvasStage extraction (parity-gated, APPROVED 2026-07-28).**
 Move-not-rewrite; preserve the canvas container box exactly (the geometry
 measures `[data-print-area]` via getBoundingClientRect); staged globals removal
