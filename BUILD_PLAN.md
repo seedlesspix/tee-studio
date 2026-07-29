@@ -691,6 +691,23 @@ measures `[data-print-area]` via getBoundingClientRect); staged globals removal
 replace with ref/context), parity-gated each. **Nothing else splits until
 CanvasStage is proven.**
 
+**⚠️ Parity capture must be SAME-DPR (found 2026-07-28 during 1a step 1).** The
+DOM-measured geometry (`getPrintAreaBounds`, `constrainObject`, `reWrapText`,
+`pngHash`) scales by `canvasEl.width`, which Fabric sets to logical ×
+`devicePixelRatio`. A golden captured at DPR 1 vs a branch at DPR 2 differs by
+exactly 2× on those fields with ZERO geometry change (observed on the first
+onesie/tee/triblend run — a clean 2.0000× everywhere, byte-identical on the
+DPR-independent fields fixture11/svgHash/jsonHash/customProps; the one
+`constrain.past-bottom` outlier at 2.08 = device-space bounds − logical-space
+object height, which itself *confirms* the DPR split). Harness now records
+`devicePixelRatio` + `deviceCanvasWidth` so a mismatch is obvious at a glance.
+**Gate rule: golden and branch must be captured at the same devicePixelRatio
+(reset browser zoom to 100%, same display).** SEPARATE latent question worth a
+later look (NOT from the extraction; the designer works in prod): whether the
+real designer places/wraps consistently across screen DPRs, and what coordinate
+space `canvas_json` object left/top are stored in — a design authored at one DPR
+and restored/printed at another could differ. Investigate outside D0.
+
 **Parity protocol (golden-master diff-to-zero + DOM-rect invariant).** Baseline
 on `main` → extract → diff to zero → DOM-rect invariant → human backstop → only
 then split. **13-fixture golden set** (10 geometry paths + 3 history-earned):
