@@ -775,17 +775,13 @@ export default function DesignerCanvas({
       .catch(err => console.error('Failed to fetch product:', err))
   }, [productId])
 
-  useEffect(() => {
-    let canvas: any = null
-    const initFabric = async () => {
-      const { Canvas } = await import('fabric')
-      if (!canvasRef.current) return
-      canvas = new Canvas(canvasRef.current ?? undefined, {
-        width: 680,
-        height: 850,
-        backgroundColor: 'transparent',
-        preserveObjectStacking: true,
-      })
+  // D0 step 2: canvas CREATION + disposal now live in CanvasStage (it owns the
+  // Fabric lifecycle). This runs as CanvasStage's onReady(canvas) callback —
+  // every handler/control/geometry below is wired in the parent's scope exactly
+  // as before, in the same create-then-attach order. window._fabricCanvas /
+  // _alignObject bridges are set here, unchanged, so the parent's content code
+  // (spawn/save/recolor/align) is untouched.
+  const handleCanvasReady = (canvas: any) => {
       const getLiveBounds = () => {
         const canvasEl = canvasRef.current
         if (!canvasEl) return null
@@ -1054,10 +1050,7 @@ export default function DesignerCanvas({
         canvas.renderAll()
       }
       setIsLoading(false)
-    }
-    initFabric()
-    return () => { if (canvas) canvas.dispose() }
-  }, [])
+  }
 
   const handleColorSelect = useCallback((color: string) => {
     markDirty()
@@ -2592,7 +2585,7 @@ export default function DesignerCanvas({
               Clear All
             </button>
           </div>
-          <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} />
+          <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} onReady={handleCanvasReady} />
 
           {/* Front / Back toggle */}
           <div className="absolute bottom-5 flex gap-2">

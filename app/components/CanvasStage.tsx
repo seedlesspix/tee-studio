@@ -1,5 +1,5 @@
 'use client'
-import type { RefObject } from 'react'
+import { useEffect, type RefObject } from 'react'
 
 type PrintAreaPct = { xPct: number; yPct: number; widthPct: number; heightPct: number }
 
@@ -18,11 +18,35 @@ export default function CanvasStage({
   canvasRef,
   shirtImgRef,
   printArea,
+  onReady,
 }: {
   canvasRef: RefObject<HTMLCanvasElement | null>
   shirtImgRef: RefObject<HTMLImageElement | null>
   printArea: PrintAreaPct | null
+  onReady: (canvas: any) => void
 }) {
+  // D0 step 2: CanvasStage owns the Fabric canvas LIFECYCLE — creation here,
+  // disposal on unmount. The parent wires every handler/control/geometry in its
+  // onReady(canvas) callback, invoked once right after creation, preserving the
+  // exact create-then-attach order of the original single effect. Fabric is
+  // runtime-imported exactly as before; window._fabricCanvas is set by onReady.
+  useEffect(() => {
+    let canvas: any = null
+    let disposed = false
+    ;(async () => {
+      const { Canvas } = await import('fabric')
+      if (disposed || !canvasRef.current) return
+      canvas = new Canvas(canvasRef.current, {
+        width: 680,
+        height: 850,
+        backgroundColor: 'transparent',
+        preserveObjectStacking: true,
+      })
+      onReady(canvas)
+    })()
+    return () => { disposed = true; if (canvas) canvas.dispose() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   return (
     <div className="relative" style={{ width: 680, height: 850 }}>
       <img
