@@ -693,6 +693,23 @@ geometry-neutral. Remaining: 1a step 2 (canvas lifecycle + geometry + exports
 into CanvasStage, globals bridged) → parity; 1b (replace globals w/ ref/context)
 → parity; human backstop; then merge on review. Not yet merged to main.
 
+**✅ 1a step 2 (canvas lifecycle → CanvasStage) — PARITY GREEN 2026-07-29.** Branch
+`d0-canvasstage` @ `90a1dc3`. The Fabric canvas lifecycle moved via the SPLIT
+approach: `CanvasStage` now owns `new Canvas` (680×850, transparent,
+`preserveObjectStacking`) + disposal-on-unmount and calls `onReady(canvas)`; the
+parent's old init effect became `handleCanvasReady(canvas)`, so every handler /
+control / geometry (getLiveBounds, object:moving/scaling, selection:*,
+mouse:dblclick, object:modified, custom controls, `window._fabricCanvas` /
+`_alignObject` bridges, setIsLoading) stays in parent scope in the SAME
+create-then-attach order — no prop threading, no `_activeObj` conversion.
+Geometry + exports also stay in the parent, so the `?parity=1` hook is unchanged.
+Faithfulness proven two ways: (a) `git diff` vs main shows every handler body as
+unchanged context — only the lifecycle wrapper (open/close) + `onReady` prop
+changed; (b) branch re-capture at matched DPR (2/1360) = byte-identical to the
+locked golden across all 6 product/sides on EVERY field incl. pngHash. tsc/build
+green. Remaining: 1b (replace globals w/ ref/context) → parity; human backstop;
+then merge on review. Not yet merged to main.
+
 **D0 build step 1 — CanvasStage extraction (parity-gated, APPROVED 2026-07-28).**
 Move-not-rewrite; preserve the canvas container box exactly (the geometry
 measures `[data-print-area]` via getBoundingClientRect); staged globals removal
