@@ -82,11 +82,22 @@ export async function runParityFixtures(api: ParityApi) {
 
   // Snapshot the live canvas so the harness leaves the designer untouched.
   const liveJson = canvas.toObject(CP)
+  // Capture the device-pixel scaling. The DOM-measured geometry (bounds,
+  // constrain, reWrap, pngHash) is DPR/zoom-SENSITIVE — getPrintAreaBounds
+  // scales by canvasEl.width, which Fabric sets to logical × devicePixelRatio.
+  // So golden and branch MUST be captured at the SAME devicePixelRatio /
+  // deviceCanvasWidth, or those fields differ purely by the DPR ratio (not a
+  // geometry change). These fields make a mismatch obvious instead of a
+  // detective job: if they differ between golden and branch, re-capture at the
+  // same DPR (reset browser zoom to 100%, same display) before trusting a diff.
+  const domCanvasEl = (canvas as { lowerCanvasEl?: HTMLCanvasElement }).lowerCanvasEl
   const out: Record<string, unknown> = {
     product: api.productLabel,
     side: api.currentSide(),
     canvas: { width: canvas.width, height: canvas.height },
     container: api.container,
+    devicePixelRatio: (typeof window !== 'undefined' && window.devicePixelRatio) || 1,
+    deviceCanvasWidth: domCanvasEl?.width ?? canvas.width,
   }
 
   try {
