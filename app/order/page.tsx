@@ -170,7 +170,7 @@ function OrderPage() {
             <p className="text-xs font-mono text-gray-900 uppercase tracking-widest mb-1">Product</p>
             <p className="text-lg font-bold text-gray-900">{design?.product_title}</p>
             <p className="text-sm text-gray-900 mt-1">Color: {design?.selected_color}</p>
-            <p className="text-sm text-gray-900">Print: {design?.print_method?.replace('_', ' ')}</p>
+            <p className="text-sm text-gray-900">Method: {design?.print_method === 'screen_print' ? 'Print' : (design?.print_method?.replace('_', ' ') || 'Print')}</p>
           </div>
 
           {/* Pricing */}

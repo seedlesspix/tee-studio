@@ -537,16 +537,36 @@ routed to a later phase. Logged here so they aren't rediscovered from scratch.
   registry understand. Adding areas like "shoulder print" or "sleeve" requires
   coordinated changes across the designer canvas + cart + variant model — a
   Phase 3+ scoping effort, not a pricing-table addition.
-- **Font management in admin is currently READ-ONLY.** Existing fonts can be
-  edited/toggled/reordered/deleted, but **adding new fonts requires a code
-  change** (Google Fonts `<link>` in `app/layout.tsx`, or `@font-face` in
-  `app/globals.css`). A future phase should build proper "Font Management" as a
-  single project that handles both adding Google fonts and uploading custom
-  fonts through admin. This requires building **dynamic font loading** (runtime
-  `<link>` injection for Google, dynamic `@font-face` for uploads to Supabase
-  Storage) — it's ~1–2 days of infrastructure work before the admin UI can be
-  built on top of it. Doing them together as one project is cleaner than
-  piecemeal.
+- **Font Management — NAMED FEATURE, admin fully OWNS all fonts (scoped 2026-07-30,
+  Denise; folds with Font Categories; DON'T build yet).** Today fonts are
+  **read-only** in admin (edit/toggle/reorder/delete only); adding one needs a
+  code change (Google `<link>` in `app/layout.tsx` or `@font-face` in
+  `app/globals.css`) — which is *why* the current 58 are baked-in (the files had
+  to be hand-loaded). **Denise's target is bigger than an "add" button:** ALL
+  fonts should live in the admin as uploaded, managed entries (add / remove /
+  replace / categorize), a **single source of truth** — not a hardcoded list with
+  uploads bolted alongside (two classes behaving differently = bug-prone). Scope:
+  1. **Upload-and-serve mechanism** — font files uploaded to Supabase Storage,
+     stored, and served to the designer via runtime dynamic `@font-face` injection
+     (+ runtime `<link>` for any Google fonts). ~1–2 d infra.
+  2. **🚨 Migrate the 58 hardcoded fonts INTO the managed system WITHOUT breaking
+     saved designs — THE REAL RISK.** Saved designs (`canvas_json`, `saved_designs`)
+     reference fonts **by NAME** (`fontFamily`); if a migrated font's family name
+     changes or its `@font-face` fails to load, **old designs silently fall back to
+     a default font** — no error, customer's saved work looks wrong. Names must stay
+     byte-stable through the migration; verify each of the 58 actually loads
+     post-migration (add a fallback-detection check). ~1–2 d + careful verification.
+  3. **One-source refactor** — designer reads the whole font list from the managed
+     system; retire the hardcoded `layout.tsx`/`globals.css` font declarations. ~1 d.
+  4. Categorize during the same admin pass (Font Categories); **fix/remove broken
+     files** like the malformed **`Univers-Condensed-Sans alot.ttf`** (the
+     console-error font, `globals.css:266`) — a proper admin handles add + repair.
+  **Rough sizing: a real SUB-PROJECT, ~4–7 dev-days** (infra + upload/serve +
+  name-stable migration + one-source refactor + per-font verification) — NOT a
+  trivial addition; the migration-without-breaking-saved-designs is what makes it
+  more than an upload button. The small **"add a category field"** slice can ship
+  with Font Categories in the desktop restructure; the full ownership migration is
+  its own scoped project.
 - **Product template print areas: pixels vs. percentages (Phase 3 reconcile).**
   The current designer reads print areas in **percentages** from a Shopify
   metafield (`designer.print_area` → `xPct/yPct/widthPct/heightPct`). The new
@@ -702,10 +722,24 @@ Captured for later scoping; not yet slotted into a specific day.
   dedicated "Admin Reporting" mini-phase. **Scope this together with
   [Decal Designs](#decal-designs--catalog-split--sell-through-tracking-post-phase-4-candidate)
   Part 3 (units-sold-per-decal) — they are one reporting surface, not two.**
-- **Rename "Screen Print" → "Print"** everywhere (methods dropdown, admin,
-  customer-facing labels). Fits Phase 3 polish, small change. (Note: the
-  internal DB key `screen_print` stays; this is display-only — see the
-  "Terminology note" under designer_pricing.)
+- **Rename "Screen Print" → "Print" everywhere in the UI (Denise 2026-07-30: the
+  website only does DTG/digital "print"; bulk screen-print is handled separately
+  off-site, so "Screen Print" is inaccurate labeling).** Investigation (2026-07-30):
+  it's the `completed`→`Paid` shape — **the stored `screen_print` key is
+  load-bearing** (`print_method`/`print_method_key`, ~40 call sites: queries,
+  designer default `|| 'screen_print'`, inserts, config lookups) and **must NOT
+  change**; only DISPLAY changes. There is **no hardcoded `"Screen Print"` string
+  in code** — the customer sees it *derived* via `print_method.replace('_',' ')`.
+  - ✅ **DONE (customer-facing):** `order/page.tsx` order summary now shows
+    **"Method: Print"** (was "Print: screen print"; relabeled "Print:"→"Method:" to
+    avoid a redundant "Print: Print" — adjustable wording).
+  - **Remaining (logged):** `admin/orders/page.tsx:450` shows "screen print" (admin,
+    same `.replace` derivation) — low priority; and the capitalized **"Screen Print"**
+    in the admin method dropdowns is the **`designer_print_methods.label` DB value**
+    (data, not code — edit via admin or a show-and-approve migration).
+  - **Make "Print" the DEFAULT when labels-as-data / the language editor is built**
+    (desktop restructure) so it can't regress — this is a textbook case of the
+    wording the language system exists to own.
 - **Convert artwork → SVG** — requires image processing (probably server-side
   with Sharp or similar). Scope for Phase 5 print-file generation work.
 - **Category reordering in admin** — drag-and-reorder Clipart categories (and
