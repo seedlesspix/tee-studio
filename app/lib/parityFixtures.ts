@@ -115,18 +115,14 @@ export async function runParityFixtures(api: ParityApi) {
       out.mockupLetterbox = { note: 'shirt image not loaded — reopen after the mockup renders' }
     }
 
-    // ---- FIXTURE 11: non-square MOCKUP ratios through the REAL containment
-    //      transform (toPctContain, shared with the designer). Today's catalog
-    //      is all square (offset 0.1); this pins the letterbox geometry at
-    //      NON-0.1 offsets so a future wider/taller garment mockup is protected.
-    //      A fixed proportional print area is fed at each synthetic mockup size;
-    //      the % output reflects the letterbox offset for that ratio. Pure math,
-    //      product-independent — identical on every run and every product.
+    // ---- FIXTURE 11: the REAL containment transform (toPctContain, shared with
+    //      the designer) at the canonical garment ratio. Square-only scope
+    //      (KISS, 2026-07-30): the speculative non-square synthetic mockups
+    //      (wide / tall / portrait) were dropped alongside the pillarbox branch.
+    //      A fixed proportional print area is fed at the square mockup size; the
+    //      % output reflects the 0.1 letterbox offset. Pure math, product-indep.
     const synthMockups: Array<[string, number, number]> = [
-      ['square-2000x2000', 2000, 2000],   // matches today's real garments (offset 0.1)
-      ['wide-3000x1000', 3000, 1000],     // landscape mockup → big top/bottom letterbox
-      ['tall-1000x3000', 1000, 3000],     // portrait mockup  → big left/right pillarbox
-      ['portrait-1600x2000', 1600, 2000], // aspect == container (0.8) → offset 0, boundary
+      ['square-2000x2000', 2000, 2000],   // the only garment ratio in scope (offset 0.1)
     ]
     out.fixture11 = synthMockups.map(([name, nw, nh]) => {
       // a print area at 15%/10% inset, 70%×55% of the mockup (natural px)
