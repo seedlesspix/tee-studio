@@ -335,6 +335,7 @@ export default function DesignerCanvas({
   useEffect(() => {
     const canvas = fabricCanvasRef.current
     if (!canvas) return
+    if (reflectingRef.current) return  // mirror-on-select, not a real knob change
     const active = canvas.getActiveObject()
     if (!active || (active.type !== 'i-text' && active.type !== 'textbox')) return
     {
@@ -406,6 +407,44 @@ export default function DesignerCanvas({
   useEffect(() => { fontSizeRef.current = fontSize }, [fontSize])
   useEffect(() => { isUppercaseRef.current = isUppercase }, [isUppercase])
 
+  // Pull-on-select guard. The panel is otherwise PUSH-only: the style/size/
+  // dirty/curve effects below watch the knob states and WRITE them onto the
+  // active object. When we select a text and mirror ITS properties back into
+  // those knobs (reflectTextObject), we must NOT let that mirror fire the push
+  // effects — they'd re-apply values (harmless) but also reset scaleX/scaleY to
+  // 1 (visibly resizing a hand-scaled text) and mark the design dirty on mere
+  // selection. reflectingRef makes the mirror inert; a last-declared effect
+  // clears it after the guarded effects have flushed in the same commit.
+  const reflectingRef = useRef(false)
+
+  // Mirror a selected text object's real properties into the panel knobs, so the
+  // panel reflects THAT object (fixes the logged color-swatch gap AND the latent
+  // "touch one knob → the text snaps to the panel's defaults" clobber — once the
+  // knobs hold the object's own values, the push effects re-apply identical
+  // ones). Every text property is recoverable from the object; curved text never
+  // reaches here (it's baked to an image), so curve always mirrors as 0 (which
+  // also stops the curve effect from re-curving the freshly-selected plain text).
+  const reflectTextObject = (obj: any) => {
+    reflectingRef.current = true
+    const fill = typeof obj.fill === 'string' ? obj.fill : textColor
+    const orig = (obj._originalText ?? '') as string
+    const flat = (obj.text || '').replace(/\n/g, ' ')
+    // Uppercase isn't a stored flag: it's ON iff the displayed text is the
+    // original upper-cased AND the original actually had lowercase to fold
+    // (an already-all-caps source reads as OFF, harmlessly — re-upper is a no-op).
+    const uppercase = !!orig && orig !== orig.toUpperCase() && flat === orig.toUpperCase()
+    setSelectedFont(obj.fontFamily || selectedFont)
+    setFontSize(Math.round(obj.fontSize || fontSize))
+    setTextColor(fill)
+    setLetterSpacing(Math.round((obj.charSpacing || 0) / 10))
+    setIsBold(obj.fontWeight === 'bold' || obj.fontWeight === 700)
+    setIsItalic(obj.fontStyle === 'italic')
+    setIsUppercase(uppercase)
+    setTextAlign(obj.textAlign === 'left' || obj.textAlign === 'right' ? obj.textAlign : 'center')
+    setTextDirection(obj.angle === 90 ? 'vertical' : 'horizontal')
+    setCurveAmount(0)
+  }
+
   // Has the canvas changed since the last successful save? Drives the Save
   // button's "Saved ✓" vs "Save changes" state.
   //
@@ -422,6 +461,7 @@ export default function DesignerCanvas({
   const styleDirtyMounted = useRef(false)
   useEffect(() => {
     if (!styleDirtyMounted.current) { styleDirtyMounted.current = true; return }
+    if (reflectingRef.current) return  // selecting a text isn't a design change
     markDirty()
   }, [selectedFont, textColor, isBold, isItalic, isUppercase, textAlign,
       letterSpacing, textDirection, textOutline, curveAmount, fontSize])
@@ -537,6 +577,7 @@ export default function DesignerCanvas({
   useEffect(() => {
     const canvas = fabricCanvasRef.current
     if (!canvas) return
+    if (reflectingRef.current) return  // mirror-on-select must not reset scale
     // Update active object - re-wrap text at new font size
     const active = canvas.getActiveObject()
     if (active && (active.type === 'i-text' || active.type === 'textbox')) {
@@ -833,6 +874,9 @@ export default function DesignerCanvas({
           // The panel's "Your Text" box is bound to the selection — selecting
           // text on the shirt fills it in, ready to edit.
           setTextInput(raw)
+          // ...and the knobs mirror the object (font/size/color/spacing/etc.),
+          // so the panel reflects THIS text — guarded from the push effects.
+          reflectTextObject(obj)
         } else if (obj) {
           setSelectedObjectType((obj as any)._isSvg ? 'svg' : 'image')
           if ((obj as any)._isSvg && (obj as any)._currentColor) {
@@ -854,6 +898,9 @@ export default function DesignerCanvas({
           // The panel's "Your Text" box is bound to the selection — selecting
           // text on the shirt fills it in, ready to edit.
           setTextInput(raw)
+          // ...and the knobs mirror the object (font/size/color/spacing/etc.),
+          // so the panel reflects THIS text — guarded from the push effects.
+          reflectTextObject(obj)
         } else if (obj) {
           setSelectedObjectType((obj as any)._isSvg ? 'svg' : 'image')
           if ((obj as any)._isSvg && (obj as any)._currentColor) {
@@ -1085,6 +1132,7 @@ export default function DesignerCanvas({
   useEffect(() => {
     const canvas = fabricCanvasRef.current
     if (!canvas) return
+    if (reflectingRef.current) return  // mirror-on-select sets curve=0; don't re-curve
     const active = canvas.getActiveObject()
     if (!active) return
 
@@ -1208,6 +1256,12 @@ export default function DesignerCanvas({
       })
     })
   }, [curveAmount, fontSize, selectedFont, textColor, isBold, isItalic])
+
+  // Clears the pull-on-select guard. Declared AFTER every push/dirty/curve
+  // effect above, so on the batched mirror commit it flushes last — the guarded
+  // effects have already bailed, and the next real knob change (guard false)
+  // pushes normally. Runs every commit; idempotent when the guard is already off.
+  useEffect(() => { reflectingRef.current = false })
 
   const reWrapText = (text: string, targetFontSize: number, fontFamily: string, bold: boolean, italic: boolean): { text: string; fontSize: number } => {
     const canvasEl = canvasRef.current
@@ -1363,6 +1417,19 @@ export default function DesignerCanvas({
     setSelectedTextPreview('')
     setSelectedObjectType(null)
     textInputRef.current?.focus()
+  }
+
+  // Rail = "add a NEW one." Selection drives the panel while something's picked,
+  // so switching rail category means "leave edit mode": drop the selection
+  // (selection:cleared resets selectedObjectType → the panel shows the chosen
+  // category's ADD surface) and set the tab.
+  const handleSelectTab = (tab: 'text' | 'upload' | 'clipart') => {
+    const canvas = fabricCanvasRef.current
+    if (canvas) {
+      canvas.discardActiveObject()
+      canvas.renderAll()
+    }
+    setActiveTab(tab)
   }
 
   // Put a new text on the shirt from the box's first keystroke. Deliberately
@@ -2272,7 +2339,7 @@ export default function DesignerCanvas({
 
         {/* Left panel */}
         <aside className="w-72 bg-white border-r border-gray-200 flex flex-col overflow-y-auto shrink-0">
-          <Rail activeTab={activeTab} onSelectTab={setActiveTab} />
+          <Rail activeTab={activeTab} onSelectTab={handleSelectTab} />
 
           <SelectionPanel
             activeTab={activeTab}

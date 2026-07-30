@@ -5,29 +5,24 @@ import MyUploadsPanel, { type UploadItem } from './MyUploadsPanel'
 
 // SelectionPanel — the designer's LEFT TOOL PANEL BODY (Text / Upload / Clipart).
 //
-// D0 restructure Stage 2 (move-not-rewrite): the panel body extracted VERBATIM
-// from DesignerCanvas's left aside. It's a DUMB VIEW over parent-owned canvas
-// logic — every value/setter/handler arrives as a prop, grouped by domain
-// (text / upload / clipart) plus the shared activeTab / dbColors / deleteSelected.
-// ALL logic stays in the parent: the style-sync / size / curve effects, the
-// selection-event handlers that populate these values, spawn/curve/fit/recolor,
-// and the _activeObj global. Two inline canvas snippets (align, clipart-select)
-// were lifted to parent handlers in Stage 1 (handleTextAlign, handleClipartSelect).
+// A DUMB VIEW over parent-owned canvas logic — every value/setter/handler
+// arrives as a prop, grouped by domain (text / upload / clipart) plus the shared
+// activeTab / dbColors / deleteSelected. ALL logic stays in the parent: the
+// style/size/curve push effects, the selection handlers that mirror the object
+// into these knobs (reflectTextObject), spawn/curve/fit/recolor, _activeObj.
 //
-// MOVED AS-IS, WARTS INTACT (logged for Phase 2 — do NOT clean here): Delete
-// Selected is duplicated (text + clipart tabs); the dbColors fallback literal
-// appears 3x; the knobs are tab-driven (the tab->selection inversion is Phase 2).
+// SELECTION-DRIVEN (Phase 2 inversion): `panelMode` below chooses what shows off
+// the SELECTED object first, falling back to the rail's activeTab only when
+// nothing is selected. Selection = EDIT (text / art-edit / image-edit); rail =
+// ADD (text box / upload / clipart browser). This retired the old tab-driven
+// keying AND closed the reflection gap the D0 backstop found: selecting a text
+// now mirrors ITS font/size/COLOR/spacing/etc. into the knobs (parent's
+// reflectTextObject), not just clipart color — and that mirror also fixed the
+// latent "touch one knob → text snaps to panel defaults" clobber.
 //
-// Phase 2: tab->selection-driven inversion, the two-panel split, and — once
-// prop-drilling actually hurts — a DesignerContext refactor to retire this bundle.
-//
-// Phase 2 log (pre-existing gap, found in the D0 backstop — NOT a regression):
-// selecting a TEXT object on the shirt does NOT reflect its ink color as the
-// active swatch, though selecting a CLIPART/SVG DOES. Asymmetry is in the
-// parent's selection:created/updated handlers — they call setSelectedSvgColor
-// from obj._currentColor but never setTextColor from a text's fill (true on
-// main too). Fold into the selection-driven inversion, whose whole point is a
-// panel that reflects the selected object consistently — text color included.
+// Remaining follow-ups (still logged, NOT this pass): the two-panel split; a
+// DesignerContext refactor once prop-drilling hurts (retire this bundle); the
+// dbColors fallback literal still appears a few times.
 type SelectionPanelProps = {
   activeTab: string
   dbColors: any[]
@@ -97,11 +92,21 @@ export default function SelectionPanel({
   } = text
   const { handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload } = upload
   const { printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor } = clipart
+  // Selection-driven (Phase 2 inversion): what the panel shows follows the
+  // SELECTED object, falling back to the rail's active tab only when nothing is
+  // selected. Selection WINS for editing (text / art-edit / image-edit); the
+  // rail drives ADDING (text box / upload / clipart browser). The text mode
+  // serves both — the box is empty to add, filled+reflected to edit.
+  const panelMode =
+    selectedObjectType === 'text' ? 'text'
+    : selectedObjectType === 'svg' ? 'art-edit'
+    : selectedObjectType === 'image' ? 'image-edit'
+    : activeTab
   return (
           <div className="px-4 pb-4 flex flex-col gap-4">
 
-                        {/* TEXT TAB */}
-            {activeTab === 'text' && (
+                        {/* TEXT — add (empty box) + edit (reflects the selected text) */}
+            {panelMode === 'text' && (
               <>
                 {/* The box is the typing surface — always live. The first
                     keystroke puts the text on the shirt; no button hunt. */}
@@ -293,14 +298,17 @@ export default function SelectionPanel({
 
                   </div>
                 </div>
-                <button onClick={deleteSelected}
-                  className="w-full border border-red-800 text-red-400 py-2 rounded text-sm hover:bg-red-900/20 transition-colors">
-                  Delete Selected
-                </button>
+                {/* Delete belongs to EDIT, not the empty add-surface. */}
+                {selectedObjectType === 'text' && (
+                  <button onClick={deleteSelected}
+                    className="w-full border border-red-800 text-red-400 py-2 rounded text-sm hover:bg-red-900/20 transition-colors">
+                    Delete Selected
+                  </button>
+                )}
               </>
             )}
-            {/* UPLOAD TAB */}
-            {activeTab === 'upload' && (
+            {/* UPLOAD — add-surface (dropzone + library) */}
+            {panelMode === 'upload' && (
               <div>
                 <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Upload Artwork</label>
                 <label className="mt-2 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-xl p-8 cursor-pointer hover:border-[#dd3333] hover:bg-[#dd3333]/5 transition-all">
@@ -321,13 +329,21 @@ export default function SelectionPanel({
               </div>
             )}
 
-            {/* CLIPART TAB */}
-            {activeTab === 'clipart' && (
+            {/* CLIPART — add-surface (browser). Selecting a clipart swaps to
+                art-edit below, so the browser is hidden while one is selected;
+                click the Art rail again to browse for another. */}
+            {panelMode === 'clipart' && (
               <div className="flex flex-col gap-3">
                 <ClipartPanel
                   printMethod={printMethod}
                   onSelect={handleClipartSelect}
                 />
+              </div>
+            )}
+
+            {/* ART edit — a clipart/SVG is selected: recolor + delete. */}
+            {panelMode === 'art-edit' && (
+              <div className="flex flex-col gap-3">
                 {/* SVG Color swatches */}
                 <div className="mt-2">
                   <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Clipart Color</label>
@@ -354,6 +370,17 @@ export default function SelectionPanel({
                   Delete Selected
                 </button>
               </div>
+            )}
+
+            {/* IMAGE edit — a raster upload is selected. No per-object controls
+                exist for rasters (no recolor), so this is delete only. Curved
+                text lands here too (it's baked to an image), which is why it
+                can't be re-edited as text — a known, documented limitation. */}
+            {panelMode === 'image-edit' && (
+              <button onClick={deleteSelected}
+                className="w-full border border-red-800 text-red-400 py-2 rounded text-sm hover:bg-red-900/20 transition-colors">
+                Delete Selected
+              </button>
             )}
 
           </div>
