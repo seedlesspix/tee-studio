@@ -7,7 +7,7 @@ import { supabase } from '../lib/supabase'
 import ClipartPanel from './ClipartPanel'
 import { getProduct } from '../lib/shopify'
 import { buildColorImageMap, getColorImages } from '../lib/productImages'
-import { toPctContain } from '../lib/printAreaGeometry'
+import { toPctContain, CANVAS_W, CANVAS_H } from '../lib/printAreaGeometry'
 import { CustomerAuthButton } from './CustomerAuthButton'
 import MyUploadsPanel, { type UploadItem } from './MyUploadsPanel'
 import MyDesignsDrawer, { type SavedDesign } from './MyDesignsDrawer'
@@ -199,8 +199,8 @@ export default function DesignerCanvas({
     if (!overlay || !canvasEl) return
     const canvasRect = canvasEl.getBoundingClientRect()
     const overlayRect = overlay.getBoundingClientRect()
-    const scaleX = canvasEl.width  / canvasRect.width
-    const scaleY = canvasEl.height / canvasRect.height
+    const scaleX = CANVAS_W  / canvasRect.width
+    const scaleY = CANVAS_H / canvasRect.height
     const bounds = {
       left:   (overlayRect.left   - canvasRect.left)   * scaleX,
       top:    (overlayRect.top    - canvasRect.top)    * scaleY,
@@ -377,8 +377,8 @@ export default function DesignerCanvas({
       if (overlay && canvasEl) {
         const canvasRect = canvasEl.getBoundingClientRect()
         const overlayRect = overlay.getBoundingClientRect()
-        const scaleX = canvasEl.width / canvasRect.width
-        const scaleY = canvasEl.height / canvasRect.height
+        const scaleX = CANVAS_W / canvasRect.width
+        const scaleY = CANVAS_H / canvasRect.height
         const bounds = {
           left:   (overlayRect.left   - canvasRect.left) * scaleX,
           top:    (overlayRect.top    - canvasRect.top)  * scaleY,
@@ -569,8 +569,8 @@ export default function DesignerCanvas({
       if (!overlay || !canvasEl) return
       const canvasRect = canvasEl.getBoundingClientRect()
       const overlayRect = overlay.getBoundingClientRect()
-      const scaleX = canvasEl.width  / canvasRect.width
-      const scaleY = canvasEl.height / canvasRect.height
+      const scaleX = CANVAS_W  / canvasRect.width
+      const scaleY = CANVAS_H / canvasRect.height
       const bounds = {
         left:   (overlayRect.left   - canvasRect.left)   * scaleX,
         top:    (overlayRect.top    - canvasRect.top)    * scaleY,
@@ -792,8 +792,8 @@ export default function DesignerCanvas({
         if (!overlay) return null
         const canvasRect = canvasEl.getBoundingClientRect()
         const overlayRect = overlay.getBoundingClientRect()
-        const scaleX = canvasEl.width  / canvasRect.width
-        const scaleY = canvasEl.height / canvasRect.height
+        const scaleX = CANVAS_W  / canvasRect.width
+        const scaleY = CANVAS_H / canvasRect.height
         return {
           left:   (overlayRect.left   - canvasRect.left)   * scaleX,
           top:    (overlayRect.top    - canvasRect.top)    * scaleY,
@@ -1035,8 +1035,8 @@ export default function DesignerCanvas({
         if (!overlay || !canvasEl) return
         const cr = canvasEl.getBoundingClientRect()
         const or = overlay.getBoundingClientRect()
-        const sx = canvasEl.width / cr.width
-        const sy = canvasEl.height / cr.height
+        const sx = CANVAS_W / cr.width
+        const sy = CANVAS_H / cr.height
         const oL = (or.left - cr.left) * sx
         const oR = (or.right - cr.left) * sx
         const oT = (or.top - cr.top) * sy
@@ -1223,9 +1223,9 @@ export default function DesignerCanvas({
 
     const canvasRect = canvasEl.getBoundingClientRect()
     const overlayRect = overlay.getBoundingClientRect()
-    const scaleX = canvasEl.width / canvasRect.width
+    const scaleX = CANVAS_W / canvasRect.width
     const maxWidth = overlayRect.width * scaleX * 0.92
-    const maxHeight = overlayRect.height * (canvasEl.height / canvasRect.height) * 0.92
+    const maxHeight = overlayRect.height * (CANVAS_H / canvasRect.height) * 0.92
 
     const tmpCanvas = document.createElement('canvas')
     const tmpCtx = tmpCanvas.getContext('2d')!
@@ -1293,8 +1293,8 @@ export default function DesignerCanvas({
     if (!overlay || !canvasEl) return null
     const canvasRect = canvasEl.getBoundingClientRect()
     const overlayRect = overlay.getBoundingClientRect()
-    const scaleX = canvasEl.width / canvasRect.width
-    const scaleY = canvasEl.height / canvasRect.height
+    const scaleX = CANVAS_W / canvasRect.width
+    const scaleY = CANVAS_H / canvasRect.height
     return {
       left: (overlayRect.left - canvasRect.left) * scaleX,
       top: (overlayRect.top - canvasRect.top) * scaleY,
@@ -1697,8 +1697,8 @@ export default function DesignerCanvas({
     if (overlay && canvasEl) {
       const canvasRect = canvasEl.getBoundingClientRect()
       const overlayRect = overlay.getBoundingClientRect()
-      const scaleX = canvasEl.width / canvasRect.width
-      const scaleY = canvasEl.height / canvasRect.height
+      const scaleX = CANVAS_W / canvasRect.width
+      const scaleY = CANVAS_H / canvasRect.height
       spawnX = ((overlayRect.left - canvasRect.left) * scaleX) + (overlayRect.width * scaleX / 2)
       spawnY = ((overlayRect.top - canvasRect.top) * scaleY) + (overlayRect.height * scaleY / 2)
       // Scale to fit print area width
@@ -2489,8 +2489,8 @@ export default function DesignerCanvas({
                     if (overlay && canvasEl) {
                       const canvasRect = canvasEl.getBoundingClientRect()
                       const overlayRect = overlay.getBoundingClientRect()
-                      const scaleX = canvasEl.width / canvasRect.width
-                      const scaleY = canvasEl.height / canvasRect.height
+                      const scaleX = CANVAS_W / canvasRect.width
+                      const scaleY = CANVAS_H / canvasRect.height
                       spawnX = ((overlayRect.left - canvasRect.left) * scaleX) + (overlayRect.width * scaleX / 2)
                       spawnY = ((overlayRect.top - canvasRect.top) * scaleY) + (overlayRect.height * scaleY / 2)
                     }
@@ -2501,7 +2501,7 @@ export default function DesignerCanvas({
                         if (overlay && canvasEl) {
                           const canvasRect = canvasEl.getBoundingClientRect()
                           const overlayRect = overlay.getBoundingClientRect()
-                          const scaleX = canvasEl.width / canvasRect.width
+                          const scaleX = CANVAS_W / canvasRect.width
                           const maxW = overlayRect.width * scaleX * 0.5
                           if (img.width > maxW) img.scaleToWidth(maxW)
                         }
