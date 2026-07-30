@@ -2159,6 +2159,56 @@ export default function DesignerCanvas({
     }
   }
 
+  // D0 SelectionPanel extraction, Stage 1: two inline canvas snippets lifted
+  // VERBATIM out of the panel JSX into named handlers, so Stage 2 can move the
+  // panel as a dumb view. handleTextAlign = the A9 align button's inline onClick;
+  // handleClipartSelect = ClipartPanel's inline onSelect closure. Logic unchanged.
+  const handleTextAlign = (align: 'left' | 'center' | 'right') => {
+    setTextAlign(align)
+    const canvas = fabricCanvasRef.current
+    const obj = canvas?.getActiveObject()
+    if (obj && obj.type === 'textbox') {
+      obj.set('textAlign', align)
+      canvas.renderAll()
+    }
+  }
+
+  const handleClipartSelect = (url: string, fileType: string) => {
+    if (!fabricCanvas) return
+    markDirty()
+    const canvasEl = canvasRef.current
+    const overlay = document.querySelector('[data-print-area]') as HTMLElement
+    let spawnX = 280, spawnY = 378
+    if (overlay && canvasEl) {
+      const canvasRect = canvasEl.getBoundingClientRect()
+      const overlayRect = overlay.getBoundingClientRect()
+      const scaleX = CANVAS_W / canvasRect.width
+      const scaleY = CANVAS_H / canvasRect.height
+      spawnX = ((overlayRect.left - canvasRect.left) * scaleX) + (overlayRect.width * scaleX / 2)
+      spawnY = ((overlayRect.top - canvasRect.top) * scaleY) + (overlayRect.height * scaleY / 2)
+    }
+    import('fabric').then(({ FabricImage }) => {
+      FabricImage.fromURL(url, { crossOrigin: 'anonymous' }).then(img => {
+        const canvasEl = canvasRef.current
+        const overlay = document.querySelector('[data-print-area]') as HTMLElement
+        if (overlay && canvasEl) {
+          const canvasRect = canvasEl.getBoundingClientRect()
+          const overlayRect = overlay.getBoundingClientRect()
+          const scaleX = CANVAS_W / canvasRect.width
+          const maxW = overlayRect.width * scaleX * 0.5
+          if (img.width > maxW) img.scaleToWidth(maxW)
+        }
+        img.set({ left: spawnX, top: spawnY, originX: 'center', originY: 'center' })
+        ;(img as any)._isSvg = fileType === 'svg'
+        fabricCanvas.add(img)
+        fabricCanvas.setActiveObject(img)
+        lastActiveObjectRef.current = img
+        setSelectedSvgColor('#000000')
+        fabricCanvas.renderAll()
+      })
+    })
+  }
+
   // D0 ActionBar extraction: the header's Next Step onClick, lifted VERBATIM into
   // a named handler (cross-side validation + save/add-to-cart + the browser-Back
   // replaceState rehydration + navigate) and passed to <ActionBar> as onNextStep.
@@ -2374,15 +2424,7 @@ export default function DesignerCanvas({
                   <div className="flex gap-1">
                     {(['left', 'center', 'right'] as const).map(align => (
                       <button key={align}
-                        onClick={() => {
-                          setTextAlign(align)
-                          const canvas = fabricCanvasRef.current
-                          const obj = canvas?.getActiveObject()
-                          if (obj && obj.type === 'textbox') {
-                            obj.set('textAlign', align)
-                            canvas.renderAll()
-                          }
-                        }}
+                        onClick={() => handleTextAlign(align)}
                         className={`flex-1 py-1.5 rounded text-xs font-mono border transition-all ${
                           textAlign === align
                             ? 'bg-[#dd3333] text-white border-[#dd3333]'
@@ -2460,41 +2502,7 @@ export default function DesignerCanvas({
               <div className="flex flex-col gap-3">
                 <ClipartPanel
                   printMethod={printMethod}
-                  onSelect={(url, fileType) => {
-                    if (!fabricCanvas) return
-                    markDirty()
-                    const canvasEl = canvasRef.current
-                    const overlay = document.querySelector('[data-print-area]') as HTMLElement
-                    let spawnX = 280, spawnY = 378
-                    if (overlay && canvasEl) {
-                      const canvasRect = canvasEl.getBoundingClientRect()
-                      const overlayRect = overlay.getBoundingClientRect()
-                      const scaleX = CANVAS_W / canvasRect.width
-                      const scaleY = CANVAS_H / canvasRect.height
-                      spawnX = ((overlayRect.left - canvasRect.left) * scaleX) + (overlayRect.width * scaleX / 2)
-                      spawnY = ((overlayRect.top - canvasRect.top) * scaleY) + (overlayRect.height * scaleY / 2)
-                    }
-                    import('fabric').then(({ FabricImage }) => {
-                      FabricImage.fromURL(url, { crossOrigin: 'anonymous' }).then(img => {
-                        const canvasEl = canvasRef.current
-                        const overlay = document.querySelector('[data-print-area]') as HTMLElement
-                        if (overlay && canvasEl) {
-                          const canvasRect = canvasEl.getBoundingClientRect()
-                          const overlayRect = overlay.getBoundingClientRect()
-                          const scaleX = CANVAS_W / canvasRect.width
-                          const maxW = overlayRect.width * scaleX * 0.5
-                          if (img.width > maxW) img.scaleToWidth(maxW)
-                        }
-                        img.set({ left: spawnX, top: spawnY, originX: 'center', originY: 'center' })
-                        ;(img as any)._isSvg = fileType === 'svg'
-                        fabricCanvas.add(img)
-                        fabricCanvas.setActiveObject(img)
-                        lastActiveObjectRef.current = img
-                        setSelectedSvgColor('#000000')
-                        fabricCanvas.renderAll()
-                      })
-                    })
-                  }}
+                  onSelect={handleClipartSelect}
                 />
                 {/* SVG Color swatches */}
                 <div className="mt-2">
