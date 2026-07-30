@@ -9,10 +9,9 @@ import CanvasStage from './CanvasStage'
 import { getProduct } from '../lib/shopify'
 import { buildColorImageMap, getColorImages } from '../lib/productImages'
 import { toPctContain, CANVAS_W, CANVAS_H, type PrintAreaPct } from '../lib/printAreaGeometry'
-import { CustomerAuthButton } from './CustomerAuthButton'
+import ActionBar from './ActionBar'
 import MyUploadsPanel, { type UploadItem } from './MyUploadsPanel'
 import MyDesignsDrawer, { type SavedDesign } from './MyDesignsDrawer'
-import SaveDesignControl from './SaveDesignControl'
 import { useCustomerSession } from '../hooks/useCustomerSession'
 
 // Uploads a File/Blob/data-URI to Cloudinary (unsigned preset) and returns the
@@ -2159,67 +2158,63 @@ export default function DesignerCanvas({
     }
   }
 
+  // D0 ActionBar extraction: the header's Next Step onClick, lifted VERBATIM into
+  // a named handler (cross-side validation + save/add-to-cart + the browser-Back
+  // replaceState rehydration + navigate) and passed to <ActionBar> as onNextStep.
+  // The `data-cart-btn` global query still finds the button inside ActionBar.
+  // Behavior-neutral move; the isSubmitting-prop cleanup is deferred to Phase 2.
+  const handleNextStep = async () => {
+    const canvas = fabricCanvasRef.current
+    // Cross-side check: allow continuing if EITHER side has content, not just the
+    // currently-visible canvas (a back-only design viewed from the empty front
+    // should still pass).
+    if (!canvas || (!frontHasContent && !backHasContent)) {
+      alert('Please add a design before continuing. Add text, clipart, or upload an image.')
+      return
+    }
+    // Deselect all objects so handles don't show in preview
+    canvas.discardActiveObject()
+    canvas.renderAll()
+    const btn = document.querySelector('[data-cart-btn]') as HTMLButtonElement
+    if (btn) { btn.textContent = 'Saving...'; (btn as any).disabled = true }
+    const result = await saveDesignAndAddToCart()
+    if (btn) { btn.textContent = 'Next Step →'; (btn as any).disabled = false }
+    if (result && result.orderId) {
+      // Stamp the designer's history entry so browser-Back from the order page
+      // rehydrates the FULL design: design_id restores the canvas (front + back),
+      // and the CURRENT variant_id/quantity restore the last color/size/quantity —
+      // not the stale params from the first Design-Now click. (Then Back once more
+      // → product page cleanly.)
+      try {
+        const backUrl = new URL(window.location.href)
+        backUrl.searchParams.set('design_id', result.orderId)
+        const vId = selectedVariant?.id?.split('/').pop()
+        if (vId) backUrl.searchParams.set('variant_id', vId)
+        if (totalQty > 0) backUrl.searchParams.set('quantity', String(totalQty))
+        window.history.replaceState({}, '', backUrl.pathname + backUrl.search)
+      } catch { /* ignore */ }
+      window.location.href = `/order?design_id=${result.orderId}`
+    } else {
+      alert('Error saving design. Please try again.')
+    }
+  }
+
   return (
     <div className="flex flex-col h-screen text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
 
-      {/* Header */}
-      <header className="flex items-center justify-between px-6 h-14 bg-white border-b border-gray-200 shrink-0">
-        <div className="font-black text-xl tracking-widest">
-          TEE<span className="text-[#dd3333]">STUDIO</span>
-        </div>
-        <div className="text-sm text-gray-800 truncate max-w-xs">{productTitle}</div>
-        <div className="flex items-center gap-3">
-          <SaveDesignControl onSave={handleSaveDesign} loggedIn={loggedIn} dirty={isDirty} />
-          <button
-            onClick={() => setDesignsOpen(true)}
-            className="px-3 py-1.5 rounded text-sm text-gray-600 hover:text-[#dd3333] transition-colors whitespace-nowrap"
-          >
-            My Designs{savedDesigns.length > 0 ? ` (${savedDesigns.length})` : ''}
-          </button>
-          <CustomerAuthButton variant="quiet" onBeforeLogin={prepareLoginRedirect} />
-          <button
-            onClick={async () => {
-              const canvas = fabricCanvasRef.current
-              // Cross-side check: allow continuing if EITHER side has content,
-              // not just the currently-visible canvas (a back-only design viewed
-              // from the empty front should still pass).
-              if (!canvas || (!frontHasContent && !backHasContent)) {
-                alert('Please add a design before continuing. Add text, clipart, or upload an image.')
-                return
-              }
-              // Deselect all objects so handles don't show in preview
-              canvas.discardActiveObject()
-              canvas.renderAll()
-              const btn = document.querySelector('[data-cart-btn]') as HTMLButtonElement
-              if (btn) { btn.textContent = 'Saving...'; (btn as any).disabled = true }
-              const result = await saveDesignAndAddToCart()
-              if (btn) { btn.textContent = 'Next Step →'; (btn as any).disabled = false }
-              if (result && result.orderId) {
-                // Stamp the designer's history entry so browser-Back from the
-                // order page rehydrates the FULL design: design_id restores the
-                // canvas (front + back), and the CURRENT variant_id/quantity
-                // restore the last color/size/quantity — not the stale params
-                // from the first Design-Now click. (Then Back once more → product
-                // page cleanly.)
-                try {
-                  const backUrl = new URL(window.location.href)
-                  backUrl.searchParams.set('design_id', result.orderId)
-                  const vId = selectedVariant?.id?.split('/').pop()
-                  if (vId) backUrl.searchParams.set('variant_id', vId)
-                  if (totalQty > 0) backUrl.searchParams.set('quantity', String(totalQty))
-                  window.history.replaceState({}, '', backUrl.pathname + backUrl.search)
-                } catch { /* ignore */ }
-                window.location.href = `/order?design_id=${result.orderId}`
-              } else {
-                alert('Error saving design. Please try again.')
-              }
-            }}
-            data-cart-btn
-            className="bg-[#dd3333] text-white px-5 py-2 rounded text-sm font-bold tracking-wide hover:opacity-80 transition-opacity">
-            Next Step →
-          </button>
-        </div>
-      </header>
+      {/* Header — extracted to <ActionBar> (D0 restructure step 1a, move-not-
+          rewrite). Phase 2: becomes the sealed "price + Save + Next" bottom bar
+          + Build It → Order It → Pick Up/Ship stepper + folds in the price column. */}
+      <ActionBar
+        productTitle={productTitle}
+        onSave={handleSaveDesign}
+        loggedIn={loggedIn}
+        dirty={isDirty}
+        savedDesignsCount={savedDesigns.length}
+        onOpenDesigns={() => setDesignsOpen(true)}
+        onBeforeLogin={prepareLoginRedirect}
+        onNextStep={handleNextStep}
+      />
 
       {/* Main layout */}
       <div className="flex flex-1 overflow-hidden">
