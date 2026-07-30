@@ -163,6 +163,30 @@ export async function runParityFixtures(api: ParityApi) {
         canvas.remove(o)
       }
       out.constrain = edges
+
+      // ---- Fixture 15 (spawn placement): where a FRESH element auto-lands ----
+      // The fixture GAP that let the DPR bug through: every other fixture records
+      // what a coordinate becomes AFTER constrain — none tested the INITIAL spawn.
+      // The bug placed fresh objects at DEVICE-space coords (bounds center ~700)
+      // inside a LOGICAL object space (canvas.width 680) → off the canvas at
+      // DPR>=2, yet the recorded numbers matched (golden was captured buggy too),
+      // so parity stayed green while the human eye caught it. This records the
+      // spawn center a fresh element gets (exactly as spawnTextFromBox /
+      // placeImageOnCanvas place it), the OBJECT SPACE it lands in, and whether
+      // that center sits inside it. Correct (logical) → centerInObjectSpace:true,
+      // spawnCenter ~half the buggy value; a device/logical regression flips the
+      // flag and shifts spawnCenter — mechanically caught, not left to the eye.
+      const spawn = new IText('SPAWN', { left: cx, top: cy, originX: 'center', originY: 'center', fontFamily: 'Arial', fontSize: 40 })
+      canvas.add(spawn)
+      api.constrainObject(spawn, bounds) // mirror fitAndConstrain's constrain step
+      out.spawnPlacement = {
+        objectSpace: { width: canvas.width, height: canvas.height },
+        spawnCenter: { x: r3(cx), y: r3(cy) },
+        landed: { left: r3(spawn.left), top: r3(spawn.top) },
+        centerInObjectSpace: cx >= 0 && cx <= canvas.width && cy >= 0 && cy <= canvas.height,
+        centerInPrintBox: cx >= bounds.left && cx <= bounds.right && cy >= bounds.top && cy <= bounds.bottom,
+      }
+      canvas.remove(spawn)
     }
 
     // ---- Fixture 4: reWrapText on representative strings ----
