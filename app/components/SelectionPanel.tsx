@@ -20,6 +20,14 @@ import MyUploadsPanel, { type UploadItem } from './MyUploadsPanel'
 //
 // Phase 2: tab->selection-driven inversion, the two-panel split, and — once
 // prop-drilling actually hurts — a DesignerContext refactor to retire this bundle.
+//
+// Phase 2 log (pre-existing gap, found in the D0 backstop — NOT a regression):
+// selecting a TEXT object on the shirt does NOT reflect its ink color as the
+// active swatch, though selecting a CLIPART/SVG DOES. Asymmetry is in the
+// parent's selection:created/updated handlers — they call setSelectedSvgColor
+// from obj._currentColor but never setTextColor from a text's fill (true on
+// main too). Fold into the selection-driven inversion, whose whole point is a
+// panel that reflects the selected object consistently — text color included.
 type SelectionPanelProps = {
   activeTab: string
   dbColors: any[]
