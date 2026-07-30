@@ -10,10 +10,10 @@ type PrintAreaPct = { xPct: number; yPct: number; widthPct: number; heightPct: n
 // structure, the 680×850 box, and every inline style are byte-identical, so
 // getBoundingClientRect() returns the same values and the print-area geometry
 // (constrain/wrap/align, all DOM-measured) does NOT shift — the parity gate
-// proves this. The parent still owns the canvas lifecycle, geometry, and
-// exports, and reaches this DOM through the forwarded refs + the global
-// `[data-print-area]` query; the `window._fabricCanvas`/`_printAreaData` bridge
-// is untouched. Nothing else splits until parity is green.
+// proves this. The parent owns the canvas lifecycle, geometry, and exports, and
+// reaches this DOM through the forwarded refs + the global `[data-print-area]`
+// query. (1b: the former window._fabricCanvas / _alignObject / _printAreaData
+// bridges are now in-component refs in the parent — no window globals.)
 export default function CanvasStage({
   canvasRef,
   shirtImgRef,
@@ -29,7 +29,7 @@ export default function CanvasStage({
   // disposal on unmount. The parent wires every handler/control/geometry in its
   // onReady(canvas) callback, invoked once right after creation, preserving the
   // exact create-then-attach order of the original single effect. Fabric is
-  // runtime-imported exactly as before; window._fabricCanvas is set by onReady.
+  // runtime-imported exactly as before; the parent's fabricCanvasRef is set by onReady.
   useEffect(() => {
     let canvas: any = null
     let disposed = false

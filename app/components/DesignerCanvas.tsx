@@ -8,7 +8,7 @@ import ClipartPanel from './ClipartPanel'
 import CanvasStage from './CanvasStage'
 import { getProduct } from '../lib/shopify'
 import { buildColorImageMap, getColorImages } from '../lib/productImages'
-import { toPctContain, CANVAS_W, CANVAS_H } from '../lib/printAreaGeometry'
+import { toPctContain, CANVAS_W, CANVAS_H, type PrintAreaPct } from '../lib/printAreaGeometry'
 import { CustomerAuthButton } from './CustomerAuthButton'
 import MyUploadsPanel, { type UploadItem } from './MyUploadsPanel'
 import MyDesignsDrawer, { type SavedDesign } from './MyDesignsDrawer'
@@ -38,15 +38,6 @@ async function uploadToCloudinary(
     return { url: data.secure_url, publicId: data.public_id, width: data.width, height: data.height }
   } catch {
     return null
-  }
-}
-
-declare global {
-  interface Window {
-    _printAreaData?: {
-      front: { xPct: number; yPct: number; widthPct: number; heightPct: number } | null
-      back:  { xPct: number; yPct: number; widthPct: number; heightPct: number } | null
-    }
   }
 }
 
@@ -282,7 +273,7 @@ export default function DesignerCanvas({
     let attempts = 0
     const poll = setInterval(() => {
       attempts++
-      const canvas = (window as any)._fabricCanvas
+      const canvas = fabricCanvasRef.current
       if (!canvas) { if (attempts > 20) clearInterval(poll); return }
       clearInterval(poll)
       // BLOCKER-1 lockdown: reads flow through the server route (service
@@ -464,6 +455,9 @@ export default function DesignerCanvas({
   const printAreaBackIdRef = useRef<string | null>(null)
   const printAreaFrontSnapRef = useRef<any>(null)
   const printAreaBackSnapRef = useRef<any>(null)
+  // 1b: replaces the window._printAreaData bridge — front/back print-area %s,
+  // written at product load, read by the Front/Back toggle. In-component ref.
+  const printAreaDataRef = useRef<{ front: PrintAreaPct | null; back: PrintAreaPct | null } | null>(null)
   useEffect(() => {
     fabricCanvasRef.current = fabricCanvas
   }, [fabricCanvas])
@@ -689,7 +683,7 @@ export default function DesignerCanvas({
                   const backArea = pickSide('back')
                   const pa = { front: toPct(frontArea), back: toPct(backArea) }
                   if (pa.front || pa.back) {
-                    window._printAreaData = pa
+                    printAreaDataRef.current = pa
                     setPrintArea(pa.front || pa.back)
                     templateIdRef.current = tpl.id
                     printAreaFrontIdRef.current = frontArea?.id ?? null
@@ -708,13 +702,13 @@ export default function DesignerCanvas({
               try {
                 const pa = JSON.parse(data.printArea.value)
                 setPrintArea(pa.front)
-                window._printAreaData = pa
+                printAreaDataRef.current = pa
               } catch (e) { console.error('Print area parse error', e) }
             } else if (data.metafield?.value) {
               try {
                 const pa = JSON.parse(data.metafield.value)
                 setPrintArea(pa.front)
-                window._printAreaData = pa
+                printAreaDataRef.current = pa
               } catch (e) { console.error('Print area parse error', e) }
             }
           })()
@@ -778,9 +772,9 @@ export default function DesignerCanvas({
   // D0 step 2: canvas CREATION + disposal now live in CanvasStage (it owns the
   // Fabric lifecycle). This runs as CanvasStage's onReady(canvas) callback —
   // every handler/control/geometry below is wired in the parent's scope exactly
-  // as before, in the same create-then-attach order. window._fabricCanvas /
-  // _alignObject bridges are set here, unchanged, so the parent's content code
-  // (spawn/save/recolor/align) is untouched.
+  // as before, in the same create-then-attach order. 1b: the canvas is published
+  // to fabricCanvasRef here (not the old window._fabricCanvas global), and the
+  // align helper is now the component-scope alignObject() — no window bridges.
   const handleCanvasReady = (canvas: any) => {
       const getLiveBounds = () => {
         const canvasEl = canvasRef.current
@@ -902,7 +896,7 @@ export default function DesignerCanvas({
       canvas.on('object:modified', () => markDirty())
 
       setFabricCanvas(canvas)
-      ;(window as any)._fabricCanvas = canvas
+      fabricCanvasRef.current = canvas
 
       // (Order restore for the designId "Edit design" flow is handled by the
       // consolidated effect above, which restores BOTH front and back.)
@@ -1024,32 +1018,37 @@ export default function DesignerCanvas({
         canvas.getObjects().forEach(applyControls)
         canvas.renderAll()
       })
-      ;(window as any)._alignObject = (fn: string) => {
-        const active = canvas.getActiveObject() || _activeObj || lastActiveObjectRef.current || canvas.getObjects()[canvas.getObjects().length - 1]
-        if (!active) return
-        const canvasEl = canvasRef.current
-        const overlay = document.querySelector('[data-print-area]') as HTMLElement
-        if (!overlay || !canvasEl) return
-        const cr = canvasEl.getBoundingClientRect()
-        const or = overlay.getBoundingClientRect()
-        const sx = CANVAS_W / cr.width
-        const sy = CANVAS_H / cr.height
-        const oL = (or.left - cr.left) * sx
-        const oR = (or.right - cr.left) * sx
-        const oT = (or.top - cr.top) * sy
-        const oB = (or.bottom - cr.top) * sy
-        const w = active.getScaledWidth()
-        const h = active.getScaledHeight()
-        if (fn === 'left')   active.set({ left: oL + w / 2, originX: 'center' })
-        if (fn === 'center') active.set({ left: (oL + oR) / 2, originX: 'center' })
-        if (fn === 'right')  active.set({ left: oR - w / 2, originX: 'center' })
-        if (fn === 'top')    active.set({ top: oT + h / 2, originY: 'center' })
-        if (fn === 'middle') active.set({ top: (oT + oB) / 2, originY: 'center' })
-        if (fn === 'bottom') active.set({ top: oB - h / 2, originY: 'center' })
-        active.setCoords()
-        canvas.renderAll()
-      }
       setIsLoading(false)
+  }
+
+  // 1b: replaces the window._alignObject bridge — align the active object to the
+  // print-area edges/center. Reads the live canvas from fabricCanvasRef.
+  const alignObject = (fn: string) => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    const active = canvas.getActiveObject() || _activeObj || lastActiveObjectRef.current || canvas.getObjects()[canvas.getObjects().length - 1]
+    if (!active) return
+    const canvasEl = canvasRef.current
+    const overlay = document.querySelector('[data-print-area]') as HTMLElement
+    if (!overlay || !canvasEl) return
+    const cr = canvasEl.getBoundingClientRect()
+    const or = overlay.getBoundingClientRect()
+    const sx = CANVAS_W / cr.width
+    const sy = CANVAS_H / cr.height
+    const oL = (or.left - cr.left) * sx
+    const oR = (or.right - cr.left) * sx
+    const oT = (or.top - cr.top) * sy
+    const oB = (or.bottom - cr.top) * sy
+    const w = active.getScaledWidth()
+    const h = active.getScaledHeight()
+    if (fn === 'left')   active.set({ left: oL + w / 2, originX: 'center' })
+    if (fn === 'center') active.set({ left: (oL + oR) / 2, originX: 'center' })
+    if (fn === 'right')  active.set({ left: oR - w / 2, originX: 'center' })
+    if (fn === 'top')    active.set({ top: oT + h / 2, originY: 'center' })
+    if (fn === 'middle') active.set({ top: (oT + oB) / 2, originY: 'center' })
+    if (fn === 'bottom') active.set({ top: oB - h / 2, originY: 'center' })
+    active.setCoords()
+    canvas.renderAll()
   }
 
   const handleColorSelect = useCallback((color: string) => {
@@ -2180,7 +2179,7 @@ export default function DesignerCanvas({
           <CustomerAuthButton variant="quiet" onBeforeLogin={prepareLoginRedirect} />
           <button
             onClick={async () => {
-              const canvas = (window as any)._fabricCanvas
+              const canvas = fabricCanvasRef.current
               // Cross-side check: allow continuing if EITHER side has content,
               // not just the currently-visible canvas (a back-only design viewed
               // from the empty front should still pass).
@@ -2390,7 +2389,7 @@ export default function DesignerCanvas({
                       <button key={align}
                         onClick={() => {
                           setTextAlign(align)
-                          const canvas = (window as any)._fabricCanvas
+                          const canvas = fabricCanvasRef.current
                           const obj = canvas?.getActiveObject()
                           if (obj && obj.type === 'textbox') {
                             obj.set('textAlign', align)
@@ -2564,7 +2563,7 @@ export default function DesignerCanvas({
               <button key={fn} title={title}
                 onPointerDown={e => {
                   e.preventDefault()
-                  ;(window as any)._alignObject?.(fn)
+                  alignObject(fn)
                 }}
                 className="px-2 py-1 rounded text-xs font-mono bg-gray-100 border border-gray-200 text-gray-800 hover:border-[#dd3333] hover:text-gray-900 transition-all">
                 {label}
@@ -2576,7 +2575,7 @@ export default function DesignerCanvas({
               onPointerDown={e => {
                 e.preventDefault()
                 if (!confirm('Clear all design elements?')) return
-                const canvas = (window as any)._fabricCanvas
+                const canvas = fabricCanvasRef.current
                 if (!canvas) return
                 canvas.clear()
                 canvas.renderAll()
@@ -2604,7 +2603,7 @@ export default function DesignerCanvas({
                 const imgs = getColorImages(selectedColor, colorImageMap)
                 const frontSrc = imgs?.front || firstImageUrlRef.current
                 if (frontSrc && shirtImgRef.current) shirtImgRef.current.src = frontSrc
-                if (window._printAreaData?.front) { setPrintArea(window._printAreaData.front); window.dispatchEvent(new Event('printAreaChanged')) }
+                if (printAreaDataRef.current?.front) { setPrintArea(printAreaDataRef.current.front); window.dispatchEvent(new Event('printAreaChanged')) }
               }}
               className={`px-4 py-1.5 rounded-full text-xs font-mono tracking-widest transition-all ${
                 shirtView === 'front'
@@ -2662,7 +2661,7 @@ export default function DesignerCanvas({
                   const imgs = getColorImages(selectedColor, colorImageMap)
                   const backSrc = imgs?.back || firstImageUrlRef.current
                   if (backSrc && shirtImgRef.current) shirtImgRef.current.src = backSrc
-                  if (window._printAreaData?.back) { setPrintArea(window._printAreaData.back); window.dispatchEvent(new Event('printAreaChanged')) }
+                  if (printAreaDataRef.current?.back) { setPrintArea(printAreaDataRef.current.back); window.dispatchEvent(new Event('printAreaChanged')) }
                 }}
                 className={`px-4 py-1.5 rounded-full text-xs font-mono tracking-widest transition-all ${
                   shirtView === 'back'
