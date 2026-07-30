@@ -10,6 +10,7 @@ import { getProduct } from '../lib/shopify'
 import { buildColorImageMap, getColorImages } from '../lib/productImages'
 import { toPctContain, CANVAS_W, CANVAS_H, type PrintAreaPct } from '../lib/printAreaGeometry'
 import ActionBar from './ActionBar'
+import Rail from './Rail'
 import MyUploadsPanel, { type UploadItem } from './MyUploadsPanel'
 import MyDesignsDrawer, { type SavedDesign } from './MyDesignsDrawer'
 import { useCustomerSession } from '../hooks/useCustomerSession'
@@ -2221,16 +2222,7 @@ export default function DesignerCanvas({
 
         {/* Left panel */}
         <aside className="w-72 bg-white border-r border-gray-200 flex flex-col overflow-y-auto shrink-0">
-          <div className="grid grid-cols-3 gap-1 p-2 bg-gray-100 m-3 rounded-lg">
-            {(['text', 'upload', 'clipart'] as const).map(tab => (
-              <button key={tab} onClick={() => setActiveTab(tab)}
-                className={`py-2 rounded text-xs font-mono capitalize transition-all ${
-                  activeTab === tab ? 'bg-[#dd3333] text-white font-bold' : 'text-gray-800 hover:text-white'
-                }`}>
-                {tab}
-              </button>
-            ))}
-          </div>
+          <Rail activeTab={activeTab} onSelectTab={setActiveTab} />
 
           <div className="px-4 pb-4 flex flex-col gap-4">
 
