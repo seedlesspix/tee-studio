@@ -710,6 +710,50 @@ locked golden across all 6 product/sides on EVERY field incl. pngHash. tsc/build
 green. Remaining: 1b (replace globals w/ ref/context) → parity; human backstop;
 then merge on review. Not yet merged to main.
 
+**✅✅ D0 CanvasStage extraction COMPLETE + MERGED to main — 2026-07-30 (`367a8d7`).**
+1b landed: the three `window` bridges → in-component refs — `_fabricCanvas` →
+`fabricCanvasRef` (already existed, now also set synchronously in
+`handleCanvasReady`), `_alignObject` → component-scope `alignObject(fn)` reading
+`fabricCanvasRef`, `_printAreaData` → new `printAreaDataRef`; the `declare global`
+Window aug removed. All three were read+written entirely within DesignerCanvas
+(CanvasStage only named them in comments), so it was an in-component ref swap, not
+context wiring. Move-not-rewrite (align body byte-identical). **Parity GREEN: zero
+diff across all 6 product/sides vs the DPR-corrected golden, incl. Fixture 15
+(spawn placement); + human backstop clean (align buttons, Front/Back toggle,
+spawn/drag).** `DesignerCanvas.tsx` net −97 lines; `CanvasStage.tsx` created. The
+`?parity=1` harness stays in DesignerCanvas.
+
+> **🐛 The extraction's human backstop SURFACED A REAL, LATENT DPR BUG (not caused
+> by the extraction) — fixed on main first (`b9055f2`), 2026-07-30.** Fresh objects
+> spawned off the bottom-right corner at DPR≥2 (retina/most phones). Root cause: the
+> CSS→object coordinate conversion used `canvasEl.width` (the DOM **backing-store**
+> width = logical × devicePixelRatio = 1360 on retina) where the **logical** width
+> (680) belongs — so the factor was 2× at DPR2 (backing/CSS) instead of 1
+> (logical/CSS). Latent since inception (backing==logical at DPR1 → correct by
+> accident); Phase-3 Day-3 template print-areas rendering reliably flipped products
+> off the logical null-fallback onto the buggy bounds path, exposing it. It hit
+> **spawn, drag-constrain, align, text-wrap, and image-sizing** — the whole
+> print-area pipeline — but only at DPR≥2. Fix: `canvasEl.width/height` →
+> `CANVAS_W/CANVAS_H` (logical 680×850) at all 10 factor sites; DPR1 byte-identical,
+> DPR2 corrected, responsive-safe. Verified by Denise at both DPRs. **The mechanical
+> parity gate could NOT catch this** — golden and branch were both captured from
+> buggy code, so the numbers matched (green) while spawn was visibly broken; only
+> the human eye caught it. That's the belt-and-suspenders working: it found a live
+> latent bug the fixtures structurally couldn't. **Closed the gap** with **Fixture
+> 15 (spawn placement)** — records where a fresh element auto-lands + the object
+> space + whether the center sits inside it; a device/logical regression now flips a
+> flag mechanically. Golden re-captured from fixed main; the extraction was rebased
+> onto it and re-verified (the rebase correctly preserved the fix in the *moved*
+> `getLiveBounds`).
+
+> **KISS scope call (Denise, 2026-07-30, `207d13f`): square-only mockups.** Dropped
+> the speculative non-square/pillarbox branch from `toPctContain`/`letterboxInfo`
+> (letterbox path + `Math.min` clamp remain; the letterbox is still needed for
+> square mockups in the 680×850 canvas) and reduced Fixture 11 to the square case.
+> The catalog is all 2000×2000 square; rebuildable if a portrait garment ever
+> appears. Note: `toPctContain` was NOT where the DPR bug lived — this is a
+> scope/clarity trim, not a bug-surface reduction.
+
 **D0 build step 1 — CanvasStage extraction (parity-gated, APPROVED 2026-07-28).**
 Move-not-rewrite; preserve the canvas container box exactly (the geometry
 measures `[data-print-area]` via getBoundingClientRect); staged globals removal
