@@ -15,8 +15,11 @@ import SaveDesignControl from './SaveDesignControl'
 //
 // Phase 2 (sealed target, NOT now): reshape to the "price + Save + Next" bottom
 // bar + the Build It → Order It → Pick Up/Ship stepper, and fold in the
-// price/order column. Also queued: replace the `data-cart-btn` DOM-mutation with
-// an `isSubmitting` prop (deferred so this step is a pure move, not move+change).
+// price/order column. Also queued: (a) replace the `data-cart-btn` DOM-mutation
+// with an `isSubmitting` prop; (b) CENTER the product title — today it's
+// `justify-between`, so the title reads left-of-true-center (brand is narrower
+// than the right cluster); identical on main, a pre-existing look, not a
+// regression. All deferred so this step stays a pure move, not move+change.
 export default function ActionBar({
   productTitle,
   onSave,
