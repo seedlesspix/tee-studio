@@ -209,6 +209,25 @@ export default function DesignerCanvas({
     }
   }, [])
 
+  // iOS/WebKit only honours a fixed app viewport when the DOCUMENT itself is
+  // locked — overflow:hidden on a child div does NOT stop html/body from panning,
+  // which was letting the page drift horizontally and rubber-band under the
+  // sheet's drag (three symptoms, one cause: the page ate the touch gestures).
+  // position:fixed on body is the proven iOS lock. Applied via JS ONLY while the
+  // designer is mounted AND on mobile → reverted on unmount/desktop, so no other
+  // page and no desktop layout is affected (isMobile is false on desktop).
+  useEffect(() => {
+    if (!isMobile) return
+    const html = document.documentElement
+    const body = document.body
+    html.classList.add('designer-touch-lock')
+    body.classList.add('designer-touch-lock')
+    return () => {
+      html.classList.remove('designer-touch-lock')
+      body.classList.remove('designer-touch-lock')
+    }
+  }, [isMobile])
+
   // Mobile tool sheet (pass 3, vaul): peek / half / full. Selecting an object on
   // the shirt auto-opens the sheet to HALF so its controls are findable — the
   // selection-aware design, on mobile. The stage RESERVES bottom space equal to
@@ -218,7 +237,12 @@ export default function DesignerCanvas({
   useEffect(() => {
     if (isMobile && selectedObjectType) setSheetSnap(s => (s === 'peek' ? 'half' : s))
   }, [selectedObjectType, isMobile])
-  const sheetReservePx = !isMobile ? 0 : sheetSnap === 'peek' ? 150 : Math.round(vh * 0.5)
+  // Reserve stage space so the shirt rises above the sheet. A HALF sheet can't
+  // sit above a full-size shirt on a phone, so at half/full we reserve a gentler
+  // ~0.44·vh (not the full sheet height) — the shirt shrinks moderately and its
+  // print area clears the sheet, rather than shrinking tiny (finding #4). Peek
+  // reserves just the visible sheet band. Desktop: 0.
+  const sheetReservePx = !isMobile ? 0 : sheetSnap === 'peek' ? 140 : Math.round(vh * 0.44)
 
   // Below the lg breakpoint (1024px — tablets are touch users too), CSS-scale the
   // fixed 680×850 stage to fit the canvas area MINUS the reserved sheet band. The

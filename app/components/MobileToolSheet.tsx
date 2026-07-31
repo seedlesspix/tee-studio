@@ -22,9 +22,10 @@ import Rail from './Rail'
 type Snap = 'peek' | 'half' | 'full'
 type Tab = 'text' | 'upload' | 'clipart'
 
-// Fractions of screen height: peek shows handle + tab bar; half ~= middle; full
-// ~= almost the whole screen. Least → most visible, as vaul requires.
-const SNAP_POINTS = [0.17, 0.52, 0.92]
+// Fractions of screen height: peek shows handle + tab bar; half leaves room for
+// the shirt above it; full ~= almost the whole screen. Least → most visible, as
+// vaul requires.
+const SNAP_POINTS = [0.16, 0.48, 0.92]
 const INDEX: Record<Snap, number> = { peek: 0, half: 1, full: 2 }
 
 export default function MobileToolSheet({
@@ -42,14 +43,15 @@ export default function MobileToolSheet({
 }) {
   const activeSnapPoint = SNAP_POINTS[INDEX[snap]]
   const setActiveSnapPoint = (v: number | string | null) => {
+    if (v == null) return
     const i = SNAP_POINTS.indexOf(v as number)
+    if (i < 0) return // unknown value: don't fight vaul's own snap
     setSnap(i >= 2 ? 'full' : i === 1 ? 'half' : 'peek')
   }
 
   return (
     <Drawer.Root
-      open
-      onOpenChange={() => {}}
+      defaultOpen
       modal={false}
       dismissible={false}
       snapPoints={SNAP_POINTS}

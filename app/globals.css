@@ -25,6 +25,26 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Mobile designer document lock. The designer adds this class to <html>/<body>
+   (via JS, only on mobile) so iOS/WebKit can't pan or rubber-band the page — that
+   was letting the whole page drift sideways and bounce under the tool sheet's
+   drag. position:fixed on body is the proven iOS scroll-lock; the canvas (Fabric)
+   and the sheet (vaul) keep full ownership of touch gestures. Applied ONLY on the
+   designer at mobile widths and removed on unmount, so desktop and every other
+   page are completely untouched. */
+html.designer-touch-lock {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+body.designer-touch-lock {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 /* ============================================================
    CUSTOM FONTS - @font-face declarations
    Add these to the bottom of app/globals.css
