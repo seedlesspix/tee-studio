@@ -353,7 +353,7 @@ export default function DesignerCanvas({
         ? (active as any)._originalText.toUpperCase()
         : (active as any)._originalText
       const { text: rewrapped, fontSize: newSize } = reWrapText(
-        baseText, currentFontSize, selectedFont, isBold, isItalic
+        baseText, currentFontSize, selectedFont, isBold, isItalic, letterSpacing * 10
       )
       active.set({
         text: rewrapped,
@@ -617,7 +617,7 @@ export default function DesignerCanvas({
     if (active && (active.type === 'i-text' || active.type === 'textbox')) {
       const currentText = (active as any).text || ''
       const { text: rewrapped, fontSize: newSize } = reWrapText(
-        currentText, fontSize, selectedFont, isBold, isItalic
+        currentText, fontSize, selectedFont, isBold, isItalic, letterSpacing * 10
       )
       active.set({
         text: rewrapped,
@@ -897,6 +897,18 @@ export default function DesignerCanvas({
         constrainObject(obj, bounds)
       })
 
+      // Rotation had NO constraint handler — a rotated object's swung-out corners
+      // could leave the print area. constrainObject uses aCoords, so it already
+      // handles rotated corners; just wire it up (best-effort: it repositions, it
+      // can't shrink an object that's bigger than the box when tilted).
+      canvas.on('object:rotating', (e: any) => {
+        const obj = e.target
+        if (!obj) return
+        const bounds = getLiveBounds()
+        if (!bounds) return
+        constrainObject(obj, bounds)
+      })
+
       // Track selected object text for font preview
       canvas.on('selection:created', (e: any) => {
         const obj = e.selected?.[0]
@@ -974,7 +986,14 @@ export default function DesignerCanvas({
       // Fires once a drag/scale/rotate COMPLETES, and only from real user
       // interaction — programmatic obj.set() (fitAndConstrain, restore) doesn't
       // trigger it, which is exactly why it's safe as a dirty signal.
-      canvas.on('object:modified', () => markDirty())
+      // Catch-all re-clamp when any interaction settles (move/scale/rotate), so
+      // nothing is left sitting outside the print area at release.
+      canvas.on('object:modified', (e: any) => {
+        const obj = e?.target
+        const bounds = getLiveBounds()
+        if (obj && bounds) constrainObject(obj, bounds)
+        markDirty()
+      })
 
       setFabricCanvas(canvas)
       fabricCanvasRef.current = canvas
@@ -1292,6 +1311,17 @@ export default function DesignerCanvas({
         ;(img as any)._curveBold = isBold
         ;(img as any)._curveItalic = isItalic
         canvas.add(img)
+        // Keep the re-baked curved text inside the print area — a wider curve or a
+        // larger size can bake an image bigger than the box (Issue-2 fix).
+        const cbounds = getPrintAreaBounds()
+        if (cbounds) {
+          const maxScale = Math.min(
+            (cbounds.right - cbounds.left) / (img.width || 1),
+            (cbounds.bottom - cbounds.top) / (img.height || 1),
+          )
+          if (maxScale < 1) img.set({ scaleX: maxScale, scaleY: maxScale })
+          constrainObject(img, cbounds)
+        }
         canvas.setActiveObject(img)
         lastActiveObjectRef.current = img
         _activeObj = img
@@ -1306,7 +1336,7 @@ export default function DesignerCanvas({
   // pushes normally. Runs every commit; idempotent when the guard is already off.
   useEffect(() => { reflectingRef.current = false })
 
-  const reWrapText = (text: string, targetFontSize: number, fontFamily: string, bold: boolean, italic: boolean): { text: string; fontSize: number } => {
+  const reWrapText = (text: string, targetFontSize: number, fontFamily: string, bold: boolean, italic: boolean, charSpacing: number = 0): { text: string; fontSize: number } => {
     const canvasEl = canvasRef.current
     const overlay = document.querySelector('[data-print-area]') as HTMLElement
     if (!overlay || !canvasEl) return { text, fontSize: targetFontSize }
@@ -1324,7 +1354,9 @@ export default function DesignerCanvas({
 
     const measureWidth = (t: string, size: number) => {
       tmpCtx.font = `${fontStyle} ${fontWeight} ${size}px ${fontFamily}`
-      return tmpCtx.measureText(t).width
+      // Add letter-spacing (Fabric charSpacing is 1/1000 em) so the shrink-to-fit
+      // shrinks the font for wide spacing instead of letting it overflow the box.
+      return tmpCtx.measureText(t).width + (charSpacing / 1000) * size * t.length
     }
 
     // A newline here is an INTENTIONAL break the customer typed (Enter in the
@@ -1418,6 +1450,7 @@ export default function DesignerCanvas({
         obj.fontFamily,
         obj.fontWeight === 'bold',
         obj.fontStyle === 'italic',
+        obj.charSpacing || 0,
       )
       obj.set({ text, fontSize: fitted })
     }
