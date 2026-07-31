@@ -13,11 +13,12 @@ import SaveDesignControl from './SaveDesignControl'
 // unchanged — verified by the human backstop; the parity harness stays green only
 // as a geometry guardrail (this touches no canvas geometry).
 //
-// Phase 2 (sealed target, NOT yet): reshape to the "price + Save + Next" bottom
-// bar + the Build It → Order It → Pick Up/Ship stepper, and fold in the
-// price/order column. Still queued: replace the `data-cart-btn` DOM-mutation with
-// an `isSubmitting` prop. (The product title is now CENTERED via equal flex-1
-// sides — the title-center pass; was justify-between / left-of-center before.)
+// Phase 2 progress: the Build It → Order It → Pick Up/Ship stepper now renders as
+// its own strip under this bar (Stepper.tsx); the per-item PRICE is folded in here
+// (neutral, just left of Next Step); the title is centered via equal flex-1 sides.
+// Still queued: the top→BOTTOM action-bar move (sealed "price + Save + Next" bottom
+// bar — deferred, overlaps mobile) and replacing the `data-cart-btn` DOM-mutation
+// with an `isSubmitting` prop.
 export default function ActionBar({
   productTitle,
   onSave,
@@ -27,6 +28,7 @@ export default function ActionBar({
   onOpenDesigns,
   onBeforeLogin,
   onNextStep,
+  pricePerItem,
 }: {
   productTitle: string
   onSave: () => Promise<{ restoreUrl: string } | null>
@@ -36,6 +38,7 @@ export default function ActionBar({
   onOpenDesigns: () => void
   onBeforeLogin: () => Promise<string | null>
   onNextStep: () => void
+  pricePerItem?: number
 }) {
   return (
     <header className="flex items-center px-6 h-14 bg-white border-b border-gray-200 shrink-0">
@@ -56,6 +59,13 @@ export default function ActionBar({
           My Designs{savedDesignsCount > 0 ? ` (${savedDesignsCount})` : ''}
         </button>
         <CustomerAuthButton variant="quiet" onBeforeLogin={onBeforeLogin} />
+        {/* Folded-in price — live per-item cost (blank + print charges), shown
+            just left of Next Step. NEUTRAL: a price is info, not an action. */}
+        {pricePerItem != null && (
+          <span className="text-sm font-bold text-gray-900 whitespace-nowrap tabular-nums">
+            ${pricePerItem.toFixed(2)} <span className="font-normal text-gray-500">each</span>
+          </span>
+        )}
         <button
           onClick={onNextStep}
           data-cart-btn

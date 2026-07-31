@@ -2463,6 +2463,7 @@ export default function DesignerCanvas({
         onOpenDesigns={() => setDesignsOpen(true)}
         onBeforeLogin={prepareLoginRedirect}
         onNextStep={handleNextStep}
+        pricePerItem={pricePerItem}
       />
 
       {/* Progress strip under the top bar — Build It (here) → Order It → Pick Up/Ship */}
@@ -2676,29 +2677,10 @@ export default function DesignerCanvas({
                 ))}
               </div>
             )}
-            <div className="flex justify-between text-gray-800">
-              <span>Blank price</span>
-              <span className="text-gray-900">{`$${unitPrice.toFixed(2)}`}</span>
-            </div>
-            {frontCharge > 0 && (
-              <div className="flex justify-between text-gray-800">
-                <span>Front Print</span>
-                <span className="text-gray-900">{`+$${frontCharge.toFixed(2)}`}</span>
-              </div>
-            )}
-            {backCharge > 0 && (
-              <div className="flex justify-between text-gray-800">
-                <span>Back Print</span>
-                <span className="text-gray-900">{`+$${backCharge.toFixed(2)}`}</span>
-              </div>
-            )}
-            <div className="flex justify-between font-bold border-t border-gray-200 pt-2">
-              <span className="text-gray-800">Price per item</span>
-              <span className="text-[#dd3333]">{`$${pricePerItem.toFixed(2)}`}</span>
-            </div>
           </div>
-          {/* Quantity + order total live on the Order Options step — the customer
-              is still designing here, not ordering. */}
+          {/* Price is folded into the top action bar now ("$X.XX each", neutral);
+              the full Blank + Front/Back Print breakdown lives on the Order step,
+              along with quantity + order total. */}
         </aside>
       </div>
 
