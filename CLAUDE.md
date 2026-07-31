@@ -1005,6 +1005,21 @@ made intentional breaks safe — `obj.text` mixes the customer's newlines with t
 wrapper's, and they're the same character, so `_originalText` could never be
 re-derived from it without flattening stacked lines.
 
+**Named future feature — in-place re-wording of CURVED text (logged 2026-07-30,
+Denise).** A curved text is a **baked raster image** (`_isCurvedText`; the arc
+renderer flattens characters to PNG — see `createCurvedText`/the curve effect),
+so its words can't be retyped like a live `IText`. The Phase-2 Issue-1 fix
+(commit `3f023b3`) made a curved text stay selectable as "text" — the curve
+slider, font/size/color reflect and re-bake from stored bake params
+(`_curveFontFamily/_curveFontSize/_curveFill/_curveBold/_curveItalic/_curveAmount`),
+and **Straight** (`curve=0`) returns it to an editable `IText`. What's NOT there:
+typing new words while the curved text is selected (the box spawns a *new* text
+instead). **Interim workaround: Straight → edit the words → re-curve.** Real fix
+= re-render the arc from an updated `_originalText` (make the curve renderer a
+callable that `handleTextInputChange` invokes for a selected curved image) — same
+family as the deferred **stacked-arc** multi-line-curve work above; scope them
+together. Not a tweak; a real feature.
+
 ### Decal Designs — catalog split + sell-through tracking (post-Phase-4 candidate)
 
 **Real project, three parts scoped TOGETHER — not Phase 4.** Sequencing: candidate
