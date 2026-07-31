@@ -11,18 +11,23 @@ import MyUploadsPanel, { type UploadItem } from './MyUploadsPanel'
 // style/size/curve push effects, the selection handlers that mirror the object
 // into these knobs (reflectTextObject), spawn/curve/fit/recolor, _activeObj.
 //
-// SELECTION-DRIVEN (Phase 2 inversion): `panelMode` below chooses what shows off
-// the SELECTED object first, falling back to the rail's activeTab only when
-// nothing is selected. Selection = EDIT (text / art-edit / image-edit); rail =
-// ADD (text box / upload / clipart browser). This retired the old tab-driven
-// keying AND closed the reflection gap the D0 backstop found: selecting a text
-// now mirrors ITS font/size/COLOR/spacing/etc. into the knobs (parent's
-// reflectTextObject), not just clipart color — and that mirror also fixed the
-// latent "touch one knob → text snaps to panel defaults" clobber.
+// SELECTION-DRIVEN (Phase 2): the panel renders by SECTION (activeTab). The
+// parent sets activeTab to the selected object's section on select, so the rail
+// highlight and this panel always agree on "what am I editing" — no panelMode
+// override, they read the same activeTab. Each section shows its ADD surface
+// always (text box / upload dropzone+library / clipart browser); the EDIT
+// controls activate when an object of that section is selected:
+//   • Text  — the knobs mirror the selected text (font/size/COLOR/spacing/…) via
+//     the parent's reflectTextObject (also fixed the latent "touch one knob →
+//     text snaps to defaults" clobber); Delete when a text is selected.
+//   • Art   — browser stays put; Color swatches on an SVG (recolorable), Delete
+//     on any selected art (SVG or raster clipart).
+//   • Upload— dropzone + library stay put; Delete on a selected image.
 //
-// Remaining follow-ups (still logged, NOT this pass): the two-panel split; a
-// DesignerContext refactor once prop-drilling hurts (retire this bundle); the
-// dbColors fallback literal still appears a few times.
+// Remaining follow-ups (logged, NOT this pass): the PANEL red-sweep (selected
+// font border, color-swatch ring, active buttons → quiet); the two-panel split;
+// a DesignerContext refactor once prop-drilling hurts; Delete is repeated per
+// section (inherent to per-section render) and the dbColors fallback literal too.
 type SelectionPanelProps = {
   activeTab: string
   dbColors: any[]
@@ -92,21 +97,17 @@ export default function SelectionPanel({
   } = text
   const { handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload } = upload
   const { printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor } = clipart
-  // Selection-driven (Phase 2 inversion): what the panel shows follows the
-  // SELECTED object, falling back to the rail's active tab only when nothing is
-  // selected. Selection WINS for editing (text / art-edit / image-edit); the
-  // rail drives ADDING (text box / upload / clipart browser). The text mode
-  // serves both — the box is empty to add, filled+reflected to edit.
-  const panelMode =
-    selectedObjectType === 'text' ? 'text'
-    : selectedObjectType === 'svg' ? 'art-edit'
-    : selectedObjectType === 'image' ? 'image-edit'
-    : activeTab
+  // Selection-driven (Phase 2): the panel renders by SECTION (activeTab), and the
+  // parent sets activeTab to the selected object's section on select — so the rail
+  // highlight and this panel always agree on "what am I editing" (no panelMode
+  // override needed; they read the same activeTab). Each section shows its ADD
+  // surface always; the EDIT controls (reflected text knobs, recolor, delete)
+  // activate when an object of that section is selected.
   return (
           <div className="px-4 pb-4 flex flex-col gap-4">
 
                         {/* TEXT — add (empty box) + edit (reflects the selected text) */}
-            {panelMode === 'text' && (
+            {activeTab === 'text' && (
               <>
                 {/* The box is the typing surface — always live. The first
                     keystroke puts the text on the shirt; no button hunt. */}
@@ -307,8 +308,8 @@ export default function SelectionPanel({
                 )}
               </>
             )}
-            {/* UPLOAD — add-surface (dropzone + library) */}
-            {panelMode === 'upload' && (
+            {/* UPLOAD — dropzone + library always; Delete activates on a selected image */}
+            {activeTab === 'upload' && (
               <div>
                 <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Upload Artwork</label>
                 <label className="mt-2 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-xl p-8 cursor-pointer hover:border-[#dd3333] hover:bg-[#dd3333]/5 transition-all">
@@ -326,61 +327,57 @@ export default function SelectionPanel({
                   onPick={pickLibraryUpload}
                   onDelete={deleteLibraryUpload}
                 />
+                {/* A selected upload is a raster image — delete is its only edit. */}
+                {selectedObjectType === 'image' && (
+                  <button onClick={deleteSelected}
+                    className="w-full mt-3 border border-red-800 text-red-400 py-2 rounded text-sm hover:bg-red-900/20 transition-colors">
+                    Delete Selected
+                  </button>
+                )}
               </div>
             )}
 
-            {/* CLIPART — add-surface (browser). Selecting a clipart swaps to
-                art-edit below, so the browser is hidden while one is selected;
-                click the Art rail again to browse for another. */}
-            {panelMode === 'clipart' && (
+            {/* ART — the clipart browser stays visible always; selecting a
+                clipart just activates its edit controls beside it (Denise's call,
+                overriding the earlier hide-on-select). Color swatches show for an
+                SVG (recolorable); Delete for any selected art object (SVG, or a
+                raster clipart — which has no recolor). */}
+            {activeTab === 'clipart' && (
               <div className="flex flex-col gap-3">
                 <ClipartPanel
                   printMethod={printMethod}
                   onSelect={handleClipartSelect}
                 />
-              </div>
-            )}
-
-            {/* ART edit — a clipart/SVG is selected: recolor + delete. */}
-            {panelMode === 'art-edit' && (
-              <div className="flex flex-col gap-3">
-                {/* SVG Color swatches */}
-                <div className="mt-2">
-                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Clipart Color</label>
-                  <div className="flex gap-2 mt-2 flex-wrap items-center">
-                    {(dbColors.length > 0 ? dbColors : [
-                      { label: 'Black', hex: '#000000' },
-                      { label: 'White', hex: '#ffffff' },
-                    ]).map(c => (
-                      <button key={c.hex} onClick={() => { recolorSvg(c.hex); setSelectedSvgColor(c.hex) }}
-                        title={c.label}
-                        style={{ background: c.hex, border: c.hex === '#ffffff' ? '1px solid #555' : 'none' }}
-                        className={`w-8 h-8 rounded-full transition-transform hover:scale-110 ${
-                          selectedSvgColor === c.hex ? 'ring-2 ring-[#dd3333] ring-offset-2 ring-offset-[#161616]' : ''
-                        }`}
-                      />
-                    ))}
+                {/* SVG Color swatches — only SVGs can be recolored. */}
+                {selectedObjectType === 'svg' && (
+                  <div className="mt-2">
+                    <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Clipart Color</label>
+                    <div className="flex gap-2 mt-2 flex-wrap items-center">
+                      {(dbColors.length > 0 ? dbColors : [
+                        { label: 'Black', hex: '#000000' },
+                        { label: 'White', hex: '#ffffff' },
+                      ]).map(c => (
+                        <button key={c.hex} onClick={() => { recolorSvg(c.hex); setSelectedSvgColor(c.hex) }}
+                          title={c.label}
+                          style={{ background: c.hex, border: c.hex === '#ffffff' ? '1px solid #555' : 'none' }}
+                          className={`w-8 h-8 rounded-full transition-transform hover:scale-110 ${
+                            selectedSvgColor === c.hex ? 'ring-2 ring-[#dd3333] ring-offset-2 ring-offset-[#161616]' : ''
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-800 mt-1 font-mono">
+                      {(dbColors.length > 0 ? dbColors : [{ label: 'Black', hex: '#000000' }, { label: 'White', hex: '#ffffff' }]).find(c => c.hex === selectedSvgColor)?.label || selectedSvgColor || 'Black'}
+                    </p>
                   </div>
-                  <p className="text-xs text-gray-800 mt-1 font-mono">
-                    {(dbColors.length > 0 ? dbColors : [{ label: 'Black', hex: '#000000' }, { label: 'White', hex: '#ffffff' }]).find(c => c.hex === selectedSvgColor)?.label || selectedSvgColor || 'Black'}
-                  </p>
-                </div>
-                <button onClick={deleteSelected}
-                  className="w-full border border-red-800 text-red-400 py-2 rounded text-sm hover:bg-red-900/20 transition-colors mt-2">
-                  Delete Selected
-                </button>
+                )}
+                {(selectedObjectType === 'svg' || selectedObjectType === 'image') && (
+                  <button onClick={deleteSelected}
+                    className="w-full border border-red-800 text-red-400 py-2 rounded text-sm hover:bg-red-900/20 transition-colors mt-2">
+                    Delete Selected
+                  </button>
+                )}
               </div>
-            )}
-
-            {/* IMAGE edit — a raster upload is selected. No per-object controls
-                exist for rasters (no recolor), so this is delete only. Curved
-                text lands here too (it's baked to an image), which is why it
-                can't be re-edited as text — a known, documented limitation. */}
-            {panelMode === 'image-edit' && (
-              <button onClick={deleteSelected}
-                className="w-full border border-red-800 text-red-400 py-2 rounded text-sm hover:bg-red-900/20 transition-colors">
-                Delete Selected
-              </button>
             )}
 
           </div>

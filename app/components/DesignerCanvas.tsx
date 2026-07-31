@@ -445,6 +445,23 @@ export default function DesignerCanvas({
     setCurveAmount(0)
   }
 
+  // Which rail section an object belongs to. Selecting an object sets activeTab
+  // to this, so the rail highlight AND the panel both follow what you're editing
+  // (they read the same activeTab — they can't disagree).
+  //
+  // Discriminator = `_isSvg`, NOT `_uploadSrc`: clipart stamps `_isSvg` (true for
+  // SVG, false for raster) at creation, BEFORE setActiveObject fires the selection
+  // event, so it's reliably present the moment we read it. `_uploadSrc` is stamped
+  // AFTER the upload is placed+selected, so it's still undefined at selection time
+  // (a fresh upload would misroute). So: has an `_isSvg` boolean → it's clipart
+  // (Art); otherwise any image is an Upload (a curved-text baked image lands in
+  // Upload too — delete-only, rare and harmless).
+  const sectionForObject = (obj: any): 'text' | 'upload' | 'clipart' => {
+    if (obj?.type === 'i-text' || obj?.type === 'textbox') return 'text'
+    if (typeof obj?._isSvg === 'boolean') return 'clipart'
+    return 'upload'
+  }
+
   // Has the canvas changed since the last successful save? Drives the Save
   // button's "Saved ✓" vs "Save changes" state.
   //
@@ -866,7 +883,7 @@ export default function DesignerCanvas({
       // Track selected object text for font preview
       canvas.on('selection:created', (e: any) => {
         const obj = e.selected?.[0]
-        if (obj) { lastActiveObjectRef.current = obj; _activeObj = obj }
+        if (obj) { lastActiveObjectRef.current = obj; _activeObj = obj; setActiveTab(sectionForObject(obj)) }
         if (obj && (obj.type === 'i-text' || obj.type === 'textbox')) {
           const raw = ((obj as any)._originalText || obj.text || '').replace(/\n/g, ' ')
           setSelectedTextPreview(raw.trim())
@@ -890,7 +907,7 @@ export default function DesignerCanvas({
       })
       canvas.on('selection:updated', (e: any) => {
         const obj = e.selected?.[0]
-        if (obj) { lastActiveObjectRef.current = obj; _activeObj = obj }
+        if (obj) { lastActiveObjectRef.current = obj; _activeObj = obj; setActiveTab(sectionForObject(obj)) }
         if (obj && (obj.type === 'i-text' || obj.type === 'textbox')) {
           const raw = ((obj as any)._originalText || obj.text || '').replace(/\n/g, ' ')
           setSelectedTextPreview(raw.trim())
