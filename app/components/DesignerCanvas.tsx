@@ -420,6 +420,16 @@ export default function DesignerCanvas({
   // clears it after the guarded effects have flushed in the same commit.
   const reflectingRef = useRef(false)
 
+  // Curve re-bake pacing (Bug #1: the slider used to rasterize+swap on every
+  // input tick → the tool "shook"). curveRafRef coalesces bakes to one per
+  // animation frame (live but not per-tick). curveTokenRef drops any bake
+  // superseded by a newer one before its async image decode finishes (the
+  // overlapping-async hazard). curveBakingRef flags the re-bake's re-selection
+  // so the selection handlers keep the refs but skip the panel reflect/tab churn.
+  const curveRafRef = useRef<number | null>(null)
+  const curveTokenRef = useRef(0)
+  const curveBakingRef = useRef(false)
+
   // Mirror a selected text object's real properties into the panel knobs, so the
   // panel reflects THAT object (fixes the logged color-swatch gap AND the latent
   // "touch one knob → the text snaps to the panel's defaults" clobber — once the
@@ -913,7 +923,11 @@ export default function DesignerCanvas({
       // Track selected object text for font preview
       canvas.on('selection:created', (e: any) => {
         const obj = e.selected?.[0]
-        if (obj) { lastActiveObjectRef.current = obj; _activeObj = obj; setActiveTab(sectionForObject(obj)) }
+        if (obj) { lastActiveObjectRef.current = obj; _activeObj = obj }
+        // A curve re-bake swaps the object under us — keep the refs, but don't
+        // re-run the tab-switch/reflect on every frame (that was the "shake").
+        if (curveBakingRef.current) return
+        if (obj) setActiveTab(sectionForObject(obj))
         if (obj && (obj.type === 'i-text' || obj.type === 'textbox' || (obj as any)._isCurvedText)) {
           const raw = ((obj as any)._originalText || obj.text || '').replace(/\n/g, ' ')
           setSelectedTextPreview(raw.trim())
@@ -937,7 +951,11 @@ export default function DesignerCanvas({
       })
       canvas.on('selection:updated', (e: any) => {
         const obj = e.selected?.[0]
-        if (obj) { lastActiveObjectRef.current = obj; _activeObj = obj; setActiveTab(sectionForObject(obj)) }
+        if (obj) { lastActiveObjectRef.current = obj; _activeObj = obj }
+        // A curve re-bake swaps the object under us — keep the refs, but don't
+        // re-run the tab-switch/reflect on every frame (that was the "shake").
+        if (curveBakingRef.current) return
+        if (obj) setActiveTab(sectionForObject(obj))
         if (obj && (obj.type === 'i-text' || obj.type === 'textbox' || (obj as any)._isCurvedText)) {
           const raw = ((obj as any)._originalText || obj.text || '').replace(/\n/g, ' ')
           setSelectedTextPreview(raw.trim())
@@ -1181,101 +1199,110 @@ export default function DesignerCanvas({
 
   const colors = product?.options.find(o => o.name === 'Color')?.values || []
 
-  // Re-wrap text to fit print area at given font size
-  // Re-render curved text when curveAmount changes
+  // Re-render curved text when curveAmount (or the baked font/size/color) changes.
+  // Bug #1 fix: this used to rasterize + remove/add + re-select on EVERY slider
+  // tick, so dragging shook the tool. Now the bake is COALESCED to one per
+  // animation frame (still live — the curve follows the slider ~60fps), a token
+  // DROPS any bake superseded before its async decode finishes, the old object is
+  // kept until the new one is ready then SWAPPED (no remove→gap→add flash), and
+  // the re-bake's re-selection is flagged so the panel doesn't reflect every frame.
   useEffect(() => {
+    if (reflectingRef.current) return  // mirror-on-select sets curve=0; don't re-curve
     const canvas = fabricCanvasRef.current
     if (!canvas) return
-    if (reflectingRef.current) return  // mirror-on-select sets curve=0; don't re-curve
-    const active = canvas.getActiveObject()
-    if (!active) return
 
-    // Get original text
-    const rawText = (active as any)._originalText || (active as any).text || ''
-    if (!rawText) return
+    // Snapshot the values THIS bake uses (closure over this render's state).
+    const cAmount = curveAmount, cFont = selectedFont, cSize = fontSize
+    const cFill = textColor, cBold = isBold, cItalic = isItalic
 
-    // The arc renderer lays EVERY character along a single arc (rawText.split('')
-    // below), so a newline would measure ~0 and silently disappear — stacked
-    // lines would run together into one arc. The slider is disabled for
-    // multi-line text in the panel; this is the backstop.
-    if (curveAmount !== 0 && rawText.includes('\n')) return
+    const doBake = async () => {
+      const active = canvas.getActiveObject()
+      if (!active) return
+      const rawText = (active as any)._originalText || (active as any).text || ''
+      if (!rawText) return
+      // The arc renderer lays every character along a single arc, so a newline
+      // would collapse — the slider is disabled for multi-line text; this backstops.
+      if (cAmount !== 0 && rawText.includes('\n')) return
 
-    const spawnX = (active as any).left || 280
-    const spawnY = (active as any).top || 350
+      const spawnX = (active as any).left || 280
+      const spawnY = (active as any).top || 350
+      const myToken = ++curveTokenRef.current
+      const old = active
 
-    if (curveAmount === 0) {
-      // Switch back to normal IText
-      if ((active as any)._isCurvedText) {
-        canvas.remove(active)
-        import('fabric').then(({ IText }) => {
-          const { text: wrappedText, fontSize: autoFontSize } = reWrapText(rawText, fontSize, selectedFont, isBold, isItalic)
-          const textObj = new IText(wrappedText, {
-            left: spawnX, top: spawnY,
-            fontFamily: selectedFont, fontSize: autoFontSize,
-            fill: textColor, fontWeight: isBold ? 'bold' : 'normal',
-            fontStyle: isItalic ? 'italic' : 'normal',
-            textAlign: textAlign, charSpacing: letterSpacing * 10,
-            originX: 'center', originY: 'center',
-          })
-          ;(textObj as any)._originalText = rawText
-          canvas.add(textObj)
-          canvas.setActiveObject(textObj)
-          lastActiveObjectRef.current = textObj
-          canvas.renderAll()
-        })
+      // Swap `old` → `next` in place: add the new object, re-select it (flagged so
+      // the panel doesn't churn), THEN remove the old one — no empty frame.
+      const swap = (next: any) => {
+        curveBakingRef.current = true
+        canvas.add(next)
+        canvas.setActiveObject(next)
+        curveBakingRef.current = false
+        if (old && old !== next) canvas.remove(old)
+        lastActiveObjectRef.current = next
+        _activeObj = next
+        canvas.renderAll()
       }
-      return
-    }
 
-    // Render curved version
-    const direction = curveAmount > 0 ? 'curve-up' : 'curve-down'
-    const absAmount = Math.abs(curveAmount)
-    const fSize = fontSize
-    // Radius: large = gentle curve, small = tight curve
-    // At absAmount=1: very gentle, at absAmount=100: very tight
-    const radius = Math.max(fSize * 1.5, 800 - absAmount * 7.5)
+      // curve === 0 → back to an editable IText
+      if (cAmount === 0) {
+        if (!(active as any)._isCurvedText) return  // already plain — nothing to do
+        const { IText } = await import('fabric')
+        if (myToken !== curveTokenRef.current) return  // superseded by a newer bake
+        const { text: wrappedText, fontSize: autoFontSize } = reWrapText(rawText, cSize, cFont, cBold, cItalic, letterSpacing * 10)
+        const textObj = new IText(wrappedText, {
+          left: spawnX, top: spawnY,
+          fontFamily: cFont, fontSize: autoFontSize,
+          fill: cFill, fontWeight: cBold ? 'bold' : 'normal',
+          fontStyle: cItalic ? 'italic' : 'normal',
+          textAlign: textAlign, charSpacing: letterSpacing * 10,
+          originX: 'center', originY: 'center',
+        })
+        ;(textObj as any)._originalText = rawText
+        swap(textObj)
+        return
+      }
 
-    const tmpCanvas = document.createElement('canvas')
-    const tmpCtx = tmpCanvas.getContext('2d')!
-    tmpCtx.font = `${isItalic ? 'italic' : 'normal'} ${isBold ? 'bold' : 'normal'} ${fSize}px ${selectedFont}`
-    const chars = rawText.split('')
-    const charWidths = chars.map((ch: string) => tmpCtx.measureText(ch).width)
-    const totalWidth = charWidths.reduce((a: number, b: number) => a + b, 0)
-    // Canvas size based on text width + radius, but capped sensibly
-    const padding = fSize * 2
-    const size = Math.min(Math.max(totalWidth + padding * 2, radius * 2 + padding * 2), 1200)
-    const offCanvas = document.createElement('canvas')
-    offCanvas.width = size
-    offCanvas.height = size
-    const ctx = offCanvas.getContext('2d')!
-    ctx.font = `${isItalic ? 'italic' : 'normal'} ${isBold ? 'bold' : 'normal'} ${fSize}px ${selectedFont}`
-    ctx.fillStyle = textColor
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
+      // curve !== 0 → bake the arc to an image
+      const direction = cAmount > 0 ? 'curve-up' : 'curve-down'
+      const absAmount = Math.abs(cAmount)
+      const fSize = cSize
+      const radius = Math.max(fSize * 1.5, 800 - absAmount * 7.5)
 
-    const totalAngle = totalWidth / radius
-    const isDown = direction === 'curve-down'
-    const orderedChars = isDown ? [...chars].reverse() : chars
-    const orderedWidths = isDown ? [...charWidths].reverse() : charWidths
-    let currentAngle = -totalAngle / 2
-    // Position center so arc appears in top portion for curve-up, bottom for curve-down
-    const cx = size / 2
-    const cy = direction === 'curve-up' ? size * 0.72 : size * 0.28
+      const tmpCanvas = document.createElement('canvas')
+      const tmpCtx = tmpCanvas.getContext('2d')!
+      tmpCtx.font = `${cItalic ? 'italic' : 'normal'} ${cBold ? 'bold' : 'normal'} ${fSize}px ${cFont}`
+      const chars = rawText.split('')
+      const charWidths = chars.map((ch: string) => tmpCtx.measureText(ch).width)
+      const totalWidth = charWidths.reduce((a: number, b: number) => a + b, 0)
+      const padding = fSize * 2
+      const size = Math.min(Math.max(totalWidth + padding * 2, radius * 2 + padding * 2), 1200)
+      const offCanvas = document.createElement('canvas')
+      offCanvas.width = size
+      offCanvas.height = size
+      const ctx = offCanvas.getContext('2d')!
+      ctx.font = `${cItalic ? 'italic' : 'normal'} ${cBold ? 'bold' : 'normal'} ${fSize}px ${cFont}`
+      ctx.fillStyle = cFill
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
 
-    orderedChars.forEach((ch: string, idx: number) => {
-      const charAngle = currentAngle + orderedWidths[idx] / radius / 2
-      ctx.save()
-      ctx.translate(cx, cy)
-      ctx.rotate(charAngle)
-      ctx.translate(0, direction === 'curve-up' ? -radius : radius)
+      const totalAngle = totalWidth / radius
+      const isDown = direction === 'curve-down'
+      const orderedChars = isDown ? [...chars].reverse() : chars
+      const orderedWidths = isDown ? [...charWidths].reverse() : charWidths
+      let currentAngle = -totalAngle / 2
+      const cx = size / 2
+      const cy = direction === 'curve-up' ? size * 0.72 : size * 0.28
 
-      ctx.fillText(ch, 0, 0)
-      ctx.restore()
-      currentAngle += orderedWidths[idx] / radius
-    })
+      orderedChars.forEach((ch: string, idx: number) => {
+        const charAngle = currentAngle + orderedWidths[idx] / radius / 2
+        ctx.save()
+        ctx.translate(cx, cy)
+        ctx.rotate(charAngle)
+        ctx.translate(0, direction === 'curve-up' ? -radius : radius)
+        ctx.fillText(ch, 0, 0)
+        ctx.restore()
+        currentAngle += orderedWidths[idx] / radius
+      })
 
-    canvas.remove(active)
-    import('fabric').then(({ FabricImage }) => {
       // Crop to actual text pixels
       const cropCanvas = document.createElement('canvas')
       const cropCtx = cropCanvas.getContext('2d')!
@@ -1298,37 +1325,41 @@ export default function DesignerCanvas({
       cropCanvas.height = Math.max(1, maxY - minY)
       cropCtx.drawImage(offCanvas, minX, minY, cropCanvas.width, cropCanvas.height, 0, 0, cropCanvas.width, cropCanvas.height)
       const dataUrl = cropCanvas.toDataURL('image/png')
-      FabricImage.fromURL(dataUrl).then((img: any) => {
-        img.set({ left: spawnX, top: spawnY, originX: 'center', originY: 'center' })
-        ;(img as any)._isCurvedText = true
-        ;(img as any)._originalText = rawText
-        // Stamp the exact params this was baked with, so selecting the curved
-        // text reflects them and adjusting the curve re-bakes from its OWN
-        // font/size/color instead of the panel's current (stale) values.
-        ;(img as any)._curveAmount = curveAmount
-        ;(img as any)._curveFontFamily = selectedFont
-        ;(img as any)._curveFontSize = fSize
-        ;(img as any)._curveFill = textColor
-        ;(img as any)._curveBold = isBold
-        ;(img as any)._curveItalic = isItalic
-        canvas.add(img)
-        // Keep the re-baked curved text inside the print area — a wider curve or a
-        // larger size can bake an image bigger than the box (Issue-2 fix).
-        const cbounds = getPrintAreaBounds()
-        if (cbounds) {
-          const maxScale = Math.min(
-            (cbounds.right - cbounds.left) / (img.width || 1),
-            (cbounds.bottom - cbounds.top) / (img.height || 1),
-          )
-          if (maxScale < 1) img.set({ scaleX: maxScale, scaleY: maxScale })
-          constrainObject(img, cbounds)
-        }
-        canvas.setActiveObject(img)
-        lastActiveObjectRef.current = img
-        _activeObj = img
-        canvas.renderAll()
-      })
-    })
+
+      const { FabricImage } = await import('fabric')
+      const img: any = await FabricImage.fromURL(dataUrl)
+      if (myToken !== curveTokenRef.current) return  // superseded while decoding
+      img.set({ left: spawnX, top: spawnY, originX: 'center', originY: 'center' })
+      img._isCurvedText = true
+      img._originalText = rawText
+      // Stamp the exact params this was baked with, so selecting the curved text
+      // reflects them and adjusting re-bakes from its OWN font/size/color.
+      img._curveAmount = cAmount
+      img._curveFontFamily = cFont
+      img._curveFontSize = fSize
+      img._curveFill = cFill
+      img._curveBold = cBold
+      img._curveItalic = cItalic
+      // Keep the re-baked curved text inside the print area (Issue-2).
+      const cbounds = getPrintAreaBounds()
+      if (cbounds) {
+        const maxScale = Math.min(
+          (cbounds.right - cbounds.left) / (img.width || 1),
+          (cbounds.bottom - cbounds.top) / (img.height || 1),
+        )
+        if (maxScale < 1) img.set({ scaleX: maxScale, scaleY: maxScale })
+        constrainObject(img, cbounds)
+      }
+      swap(img)
+    }
+
+    // Coalesce to one bake per animation frame; the cleanup cancels a not-yet-fired
+    // frame, so rapid slider ticks collapse to a single bake of the latest value.
+    if (curveRafRef.current != null) cancelAnimationFrame(curveRafRef.current)
+    curveRafRef.current = requestAnimationFrame(() => { curveRafRef.current = null; void doBake() })
+    return () => {
+      if (curveRafRef.current != null) { cancelAnimationFrame(curveRafRef.current); curveRafRef.current = null }
+    }
   }, [curveAmount, fontSize, selectedFont, textColor, isBold, isItalic])
 
   // Clears the pull-on-select guard. Declared AFTER every push/dirty/curve
