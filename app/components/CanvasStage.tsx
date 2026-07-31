@@ -1,7 +1,18 @@
 'use client'
 import { useEffect, type RefObject } from 'react'
+import { Type, Upload, Shapes } from 'lucide-react'
 
 type PrintAreaPct = { xPct: number; yPct: number; widthPct: number; heightPct: number }
+
+// Blank-shirt empty state (Phase 2): CTAs shown ON the mockup when the current
+// side is empty; the parent decides whether to show the greeting (front, fully
+// blank only) and supplies the three handlers.
+type EmptyState = {
+  showGreeting: boolean
+  onAddText: () => void
+  onUpload: () => void
+  onAddArt: () => void
+}
 
 // CanvasStage — the fixed 680×850 design stage: the color mockup image, the
 // Fabric <canvas>, and the dashed print-area overlay, in that exact stacking.
@@ -19,11 +30,13 @@ export default function CanvasStage({
   shirtImgRef,
   printArea,
   onReady,
+  emptyState = null,
 }: {
   canvasRef: RefObject<HTMLCanvasElement | null>
   shirtImgRef: RefObject<HTMLImageElement | null>
   printArea: PrintAreaPct | null
   onReady: (canvas: any) => void
+  emptyState?: EmptyState | null
 }) {
   // D0 step 2: CanvasStage owns the Fabric canvas LIFECYCLE — creation here,
   // disposal on unmount. The parent wires every handler/control/geometry in its
@@ -81,6 +94,50 @@ export default function CanvasStage({
           boxShadow: '0 0 0 1.5px rgba(255,255,255,0.7)',
         }}>
 
+        </div>
+      )}
+
+      {/* Blank-shirt empty state — greeting + on-garment CTAs, centered on the
+          print area. A separate element from [data-print-area] so it never
+          affects the DOM-measured print geometry. Hidden the moment anything is
+          placed (the parent stops passing emptyState once the side has content). */}
+      {emptyState && printArea && (
+        <div
+          className="absolute z-[3] -translate-x-1/2 -translate-y-1/2"
+          style={{
+            left: `${printArea.xPct + printArea.widthPct / 2}%`,
+            top: `${printArea.yPct + printArea.heightPct / 2}%`,
+            pointerEvents: 'auto',
+          }}
+        >
+          <div className="flex w-[220px] flex-col items-center gap-3 rounded-xl bg-white/95 px-5 py-4 text-center shadow-lg ring-1 ring-black/5">
+            {emptyState.showGreeting && (
+              <div>
+                <p className="text-lg font-black tracking-tight text-gray-900">Let&apos;s build it.</p>
+                <p className="mt-1 text-xs leading-relaxed text-gray-500">Add text, upload your art, or browse designs to get started.</p>
+              </div>
+            )}
+            <div className="flex w-full flex-col gap-2">
+              <button
+                onClick={emptyState.onAddText}
+                className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[#dd3333] px-3 py-2 text-sm font-bold text-white transition-opacity hover:opacity-90"
+              >
+                <Type size={16} strokeWidth={2} /> Add Text
+              </button>
+              <button
+                onClick={emptyState.onUpload}
+                className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"
+              >
+                <Upload size={16} strokeWidth={1.75} /> Upload
+              </button>
+              <button
+                onClick={emptyState.onAddArt}
+                className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"
+              >
+                <Shapes size={16} strokeWidth={1.75} /> Add Art
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

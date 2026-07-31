@@ -185,6 +185,9 @@ export default function DesignerCanvas({
   const [curveAmount, setCurveAmount] = useState(0)
   const [selectedTextPreview, setSelectedTextPreview] = useState<string>('')
   const [selectedObjectType, setSelectedObjectType] = useState<'text' | 'image' | 'svg' | null>(null)
+  // Reactive count of objects on the CURRENT side's canvas — drives the blank-shirt
+  // empty-state overlay (greeting + on-garment CTAs). Updated on object:added/removed.
+  const [canvasObjectCount, setCanvasObjectCount] = useState(0)
 
   // Helper to constrain all objects on canvas after property changes
   const constrainAllObjects = () => {
@@ -1013,6 +1016,14 @@ export default function DesignerCanvas({
         if (obj && bounds) constrainObject(obj, bounds)
         markDirty()
       })
+
+      // Keep the reactive object count in sync so the blank-shirt empty-state
+      // overlay appears when the current side is empty and hides the moment
+      // anything is placed (also fires during side-switch/restore rebuilds — the
+      // count just reflects whatever's actually on the canvas).
+      const syncObjectCount = () => setCanvasObjectCount(canvas.getObjects().length)
+      canvas.on('object:added', syncObjectCount)
+      canvas.on('object:removed', syncObjectCount)
 
       setFabricCanvas(canvas)
       fabricCanvasRef.current = canvas
@@ -2184,6 +2195,17 @@ export default function DesignerCanvas({
     ? (liveCount > 0 || backObjectsRef.current.length > 0)
     : backObjectsRef.current.length > 0
   const sidesCount = (frontHasContent ? 1 : 0) + (backHasContent ? 1 : 0)
+
+  // Blank-shirt empty state: on-garment CTAs when the CURRENT side has nothing on
+  // it; the "Let's build it" greeting ONLY on a fully-blank design (front, back
+  // also empty) — a first-impression thing, so once you've started (or you're on
+  // the back) it's CTAs only. Add Text focuses the box (the discoverability fix).
+  const emptyState = canvasObjectCount === 0 ? {
+    showGreeting: shirtView === 'front' && backObjectsRef.current.length === 0,
+    onAddText: () => { setActiveTab('text'); setTimeout(() => textInputRef.current?.focus(), 0) },
+    onUpload: () => setActiveTab('upload'),
+    onAddArt: () => setActiveTab('clipart'),
+  } : null
   // Per-side surcharge. designer_pricing.sides is a SIDE IDENTITY (1 = Front,
   // 2 = Back), NOT a count — each side is charged independently. Sum the price
   // for each side that has content rather than looking up by the number of
@@ -2508,7 +2530,7 @@ export default function DesignerCanvas({
               Clear All
             </button>
           </div>
-          <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} onReady={handleCanvasReady} />
+          <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} onReady={handleCanvasReady} emptyState={emptyState} />
 
           {/* Front / Back toggle */}
           <div className="absolute bottom-5 flex gap-2">
