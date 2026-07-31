@@ -2337,18 +2337,23 @@ export default function DesignerCanvas({
       {/* Main layout */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* Left panel */}
-        <aside className="w-72 bg-white border-r border-gray-200 flex flex-col overflow-y-auto shrink-0">
+        {/* Left panel: fixed icon rail strip + the scrolling tool panel beside
+            it. The rail owns its own narrow column now (sealed side-strip look);
+            widened so SelectionPanel keeps its ~288px width instead of losing it
+            to the strip. */}
+        <aside className="w-[360px] bg-white border-r border-gray-200 flex overflow-hidden shrink-0">
           <Rail activeTab={activeTab} onSelectTab={handleSelectTab} />
 
-          <SelectionPanel
-            activeTab={activeTab}
-            dbColors={dbColors}
-            deleteSelected={deleteSelected}
-            text={{ textInput, textInputRef, handleTextInputChange, selectedObjectType, startNewText, dbFonts, fonts, selectedFont, setSelectedFont, selectedTextPreview, fontSize, setFontSize, letterSpacing, setLetterSpacing, textColor, setTextColor, textDirection, setTextDirection, curveAmount, setCurveAmount, textIsMultiline, textAlign, handleTextAlign, isBold, setIsBold, isItalic, setIsItalic, isUppercase, setIsUppercase }}
-            upload={{ handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload }}
-            clipart={{ printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor }}
-          />
+          <div className="flex-1 min-w-0 overflow-y-auto pt-3">
+            <SelectionPanel
+              activeTab={activeTab}
+              dbColors={dbColors}
+              deleteSelected={deleteSelected}
+              text={{ textInput, textInputRef, handleTextInputChange, selectedObjectType, startNewText, dbFonts, fonts, selectedFont, setSelectedFont, selectedTextPreview, fontSize, setFontSize, letterSpacing, setLetterSpacing, textColor, setTextColor, textDirection, setTextDirection, curveAmount, setCurveAmount, textIsMultiline, textAlign, handleTextAlign, isBold, setIsBold, isItalic, setIsItalic, isUppercase, setIsUppercase }}
+              upload={{ handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload }}
+              clipart={{ printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor }}
+            />
+          </div>
         </aside>
 
         {/* Canvas center */}
