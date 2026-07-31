@@ -1,4 +1,5 @@
 'use client'
+import { useState } from 'react'
 import { CustomerAuthButton } from './CustomerAuthButton'
 import SaveDesignControl from './SaveDesignControl'
 
@@ -40,27 +41,47 @@ export default function ActionBar({
   onNextStep: () => void
   pricePerItem?: number
 }) {
+  // Mobile (BLOCKER-2 condensed-top-bar pass): the wordmark/title/Save/My Designs/
+  // Log-in collapse into a ☰ menu below the lg breakpoint; price + Next Step stay
+  // always-visible so the checkout path can never be clipped. Desktop is byte-
+  // identical — every desktop element is `hidden lg:*` (shows ≥1024 exactly as
+  // before) and every mobile element is `lg:hidden` (display:none on desktop).
+  const [menuOpen, setMenuOpen] = useState(false)
   return (
-    <header className="flex items-center px-6 h-14 bg-white border-b border-gray-200 shrink-0">
-      {/* Equal-width flex-1 sides push the title to the header's TRUE center
-          (was justify-between, which parked it left-of-center since the right
-          cluster is wider than the wordmark). Flex, not absolute — so it centers
-          without ever overlapping the sides. */}
-      <div className="flex-1 min-w-0 font-black text-xl tracking-widest">
+    <header className="relative flex items-center px-6 h-14 bg-white border-b border-gray-200 shrink-0">
+      {/* Mobile ☰ (never on desktop) */}
+      <button
+        type="button"
+        onClick={() => setMenuOpen(o => !o)}
+        aria-label="Menu"
+        aria-expanded={menuOpen}
+        className="lg:hidden -ml-2 mr-1 flex h-9 w-9 items-center justify-center rounded text-gray-800 hover:bg-gray-100"
+      >
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <path d="M3 5h14M3 10h14M3 15h14" />
+        </svg>
+      </button>
+
+      {/* Desktop wordmark + centered title (hidden on mobile). Equal-width flex-1
+          sides keep the title centered on desktop, exactly as before. */}
+      <div className="hidden lg:block flex-1 min-w-0 font-black text-xl tracking-widest">
         TEE<span className="text-[#dd3333]">STUDIO</span>
       </div>
-      <div className="text-sm text-gray-800 truncate max-w-xs text-center px-4">{productTitle}</div>
+      <div className="hidden lg:block text-sm text-gray-800 truncate max-w-xs text-center px-4">{productTitle}</div>
+
       <div className="flex-1 min-w-0 flex items-center justify-end gap-3">
-        <SaveDesignControl onSave={onSave} loggedIn={loggedIn} dirty={dirty} />
-        <button
-          onClick={onOpenDesigns}
-          className="px-3 py-1.5 rounded text-sm text-gray-600 hover:text-[#dd3333] transition-colors whitespace-nowrap"
-        >
-          My Designs{savedDesignsCount > 0 ? ` (${savedDesignsCount})` : ''}
-        </button>
-        <CustomerAuthButton variant="quiet" onBeforeLogin={onBeforeLogin} />
-        {/* Folded-in price — live per-item cost (blank + print charges), shown
-            just left of Next Step. NEUTRAL: a price is info, not an action. */}
+        {/* Desktop-only controls — these live in the ☰ menu on mobile */}
+        <div className="hidden lg:flex items-center gap-3">
+          <SaveDesignControl onSave={onSave} loggedIn={loggedIn} dirty={dirty} />
+          <button
+            onClick={onOpenDesigns}
+            className="px-3 py-1.5 rounded text-sm text-gray-600 hover:text-[#dd3333] transition-colors whitespace-nowrap"
+          >
+            My Designs{savedDesignsCount > 0 ? ` (${savedDesignsCount})` : ''}
+          </button>
+          <CustomerAuthButton variant="quiet" onBeforeLogin={onBeforeLogin} />
+        </div>
+        {/* Always visible: folded-in price (neutral — info, not action) + Next Step */}
         {pricePerItem != null && (
           <span className="text-sm font-bold text-gray-900 whitespace-nowrap tabular-nums">
             ${pricePerItem.toFixed(2)} <span className="font-normal text-gray-500">each</span>
@@ -73,6 +94,28 @@ export default function ActionBar({
           Next Step →
         </button>
       </div>
+
+      {/* Mobile ☰ menu (lg:hidden). Full-screen backdrop closes it on tap. */}
+      {menuOpen && (
+        <>
+          <div className="lg:hidden fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+          <div className="lg:hidden absolute left-4 top-14 z-50 w-60 rounded-lg border border-gray-200 bg-white py-2 shadow-lg">
+            <p className="truncate border-b border-gray-100 px-4 pb-2 pt-1 font-mono text-xs text-gray-500">{productTitle || 'Your design'}</p>
+            <div className="px-4 py-2" onClick={() => setMenuOpen(false)}>
+              <SaveDesignControl onSave={onSave} loggedIn={loggedIn} dirty={dirty} />
+            </div>
+            <button
+              onClick={() => { onOpenDesigns(); setMenuOpen(false) }}
+              className="block w-full px-4 py-2 text-left text-sm text-gray-800 hover:bg-gray-50"
+            >
+              My Designs{savedDesignsCount > 0 ? ` (${savedDesignsCount})` : ''}
+            </button>
+            <div className="px-4 py-2" onClick={() => setMenuOpen(false)}>
+              <CustomerAuthButton variant="quiet" onBeforeLogin={onBeforeLogin} />
+            </div>
+          </div>
+        </>
+      )}
     </header>
   )
 }

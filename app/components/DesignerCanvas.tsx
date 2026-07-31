@@ -2497,8 +2497,12 @@ export default function DesignerCanvas({
         pricePerItem={pricePerItem}
       />
 
-      {/* Progress strip under the top bar — Build It (here) → Order It → Pick Up/Ship */}
-      <Stepper current={1} />
+      {/* Progress strip under the top bar — Build It (here) → Order It → Pick Up/Ship.
+          Hidden on mobile (the shirt needs the vertical space; Next Step in the
+          condensed top bar keeps the journey clear). Desktop unchanged. */}
+      <div className="hidden lg:block">
+        <Stepper current={1} />
+      </div>
 
       {/* Main layout */}
       <div className="flex flex-1 overflow-hidden">
