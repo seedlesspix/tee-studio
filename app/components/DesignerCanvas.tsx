@@ -192,43 +192,54 @@ export default function DesignerCanvas({
   const [canvasObjectCount, setCanvasObjectCount] = useState(0)
 
   // ── Mobile (BLOCKER-2, canvas-scaling pass) ──────────────────────────────────
-  // Below the lg breakpoint (1024px — tablets are touch users too), CSS-scale the
-  // fixed 680×850 stage to fit the canvas area. The COORDINATE space stays 680×850
-  // (objects/bounds/saves unchanged); only the DISPLAY scales — Fabric's pointer
-  // math and our bounds math both read getBoundingClientRect, which includes the
-  // transform, so it's scale-invariant. On DESKTOP `isMobile` is false → stageScale
-  // stays 1 → NO transform → layout byte-identical (proven by the parity harness).
   const stageAreaRef = useRef<HTMLElement>(null)
   const [isMobile, setIsMobile] = useState(false)
   const [stageScale, setStageScale] = useState(1)
+  const [vh, setVh] = useState(() => (typeof window !== 'undefined' ? window.innerHeight : 800))
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 1023px)')
     const update = () => setIsMobile(mq.matches)
     update()
     mq.addEventListener('change', update)
-    return () => mq.removeEventListener('change', update)
+    const onResize = () => setVh(window.innerHeight)
+    window.addEventListener('resize', onResize)
+    return () => {
+      mq.removeEventListener('change', update)
+      window.removeEventListener('resize', onResize)
+    }
   }, [])
+
+  // Mobile tool sheet (pass 3, vaul): peek / half / full. Selecting an object on
+  // the shirt auto-opens the sheet to HALF so its controls are findable — the
+  // selection-aware design, on mobile. The stage RESERVES bottom space equal to
+  // the sheet's current height so the shirt rises ABOVE the sheet (live edits stay
+  // visible) instead of hiding behind it. Desktop: isMobile false → reserve 0.
+  const [sheetSnap, setSheetSnap] = useState<'peek' | 'half' | 'full'>('peek')
+  useEffect(() => {
+    if (isMobile && selectedObjectType) setSheetSnap(s => (s === 'peek' ? 'half' : s))
+  }, [selectedObjectType, isMobile])
+  const sheetReservePx = !isMobile ? 0 : sheetSnap === 'peek' ? 150 : Math.round(vh * 0.5)
+
+  // Below the lg breakpoint (1024px — tablets are touch users too), CSS-scale the
+  // fixed 680×850 stage to fit the canvas area MINUS the reserved sheet band. The
+  // COORDINATE space stays 680×850 (objects/bounds/saves unchanged); only the
+  // DISPLAY scales — Fabric's pointer math and our bounds math both read
+  // getBoundingClientRect, which includes the transform, so it's scale-invariant.
+  // On DESKTOP `isMobile` is false → stageScale stays 1 → NO transform → layout
+  // byte-identical (proven by the parity harness).
   useEffect(() => {
     if (!isMobile) { setStageScale(1); return }
     const el = stageAreaRef.current
     if (!el) return
     const compute = () => {
-      const w = el.clientWidth, h = el.clientHeight
+      const w = el.clientWidth, h = el.clientHeight - sheetReservePx
       if (w > 0 && h > 0) setStageScale(Math.min(w / 680, h / 850, 1))
     }
     compute()
     const ro = new ResizeObserver(compute)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [isMobile])
-
-  // Mobile tool sheet (pass 3): peek / half / full. Selecting an object on the
-  // shirt auto-opens the sheet to HALF so its controls are findable (drag down
-  // dismisses) — the selection-aware design, on mobile.
-  const [sheetSnap, setSheetSnap] = useState<'peek' | 'half' | 'full'>('peek')
-  useEffect(() => {
-    if (isMobile && selectedObjectType) setSheetSnap(s => (s === 'peek' ? 'half' : s))
-  }, [selectedObjectType, isMobile])
+  }, [isMobile, sheetReservePx])
 
   // Helper to constrain all objects on canvas after property changes
   const constrainAllObjects = () => {
@@ -2556,7 +2567,10 @@ export default function DesignerCanvas({
         )}
 
         {/* Canvas center */}
-        <section ref={stageAreaRef} className="flex-1 flex flex-col items-center justify-center bg-gray-50 relative overflow-hidden touch-none">
+        <section
+          ref={stageAreaRef}
+          style={sheetReservePx ? { paddingBottom: sheetReservePx } : undefined}
+          className="flex-1 flex flex-col items-center justify-center bg-gray-50 relative overflow-hidden touch-none">
 
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center text-gray-800 text-sm z-10">
