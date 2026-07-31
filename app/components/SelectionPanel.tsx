@@ -97,6 +97,11 @@ export default function SelectionPanel({
   } = text
   const { handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload } = upload
   const { printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor } = clipart
+  // A selected CURVED text is a baked image: only font/size/color/bold/italic
+  // re-bake (they're the curve effect's deps). Letter-spacing, uppercase (AA),
+  // Direction, and Align do NOT apply — so we disable them here instead of letting
+  // them look active but do nothing. (Full support is deferred — straighten to edit.)
+  const selectedIsCurved = selectedObjectType === 'text' && curveAmount !== 0
   // Selection-driven (Phase 2): the panel renders by SECTION (activeTab), and the
   // parent sets activeTab to the selected object's section on select — so the rail
   // highlight and this panel always agree on "what am I editing" (no panelMode
@@ -172,7 +177,8 @@ export default function SelectionPanel({
                   </div>
                   <input type="range" min={-5} max={30} value={letterSpacing}
                     onChange={e => setLetterSpacing(Number(e.target.value))}
-                    className="w-full mt-1 accent-[#dd3333]" />
+                    disabled={selectedIsCurved}
+                    className="w-full mt-1 accent-[#dd3333] disabled:opacity-40" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Text Color</label>
@@ -209,12 +215,12 @@ export default function SelectionPanel({
                 <div>
                   <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Direction</label>
                   <div className="grid grid-cols-2 gap-2 mt-1">
-                    <button onClick={() => setTextDirection('horizontal')}
-                      className={`py-2 rounded text-xs font-mono transition-all ${textDirection === 'horizontal' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
+                    <button onClick={() => setTextDirection('horizontal')} disabled={selectedIsCurved}
+                      className={`py-2 rounded text-xs font-mono transition-all disabled:opacity-40 disabled:cursor-default ${textDirection === 'horizontal' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
                       — Horizontal
                     </button>
-                    <button onClick={() => setTextDirection('vertical')}
-                      className={`py-2 rounded text-xs font-mono transition-all ${textDirection === 'vertical' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
+                    <button onClick={() => setTextDirection('vertical')} disabled={selectedIsCurved}
+                      className={`py-2 rounded text-xs font-mono transition-all disabled:opacity-40 disabled:cursor-default ${textDirection === 'vertical' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
                       ↕ Vertical
                     </button>
                   </div>
@@ -254,8 +260,8 @@ export default function SelectionPanel({
                   <div className="flex gap-1">
                     {(['left', 'center', 'right'] as const).map(align => (
                       <button key={align}
-                        onClick={() => handleTextAlign(align)}
-                        className={`flex-1 py-1.5 rounded text-xs font-mono border transition-all ${
+                        onClick={() => handleTextAlign(align)} disabled={selectedIsCurved}
+                        className={`flex-1 py-1.5 rounded text-xs font-mono border transition-all disabled:opacity-40 disabled:cursor-default ${
                           textAlign === align
                             ? 'bg-gray-800 text-white border-gray-800'
                             : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
@@ -292,12 +298,17 @@ export default function SelectionPanel({
                       className={`py-2 rounded text-xs italic transition-all ${isItalic ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
                       Italic
                     </button>
-                    <button onClick={() => setIsUppercase(u => !u)}
-                      className={`py-2 rounded text-xs font-mono transition-all ${isUppercase ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
+                    <button onClick={() => setIsUppercase(u => !u)} disabled={selectedIsCurved}
+                      className={`py-2 rounded text-xs font-mono transition-all disabled:opacity-40 disabled:cursor-default ${isUppercase ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
                       AA
                     </button>
 
                   </div>
+                  {/* These four (spacing / case / direction / align) don't apply to a
+                      curved text — it's a baked image; only the re-bake props work. */}
+                  {selectedIsCurved && (
+                    <p className="text-[10px] text-gray-500 mt-2">Curved text: straighten to change spacing, case, direction, or align.</p>
+                  )}
                 </div>
                 {/* Delete belongs to EDIT, not the empty add-surface. */}
                 {selectedObjectType === 'text' && (
