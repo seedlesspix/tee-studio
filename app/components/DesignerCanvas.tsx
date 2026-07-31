@@ -615,9 +615,20 @@ export default function DesignerCanvas({
     // Update active object - re-wrap text at new font size
     const active = canvas.getActiveObject()
     if (active && (active.type === 'i-text' || active.type === 'textbox')) {
-      const currentText = (active as any).text || ''
+      // Re-wrap from _originalText (the clean source — only the customer's typed
+      // Enter breaks), NOT active.text, which also carries the auto-inserted WRAP
+      // newlines from when the text grew. reWrapText preserves every \n as a
+      // paragraph, so feeding it active.text promoted auto-wraps to permanent
+      // breaks and the text never re-flowed to one line when shrunk. Mirrors the
+      // style effect + fitAndConstrain (fixes one-way wrap, pre-existing Day 9.1).
+      if (!(active as any)._originalText) {
+        (active as any)._originalText = ((active as any).text || '').replace(/\n/g, ' ').trim()
+      }
+      const baseText = isUppercase
+        ? (active as any)._originalText.toUpperCase()
+        : (active as any)._originalText
       const { text: rewrapped, fontSize: newSize } = reWrapText(
-        currentText, fontSize, selectedFont, isBold, isItalic, letterSpacing * 10
+        baseText, fontSize, selectedFont, isBold, isItalic, letterSpacing * 10
       )
       active.set({
         text: rewrapped,
