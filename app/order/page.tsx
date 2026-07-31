@@ -2,6 +2,7 @@
 import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import type { Tables } from '@/types/database'
+import Stepper from '@/app/components/Stepper'
 
 type DesignOrder = Omit<Tables<'design_orders'>, 'quantities'> & {
   quantities: Record<string, number> | null
@@ -107,6 +108,12 @@ function OrderPage() {
     </div>
   )
 
+  // Same URL the "Edit Design" button uses — reused for the stepper's clickable
+  // "Build It" step (back to the designer with the design intact).
+  const editUrl = design
+    ? `/designer?product_id=${design.shopify_product_id?.split('/').pop()}&variant_id=${design.shopify_variant_id?.split('/').pop()}&title=${encodeURIComponent(design.product_title || '')}&price=${((design.unit_price || 0) * 100).toFixed(0)}&design_id=${design.id}`
+    : undefined
+
   return (
     <div className="min-h-screen bg-white text-white" style={{ fontFamily: 'DM Sans, sans-serif' }}>
       {/* Header */}
@@ -114,16 +121,13 @@ function OrderPage() {
         <div className="font-black text-xl tracking-widest">
           TEE<span className="text-[#dd3333]">STUDIO</span>
         </div>
-        {/* Steps */}
-        <div className="flex items-center gap-2 font-mono text-xs">
-          <span className="text-gray-900">1. DESIGN</span>
-          <span className="text-gray-800">→</span>
-          <span className="text-[#dd3333] font-bold">2. QUANTITY & SIZES</span>
-          <span className="text-gray-800">→</span>
-          <span className="text-gray-900">3. REVIEW</span>
-        </div>
         <div className="w-32" />
       </header>
+
+      {/* Progress strip — replaces the old inline "1.DESIGN → 2.QUANTITY & SIZES →
+          3.REVIEW" (off-spec labels + a RED active step). Build It done (← designer)
+          · Order It (here) · Pick Up/Ship (upcoming). */}
+      <Stepper current={2} editHref={editUrl} />
 
       <div className="max-w-6xl mx-auto px-6 py-8 flex gap-8">
         {/* Left - Design Preview */}
@@ -156,7 +160,7 @@ function OrderPage() {
             )
           })()}
           {/* Edit design link */}
-          <a href={`/designer?product_id=${design?.shopify_product_id?.split('/').pop()}&variant_id=${design?.shopify_variant_id?.split('/').pop()}&title=${encodeURIComponent(design?.product_title || '')}&price=${((design?.unit_price || 0) * 100).toFixed(0)}&design_id=${design?.id}`}
+          <a href={editUrl}
             className="mt-4 inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-mono font-medium text-gray-900 hover:border-[#dd3333] hover:text-[#dd3333] transition-all">
             ← Edit Design
           </a>

@@ -9,6 +9,7 @@ import { getProduct } from '../lib/shopify'
 import { buildColorImageMap, getColorImages } from '../lib/productImages'
 import { toPctContain, CANVAS_W, CANVAS_H, type PrintAreaPct } from '../lib/printAreaGeometry'
 import ActionBar from './ActionBar'
+import Stepper from './Stepper'
 import Rail from './Rail'
 import SelectionPanel from './SelectionPanel'
 import { type UploadItem } from './MyUploadsPanel'
@@ -2463,6 +2464,9 @@ export default function DesignerCanvas({
         onBeforeLogin={prepareLoginRedirect}
         onNextStep={handleNextStep}
       />
+
+      {/* Progress strip under the top bar — Build It (here) → Order It → Pick Up/Ship */}
+      <Stepper current={1} />
 
       {/* Main layout */}
       <div className="flex flex-1 overflow-hidden">
