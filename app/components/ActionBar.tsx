@@ -13,13 +13,11 @@ import SaveDesignControl from './SaveDesignControl'
 // unchanged — verified by the human backstop; the parity harness stays green only
 // as a geometry guardrail (this touches no canvas geometry).
 //
-// Phase 2 (sealed target, NOT now): reshape to the "price + Save + Next" bottom
+// Phase 2 (sealed target, NOT yet): reshape to the "price + Save + Next" bottom
 // bar + the Build It → Order It → Pick Up/Ship stepper, and fold in the
-// price/order column. Also queued: (a) replace the `data-cart-btn` DOM-mutation
-// with an `isSubmitting` prop; (b) CENTER the product title — today it's
-// `justify-between`, so the title reads left-of-true-center (brand is narrower
-// than the right cluster); identical on main, a pre-existing look, not a
-// regression. All deferred so this step stays a pure move, not move+change.
+// price/order column. Still queued: replace the `data-cart-btn` DOM-mutation with
+// an `isSubmitting` prop. (The product title is now CENTERED via equal flex-1
+// sides — the title-center pass; was justify-between / left-of-center before.)
 export default function ActionBar({
   productTitle,
   onSave,
@@ -40,12 +38,16 @@ export default function ActionBar({
   onNextStep: () => void
 }) {
   return (
-    <header className="flex items-center justify-between px-6 h-14 bg-white border-b border-gray-200 shrink-0">
-      <div className="font-black text-xl tracking-widest">
+    <header className="flex items-center px-6 h-14 bg-white border-b border-gray-200 shrink-0">
+      {/* Equal-width flex-1 sides push the title to the header's TRUE center
+          (was justify-between, which parked it left-of-center since the right
+          cluster is wider than the wordmark). Flex, not absolute — so it centers
+          without ever overlapping the sides. */}
+      <div className="flex-1 min-w-0 font-black text-xl tracking-widest">
         TEE<span className="text-[#dd3333]">STUDIO</span>
       </div>
-      <div className="text-sm text-gray-800 truncate max-w-xs">{productTitle}</div>
-      <div className="flex items-center gap-3">
+      <div className="text-sm text-gray-800 truncate max-w-xs text-center px-4">{productTitle}</div>
+      <div className="flex-1 min-w-0 flex items-center justify-end gap-3">
         <SaveDesignControl onSave={onSave} loggedIn={loggedIn} dirty={dirty} />
         <button
           onClick={onOpenDesigns}
