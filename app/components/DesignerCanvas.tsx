@@ -95,7 +95,10 @@ const COLOR_HEX_MAP: Record<string, string> = {
 // Props Fabric's default serializer drops but we rely on. `_uploadSrc` is the
 // stamp that ties a placed image back to its uploaded file — see the used-files
 // filter in saveDesignAndAddToCart.
-const CANVAS_CUSTOM_PROPS = ['_isSvg', '_originalText', '_currentColor', '_isCurvedText', '_uploadSrc']
+const CANVAS_CUSTOM_PROPS = ['_isSvg', '_originalText', '_currentColor', '_isCurvedText', '_uploadSrc',
+  // Bake params for a curved-text image, so selecting it reflects the curve
+  // slider + font/size/color and adjusting the curve re-bakes from its OWN values.
+  '_curveAmount', '_curveFontFamily', '_curveFontSize', '_curveFill', '_curveBold', '_curveItalic']
 
 // Fallback size list ONLY — real sizes come per-product from the Shopify Size
 // option (see productSizes). Used when a product exposes no Size option.
@@ -421,11 +424,24 @@ export default function DesignerCanvas({
   // panel reflects THAT object (fixes the logged color-swatch gap AND the latent
   // "touch one knob → the text snaps to the panel's defaults" clobber — once the
   // knobs hold the object's own values, the push effects re-apply identical
-  // ones). Every text property is recoverable from the object; curved text never
-  // reaches here (it's baked to an image), so curve always mirrors as 0 (which
-  // also stops the curve effect from re-curving the freshly-selected plain text).
+  // ones). Handles both a live IText and a curved-text baked image, which reads
+  // its stamped bake params instead (the _isCurvedText branch below).
   const reflectTextObject = (obj: any) => {
     reflectingRef.current = true
+    // Curved text is a baked image — its type/props aren't live, so read the
+    // params we stamped at curve time. Only the props the curve effect uses are
+    // mirrored (spacing/align/direction/case don't apply to a single arc); this
+    // keeps the curve slider + font/size/color truthful, so adjusting the curve
+    // re-bakes from the text's OWN values.
+    if (obj._isCurvedText) {
+      setSelectedFont(obj._curveFontFamily || selectedFont)
+      setFontSize(Math.round(obj._curveFontSize || fontSize))
+      setTextColor(typeof obj._curveFill === 'string' ? obj._curveFill : textColor)
+      setIsBold(!!obj._curveBold)
+      setIsItalic(!!obj._curveItalic)
+      setCurveAmount(obj._curveAmount ?? 0)
+      return
+    }
     const fill = typeof obj.fill === 'string' ? obj.fill : textColor
     const orig = (obj._originalText ?? '') as string
     const flat = (obj.text || '').replace(/\n/g, ' ')
@@ -449,15 +465,16 @@ export default function DesignerCanvas({
   // to this, so the rail highlight AND the panel both follow what you're editing
   // (they read the same activeTab — they can't disagree).
   //
-  // Discriminator = `_isSvg`, NOT `_uploadSrc`: clipart stamps `_isSvg` (true for
-  // SVG, false for raster) at creation, BEFORE setActiveObject fires the selection
-  // event, so it's reliably present the moment we read it. `_uploadSrc` is stamped
-  // AFTER the upload is placed+selected, so it's still undefined at selection time
-  // (a fresh upload would misroute). So: has an `_isSvg` boolean → it's clipart
-  // (Art); otherwise any image is an Upload (a curved-text baked image lands in
-  // Upload too — delete-only, rare and harmless).
+  // Text objects AND curved-text baked images (`_isCurvedText`) both map to 'text'
+  // so a curved text keeps the Text panel + curve slider (Issue-1 fix — no more
+  // jump to Upload). Otherwise the discriminator is `_isSvg`, NOT `_uploadSrc`:
+  // clipart stamps `_isSvg` (true for SVG, false for raster) at creation, BEFORE
+  // setActiveObject fires the selection event, so it's reliably present; `_uploadSrc`
+  // is stamped AFTER the upload is placed+selected, so it's undefined at selection
+  // time (a fresh upload would misroute). So clipart→Art; any other image→Upload.
   const sectionForObject = (obj: any): 'text' | 'upload' | 'clipart' => {
     if (obj?.type === 'i-text' || obj?.type === 'textbox') return 'text'
+    if (obj?._isCurvedText) return 'text'
     if (typeof obj?._isSvg === 'boolean') return 'clipart'
     return 'upload'
   }
@@ -884,7 +901,7 @@ export default function DesignerCanvas({
       canvas.on('selection:created', (e: any) => {
         const obj = e.selected?.[0]
         if (obj) { lastActiveObjectRef.current = obj; _activeObj = obj; setActiveTab(sectionForObject(obj)) }
-        if (obj && (obj.type === 'i-text' || obj.type === 'textbox')) {
+        if (obj && (obj.type === 'i-text' || obj.type === 'textbox' || (obj as any)._isCurvedText)) {
           const raw = ((obj as any)._originalText || obj.text || '').replace(/\n/g, ' ')
           setSelectedTextPreview(raw.trim())
           setSelectedObjectType('text')
@@ -908,7 +925,7 @@ export default function DesignerCanvas({
       canvas.on('selection:updated', (e: any) => {
         const obj = e.selected?.[0]
         if (obj) { lastActiveObjectRef.current = obj; _activeObj = obj; setActiveTab(sectionForObject(obj)) }
-        if (obj && (obj.type === 'i-text' || obj.type === 'textbox')) {
+        if (obj && (obj.type === 'i-text' || obj.type === 'textbox' || (obj as any)._isCurvedText)) {
           const raw = ((obj as any)._originalText || obj.text || '').replace(/\n/g, ' ')
           setSelectedTextPreview(raw.trim())
           setSelectedObjectType('text')
@@ -1265,6 +1282,15 @@ export default function DesignerCanvas({
         img.set({ left: spawnX, top: spawnY, originX: 'center', originY: 'center' })
         ;(img as any)._isCurvedText = true
         ;(img as any)._originalText = rawText
+        // Stamp the exact params this was baked with, so selecting the curved
+        // text reflects them and adjusting the curve re-bakes from its OWN
+        // font/size/color instead of the panel's current (stale) values.
+        ;(img as any)._curveAmount = curveAmount
+        ;(img as any)._curveFontFamily = selectedFont
+        ;(img as any)._curveFontSize = fSize
+        ;(img as any)._curveFill = textColor
+        ;(img as any)._curveBold = isBold
+        ;(img as any)._curveItalic = isItalic
         canvas.add(img)
         canvas.setActiveObject(img)
         lastActiveObjectRef.current = img
