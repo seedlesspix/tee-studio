@@ -634,22 +634,12 @@ export default function DesignerCanvas({
       canvas.renderAll()
     }
     setTimeout(() => {
-      const canvasEl = canvasRef.current
-      const overlay = document.querySelector('[data-print-area]') as HTMLElement
-      if (!overlay || !canvasEl) return
-      const canvasRect = canvasEl.getBoundingClientRect()
-      const overlayRect = overlay.getBoundingClientRect()
-      const scaleX = CANVAS_W  / canvasRect.width
-      const scaleY = CANVAS_H / canvasRect.height
-      const bounds = {
-        left:   (overlayRect.left   - canvasRect.left)   * scaleX,
-        top:    (overlayRect.top    - canvasRect.top)    * scaleY,
-        right:  (overlayRect.right  - canvasRect.left)   * scaleX,
-        bottom: (overlayRect.bottom - canvasRect.top)    * scaleY,
-      }
-      canvas.getObjects().forEach((obj: any) => {
-        constrainObject(obj, bounds)
-      })
+      // Constrain ONLY the text being resized. A size change moves just that
+      // object, so re-clamping EVERY object was a pure side-effect — it nudged
+      // unselected images underneath (uploads especially, placed larger than
+      // clipart). Matches the style effect, which already constrains active-only.
+      const bounds = getPrintAreaBounds()
+      if (active && bounds) constrainObject(active, bounds)
       canvas.renderAll()
     }, 50)
   }, [fontSize])
