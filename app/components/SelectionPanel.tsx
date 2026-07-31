@@ -142,7 +142,7 @@ export default function SelectionPanel({
                       <button key={f.value} onClick={() => setSelectedFont(f.value)}
                         className={`w-full text-left px-3 py-2 rounded border transition-all ${
                           selectedFont === f.value
-                            ? 'border-[#dd3333] bg-[#dd3333]/10'
+                            ? 'border-gray-800 bg-white'
                             : 'border-gray-200 bg-gray-100 hover:border-[#444]'
                         }`}>
                         <div className="text-xs text-gray-800 font-mono mb-0.5">{f.label}</div>
@@ -168,7 +168,7 @@ export default function SelectionPanel({
                 <div>
                   <div className="flex justify-between items-center">
                     <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Letter Spacing</label>
-                    <span className="text-xs text-[#dd3333] font-mono">{letterSpacing}</span>
+                    <span className="text-xs text-gray-700 font-mono">{letterSpacing}</span>
                   </div>
                   <input type="range" min={-5} max={30} value={letterSpacing}
                     onChange={e => setLetterSpacing(Number(e.target.value))}
@@ -189,7 +189,7 @@ export default function SelectionPanel({
                         }}
                         className={`w-8 h-8 rounded-full transition-transform hover:scale-110 ${
                           textColor === c.hex
-                            ? 'ring-2 ring-[#dd3333] ring-offset-1 ring-offset-[#161616]'
+                            ? 'ring-2 ring-gray-900 ring-offset-1 ring-offset-white'
                             : ''
                         }`}
                       />
@@ -210,11 +210,11 @@ export default function SelectionPanel({
                   <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Direction</label>
                   <div className="grid grid-cols-2 gap-2 mt-1">
                     <button onClick={() => setTextDirection('horizontal')}
-                      className={`py-2 rounded text-xs font-mono transition-all ${textDirection === 'horizontal' ? 'bg-[#dd3333] text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
+                      className={`py-2 rounded text-xs font-mono transition-all ${textDirection === 'horizontal' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
                       — Horizontal
                     </button>
                     <button onClick={() => setTextDirection('vertical')}
-                      className={`py-2 rounded text-xs font-mono transition-all ${textDirection === 'vertical' ? 'bg-[#dd3333] text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
+                      className={`py-2 rounded text-xs font-mono transition-all ${textDirection === 'vertical' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
                       ↕ Vertical
                     </button>
                   </div>
@@ -227,7 +227,7 @@ export default function SelectionPanel({
                       <button onClick={() => setCurveAmount(0)} disabled={textIsMultiline}
                         className={`text-[10px] px-2 py-0.5 rounded font-mono transition-all ${
                           textIsMultiline ? 'bg-gray-100 text-gray-400 cursor-default'
-                            : curveAmount !== 0 ? 'bg-[#dd3333] text-white' : 'bg-gray-200 text-gray-800'
+                            : curveAmount !== 0 ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-800'
                         }`}>
                         Straight
                       </button>
@@ -257,8 +257,8 @@ export default function SelectionPanel({
                         onClick={() => handleTextAlign(align)}
                         className={`flex-1 py-1.5 rounded text-xs font-mono border transition-all ${
                           textAlign === align
-                            ? 'bg-[#dd3333] text-white border-[#dd3333]'
-                            : 'bg-white text-gray-700 border-gray-200 hover:border-[#dd3333]'
+                            ? 'bg-gray-800 text-white border-gray-800'
+                            : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
                         }`}>
                         {align === 'left' ? (
                           <svg width="14" height="12" viewBox="0 0 14 12" fill="currentColor">
@@ -285,15 +285,15 @@ export default function SelectionPanel({
                   <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Effects</label>
                   <div className="grid grid-cols-3 gap-2 mt-1">
                     <button onClick={() => setIsBold(b => !b)}
-                      className={`py-2 rounded text-xs font-bold transition-all ${isBold ? 'bg-[#dd3333] text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
+                      className={`py-2 rounded text-xs font-bold transition-all ${isBold ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
                       Bold
                     </button>
                     <button onClick={() => setIsItalic(i => !i)}
-                      className={`py-2 rounded text-xs italic transition-all ${isItalic ? 'bg-[#dd3333] text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
+                      className={`py-2 rounded text-xs italic transition-all ${isItalic ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
                       Italic
                     </button>
                     <button onClick={() => setIsUppercase(u => !u)}
-                      className={`py-2 rounded text-xs font-mono transition-all ${isUppercase ? 'bg-[#dd3333] text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
+                      className={`py-2 rounded text-xs font-mono transition-all ${isUppercase ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
                       AA
                     </button>
 
@@ -361,7 +361,7 @@ export default function SelectionPanel({
                           title={c.label}
                           style={{ background: c.hex, border: c.hex === '#ffffff' ? '1px solid #555' : 'none' }}
                           className={`w-8 h-8 rounded-full transition-transform hover:scale-110 ${
-                            selectedSvgColor === c.hex ? 'ring-2 ring-[#dd3333] ring-offset-2 ring-offset-[#161616]' : ''
+                            selectedSvgColor === c.hex ? 'ring-2 ring-gray-900 ring-offset-2 ring-offset-white' : ''
                           }`}
                         />
                       ))}
