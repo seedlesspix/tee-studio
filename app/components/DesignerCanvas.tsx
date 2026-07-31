@@ -2479,8 +2479,12 @@ export default function DesignerCanvas({
     }
   }
 
+  // Root is a fixed, app-like viewport: no page scroll / pull-to-refresh on
+  // mobile, so touch gestures reach the canvas + sheet instead of the browser.
+  // Desktop keeps h-screen exactly (lg:h-screen) — parity-safe; the overflow /
+  // overscroll locks are no-ops on desktop. dvh accounts for the mobile URL bar.
   return (
-    <div className="flex flex-col h-screen text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
+    <div className="flex flex-col h-dvh lg:h-screen overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
 
       {/* Header — extracted to <ActionBar> (D0 restructure step 1a, move-not-
           rewrite). Phase 2: becomes the sealed "price + Save + Next" bottom bar
@@ -2527,7 +2531,7 @@ export default function DesignerCanvas({
         </aside>
 
         {/* Canvas center */}
-        <section ref={stageAreaRef} className="flex-1 flex flex-col items-center justify-center bg-gray-50 relative overflow-hidden">
+        <section ref={stageAreaRef} className="flex-1 flex flex-col items-center justify-center bg-gray-50 relative overflow-hidden touch-none">
 
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center text-gray-800 text-sm z-10">
