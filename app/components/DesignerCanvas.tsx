@@ -190,6 +190,37 @@ export default function DesignerCanvas({
   // empty-state overlay (greeting + on-garment CTAs). Updated on object:added/removed.
   const [canvasObjectCount, setCanvasObjectCount] = useState(0)
 
+  // ── Mobile (BLOCKER-2, canvas-scaling pass) ──────────────────────────────────
+  // Below the lg breakpoint (1024px — tablets are touch users too), CSS-scale the
+  // fixed 680×850 stage to fit the canvas area. The COORDINATE space stays 680×850
+  // (objects/bounds/saves unchanged); only the DISPLAY scales — Fabric's pointer
+  // math and our bounds math both read getBoundingClientRect, which includes the
+  // transform, so it's scale-invariant. On DESKTOP `isMobile` is false → stageScale
+  // stays 1 → NO transform → layout byte-identical (proven by the parity harness).
+  const stageAreaRef = useRef<HTMLElement>(null)
+  const [isMobile, setIsMobile] = useState(false)
+  const [stageScale, setStageScale] = useState(1)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023px)')
+    const update = () => setIsMobile(mq.matches)
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [])
+  useEffect(() => {
+    if (!isMobile) { setStageScale(1); return }
+    const el = stageAreaRef.current
+    if (!el) return
+    const compute = () => {
+      const w = el.clientWidth, h = el.clientHeight
+      if (w > 0 && h > 0) setStageScale(Math.min(w / 680, h / 850, 1))
+    }
+    compute()
+    const ro = new ResizeObserver(compute)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [isMobile])
+
   // Helper to constrain all objects on canvas after property changes
   const constrainAllObjects = () => {
     if (!fabricCanvas) return
@@ -2476,7 +2507,7 @@ export default function DesignerCanvas({
             it. The rail owns its own narrow column now (sealed side-strip look);
             widened so SelectionPanel keeps its ~288px width instead of losing it
             to the strip. */}
-        <aside className="w-[360px] bg-white border-r border-gray-200 flex overflow-hidden shrink-0">
+        <aside className="w-[360px] bg-white border-r border-gray-200 hidden lg:flex overflow-hidden shrink-0">
           <Rail activeTab={activeTab} onSelectTab={handleSelectTab} />
 
           <div className="flex-1 min-w-0 overflow-y-auto pt-3">
@@ -2492,7 +2523,7 @@ export default function DesignerCanvas({
         </aside>
 
         {/* Canvas center */}
-        <section className="flex-1 flex flex-col items-center justify-center bg-gray-50 relative overflow-hidden">
+        <section ref={stageAreaRef} className="flex-1 flex flex-col items-center justify-center bg-gray-50 relative overflow-hidden">
 
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center text-gray-800 text-sm z-10">
@@ -2535,7 +2566,16 @@ export default function DesignerCanvas({
               Clear All
             </button>
           </div>
-          <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} onReady={handleCanvasReady} emptyState={emptyState} />
+          {/* Scale-to-fit wrapper (mobile only). Outer = the SCALED layout box so
+            the shirt doesn't overflow; inner keeps the true 680×850 and is CSS
+            transform-scaled. On desktop stageScale===1 → outer is 680×850, inner
+            has NO transform → identical to rendering <CanvasStage> alone (the flex
+            section centers a 680×850 box either way). Parity proves it. */}
+        <div style={{ width: 680 * stageScale, height: 850 * stageScale }}>
+          <div style={{ width: 680, height: 850, transformOrigin: 'top left', transform: stageScale !== 1 ? `scale(${stageScale})` : undefined }}>
+            <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} onReady={handleCanvasReady} emptyState={emptyState} />
+          </div>
+        </div>
 
           {/* Front / Back toggle */}
           <div className="absolute bottom-5 flex gap-2">
@@ -2627,7 +2667,7 @@ export default function DesignerCanvas({
         </section>
 
         {/* Right panel */}
-        <aside className="w-64 bg-white border-l border-gray-200 flex flex-col gap-4 p-4 overflow-y-auto shrink-0">
+        <aside className="w-64 bg-white border-l border-gray-200 hidden lg:flex lg:flex-col gap-4 p-4 overflow-y-auto shrink-0">
           <h2 className="font-black text-lg tracking-widest">ORDER</h2>
 
           <div className="flex flex-col gap-2 text-sm">
