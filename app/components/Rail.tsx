@@ -43,12 +43,20 @@ const ITEMS: RailItem[] = [
 export default function Rail({
   activeTab,
   onSelectTab,
+  orientation = 'vertical',
 }: {
   activeTab: string
   onSelectTab: (tab: Tab) => void
+  // 'vertical' = the desktop side-strip (default, unchanged). 'horizontal' = the
+  // mobile bottom-sheet tab bar (same items; active marker moves to the bottom).
+  orientation?: 'vertical' | 'horizontal'
 }) {
+  const horizontal = orientation === 'horizontal'
+  const marker = horizontal ? 'border-b-2' : 'border-l-2'
   return (
-    <nav className="w-[76px] shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col py-2">
+    <nav className={horizontal
+      ? 'flex flex-row items-stretch bg-gray-50 border-b border-gray-200'
+      : 'w-[76px] shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col py-2'}>
       {ITEMS.map(({ key, label, Icon, wired }) => {
         const active = wired && activeTab === key
         return (
@@ -59,12 +67,12 @@ export default function Rail({
             onClick={wired ? () => onSelectTab(key as Tab) : undefined}
             aria-current={active ? 'page' : undefined}
             title={wired ? label : `${label} — coming soon`}
-            className={`relative flex flex-col items-center gap-1 px-1 py-2.5 text-center transition-colors ${
+            className={`relative flex flex-col items-center gap-1 px-1 py-2.5 text-center transition-colors ${horizontal ? 'flex-1' : ''} ${
               !wired
                 ? 'text-gray-300 cursor-default'
                 : active
-                  ? 'bg-white text-gray-900 font-semibold border-l-2 border-gray-900'
-                  : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100 border-l-2 border-transparent'
+                  ? `bg-white text-gray-900 font-semibold ${marker} border-gray-900`
+                  : `text-gray-500 hover:text-gray-900 hover:bg-gray-100 ${marker} border-transparent`
             }`}
           >
             <Icon size={20} strokeWidth={1.75} />

@@ -12,6 +12,7 @@ import ActionBar from './ActionBar'
 import Stepper from './Stepper'
 import Rail from './Rail'
 import SelectionPanel from './SelectionPanel'
+import MobileToolSheet from './MobileToolSheet'
 import { type UploadItem } from './MyUploadsPanel'
 import MyDesignsDrawer, { type SavedDesign } from './MyDesignsDrawer'
 import { useCustomerSession } from '../hooks/useCustomerSession'
@@ -220,6 +221,14 @@ export default function DesignerCanvas({
     ro.observe(el)
     return () => ro.disconnect()
   }, [isMobile])
+
+  // Mobile tool sheet (pass 3): peek / half / full. Selecting an object on the
+  // shirt auto-opens the sheet to HALF so its controls are findable (drag down
+  // dismisses) — the selection-aware design, on mobile.
+  const [sheetSnap, setSheetSnap] = useState<'peek' | 'half' | 'full'>('peek')
+  useEffect(() => {
+    if (isMobile && selectedObjectType) setSheetSnap(s => (s === 'peek' ? 'half' : s))
+  }, [selectedObjectType, isMobile])
 
   // Helper to constrain all objects on canvas after property changes
   const constrainAllObjects = () => {
@@ -1583,6 +1592,13 @@ export default function DesignerCanvas({
     setActiveTab(tab)
   }
 
+  // Mobile sheet tab tap: switch tool AND expand the sheet from peek → half so
+  // the tool's controls come into view.
+  const sheetSelectTab = (tab: 'text' | 'upload' | 'clipart') => {
+    handleSelectTab(tab)
+    setSheetSnap(s => (s === 'peek' ? 'half' : s))
+  }
+
   // Put a new text on the shirt from the box's first keystroke. Deliberately
   // does NOT enter Fabric's edit mode: the caret stays in the box, which is what
   // makes live wrapping safe — we can re-wrap obj.text freely because we never
@@ -2234,9 +2250,10 @@ export default function DesignerCanvas({
   // the back) it's CTAs only. Add Text focuses the box (the discoverability fix).
   const emptyState = canvasObjectCount === 0 ? {
     showGreeting: shirtView === 'front' && backObjectsRef.current.length === 0,
-    onAddText: () => { setActiveTab('text'); setTimeout(() => textInputRef.current?.focus(), 0) },
-    onUpload: () => setActiveTab('upload'),
-    onAddArt: () => setActiveTab('clipart'),
+    // On mobile the tools live in the sheet, so each CTA also opens it to half.
+    onAddText: () => { setActiveTab('text'); if (isMobile) setSheetSnap('half'); setTimeout(() => textInputRef.current?.focus(), 0) },
+    onUpload: () => { setActiveTab('upload'); if (isMobile) setSheetSnap('half') },
+    onAddArt: () => { setActiveTab('clipart'); if (isMobile) setSheetSnap('half') },
   } : null
   // Per-side surcharge. designer_pricing.sides is a SIDE IDENTITY (1 = Front,
   // 2 = Back), NOT a count — each side is charged independently. Sum the price
@@ -2479,6 +2496,20 @@ export default function DesignerCanvas({
     }
   }
 
+  // The tool panel body — defined ONCE and rendered in exactly one place at a
+  // time (desktop left aside OR mobile sheet), so its textInputRef binds to a
+  // single textarea (two live copies would fight over the ref).
+  const selectionPanel = (
+    <SelectionPanel
+      activeTab={activeTab}
+      dbColors={dbColors}
+      deleteSelected={deleteSelected}
+      text={{ textInput, textInputRef, handleTextInputChange, selectedObjectType, startNewText, dbFonts, fonts, selectedFont, setSelectedFont, selectedTextPreview, fontSize, setFontSize, letterSpacing, setLetterSpacing, textColor, setTextColor, textDirection, setTextDirection, curveAmount, setCurveAmount, textIsMultiline, textAlign, handleTextAlign, isBold, setIsBold, isItalic, setIsItalic, isUppercase, setIsUppercase }}
+      upload={{ handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload }}
+      clipart={{ printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor }}
+    />
+  )
+
   // Root is a fixed, app-like viewport: no page scroll / pull-to-refresh on
   // mobile, so touch gestures reach the canvas + sheet instead of the browser.
   // Desktop keeps h-screen exactly (lg:h-screen) — parity-safe; the overflow /
@@ -2511,24 +2542,18 @@ export default function DesignerCanvas({
       {/* Main layout */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* Left panel: fixed icon rail strip + the scrolling tool panel beside
-            it. The rail owns its own narrow column now (sealed side-strip look);
-            widened so SelectionPanel keeps its ~288px width instead of losing it
-            to the strip. */}
-        <aside className="w-[360px] bg-white border-r border-gray-200 hidden lg:flex overflow-hidden shrink-0">
-          <Rail activeTab={activeTab} onSelectTab={handleSelectTab} />
-
-          <div className="flex-1 min-w-0 overflow-y-auto pt-3">
-            <SelectionPanel
-              activeTab={activeTab}
-              dbColors={dbColors}
-              deleteSelected={deleteSelected}
-              text={{ textInput, textInputRef, handleTextInputChange, selectedObjectType, startNewText, dbFonts, fonts, selectedFont, setSelectedFont, selectedTextPreview, fontSize, setFontSize, letterSpacing, setLetterSpacing, textColor, setTextColor, textDirection, setTextDirection, curveAmount, setCurveAmount, textIsMultiline, textAlign, handleTextAlign, isBold, setIsBold, isItalic, setIsItalic, isUppercase, setIsUppercase }}
-              upload={{ handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload }}
-              clipart={{ printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor }}
-            />
-          </div>
-        </aside>
+        {/* Left tool panel — DESKTOP only (mobile uses the bottom sheet below).
+            Rendered conditionally (not CSS-hidden) so exactly one SelectionPanel
+            is mounted → one textInputRef, one textarea. Desktop uses `flex`
+            exactly as before → parity-safe. */}
+        {!isMobile && (
+          <aside className="w-[360px] bg-white border-r border-gray-200 flex overflow-hidden shrink-0">
+            <Rail activeTab={activeTab} onSelectTab={handleSelectTab} />
+            <div className="flex-1 min-w-0 overflow-y-auto pt-3">
+              {selectionPanel}
+            </div>
+          </aside>
+        )}
 
         {/* Canvas center */}
         <section ref={stageAreaRef} className="flex-1 flex flex-col items-center justify-center bg-gray-50 relative overflow-hidden touch-none">
@@ -2731,6 +2756,14 @@ export default function DesignerCanvas({
               along with quantity + order total. */}
         </aside>
       </div>
+
+      {/* Mobile tool sheet — brings the tools to the phone (peek/half/full).
+          Mounted only on mobile, so it owns the single SelectionPanel. */}
+      {isMobile && (
+        <MobileToolSheet snap={sheetSnap} setSnap={setSheetSnap} activeTab={activeTab} onSelectTab={sheetSelectTab}>
+          {selectionPanel}
+        </MobileToolSheet>
+      )}
 
       <MyDesignsDrawer
         open={designsOpen}
