@@ -240,61 +240,40 @@ export default function DesignerCanvas({
     if (isMobile && selectedObjectType) setBandOpen(true)
   }, [selectedObjectType, isMobile])
 
-  // Keyboard: handled NATIVELY now. The mobile document scrolls normally (the lock
-  // no longer sets position:fixed), so when the text box focuses, iOS scrolls it above
-  // the keyboard on its own — no manual visualViewport docking (that fought the
-  // browser and kept failing). See the .designer-touch-lock note in globals.css.
+  // Mobile keyboard sizing — the fix, proven by an on-device trace (2026-07-31).
   //
-  // The mobile app is sized to the VISUAL viewport, not 100dvh. On iOS Chrome, 100dvh
-  // SHRINKS when the keyboard opens and does NOT recalc when it closes, leaving a stale
-  // dark gap at the bottom (the "black strip" — a swipe just forced a re-measure).
-  // window.visualViewport.height is reliable and fires on BOTH open and close, so the
-  // app always exactly fills the visible area: the text box stays above the keyboard
-  // while typing (the app bottom == keyboard top), and there's simply no gap to leave
-  // behind on dismiss. Mobile only; desktop keeps h-screen (vpHeight stays 0 → the
-  // h-dvh/lg:h-screen className wins, byte-identical).
-  const [vpHeight, setVpHeight] = useState(0)
+  // The app is sized to the VISUAL viewport, and the height is set IMPERATIVELY
+  // (ref.style.height) right in the visualViewport handler — NOT via React state.
+  // The React-state route was the bug: when the keyboard rose, visualViewport.height
+  // dropped to ~325 immediately, but our setState→re-render setting the height lagged
+  // a few frames. For those frames the app was still ~653 tall inside a 325px window,
+  // so iOS shifted the visual viewport up to reveal the below-the-fold textarea —
+  // pushing the WHOLE app (even fixed elements) off-screen: a black flash until the
+  // render caught up. (The trace: innerHeight stayed 653 throughout — it does NOT
+  // track the iOS keyboard, so it's the wrong signal; visualViewport.height went
+  // 653→325 and the working end-state had rootH==325, scrollY==0. Pure transition
+  // race.) Setting the height synchronously, frame-by-frame as visualViewport shrinks,
+  // means the app is never taller than the visible area, so iOS never needs to shift,
+  // so there's no black — on open OR close. `.designer-touch-lock` also locks document
+  // scroll as a backstop. Mobile only; desktop keeps its h-dvh/lg:h-screen className
+  // untouched (this effect early-returns), so desktop is byte-identical.
+  const appRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    if (!isMobile || typeof window === 'undefined' || !window.visualViewport) { setVpHeight(0); return }
+    if (!isMobile || typeof window === 'undefined' || !window.visualViewport) return
     const vv = window.visualViewport
-    const update = () => setVpHeight(vv.height)
-    update()
-    vv.addEventListener('resize', update)
-    window.addEventListener('orientationchange', update)
+    const el = appRef.current
+    const apply = () => { if (el) el.style.height = vv.height + 'px' }
+    apply()
+    vv.addEventListener('resize', apply)
+    vv.addEventListener('scroll', apply)
+    window.addEventListener('orientationchange', apply)
     return () => {
-      vv.removeEventListener('resize', update)
-      window.removeEventListener('orientationchange', update)
+      if (el) el.style.height = ''
+      vv.removeEventListener('resize', apply)
+      vv.removeEventListener('scroll', apply)
+      window.removeEventListener('orientationchange', apply)
     }
   }, [isMobile])
-
-  // ---- DEBUG (keyboard trace — remove after diagnosing) ----------------------------
-  // Paints live values into a fixed overlay every animation frame (so it updates even
-  // if React stops re-rendering). `f` = rAF frames (paint loop alive?), `r` = React
-  // renders (frozen r while f ticks == "viewport changed but no re-render").
-  const kbdRootRef = useRef<HTMLDivElement>(null)
-  const kbdDbgRef = useRef<HTMLDivElement>(null)
-  const kbdRenderRef = useRef(0)
-  kbdRenderRef.current++
-  useEffect(() => {
-    if (!isMobile || typeof window === 'undefined') return
-    let raf = 0
-    let frame = 0
-    const tick = () => {
-      frame++
-      const vv = window.visualViewport
-      const ae = document.activeElement as HTMLElement | null
-      const rootH = kbdRootRef.current ? Math.round(kbdRootRef.current.getBoundingClientRect().height) : -1
-      if (kbdDbgRef.current) {
-        kbdDbgRef.current.textContent =
-          `f${frame} r${kbdRenderRef.current} innerH${window.innerHeight} vvH${vv ? Math.round(vv.height) : '-'}` +
-          ` vvTop${vv ? Math.round(vv.offsetTop) : '-'} rootH${rootH} sY${Math.round(window.scrollY)} focus:${ae ? ae.tagName : '-'}`
-      }
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [isMobile])
-  // ---- END DEBUG -------------------------------------------------------------------
 
   // Below the lg breakpoint (1024px — tablets are touch users too), CSS-scale the
   // fixed 680×850 stage to fit the canvas area. The COORDINATE space stays 680×850
@@ -2661,11 +2640,7 @@ export default function DesignerCanvas({
   // Desktop keeps h-screen exactly (lg:h-screen) — parity-safe; the overflow /
   // overscroll locks are no-ops on desktop. dvh accounts for the mobile URL bar.
   return (
-    <div ref={kbdRootRef} className="flex flex-col h-dvh lg:h-screen overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif', height: isMobile && vpHeight ? vpHeight : undefined }}>
-      {/* DEBUG keyboard-trace overlay (remove after diagnosing) */}
-      {isMobile && (
-        <div ref={kbdDbgRef} className="fixed left-0 top-0 z-[9999] bg-yellow-300 px-1 py-0.5 font-mono text-[10px] leading-tight text-black pointer-events-none" style={{ maxWidth: '100vw' }} />
-      )}
+    <div ref={appRef} className="flex flex-col h-dvh lg:h-screen overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
 
       {/* Header — extracted to <ActionBar> (D0 restructure step 1a, move-not-
           rewrite). Phase 2: becomes the sealed "price + Save + Next" bottom bar

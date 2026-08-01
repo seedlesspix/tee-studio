@@ -25,17 +25,20 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* Mobile designer: disable pull-to-refresh / overscroll rubber-band only. The
-   designer adds this class to <html>/<body> via JS (mobile only). It DELIBERATELY
-   does NOT lock scrolling (no position:fixed, no overflow:hidden) — that lock broke
-   the iOS keyboard, because a fixed body stops the browser from scrolling the
-   focused text box above the keyboard. Letting the document scroll normally hands
-   keyboard handling back to the browser (the reliable, native behaviour); the
-   canvas still owns its own gestures via touch-action:none on the stage, and the
-   page has no horizontal overflow so it can't drift sideways. overscroll-behavior
-   keeps pull-to-refresh disabled so an accidental pull can't wipe a design. */
+/* Mobile designer scroll lock. The designer adds this class to <html>/<body> via JS
+   (mobile only). `overflow:hidden` prevents the DOCUMENT from scrolling, and
+   `overscroll-behavior:none` disables pull-to-refresh / rubber-band. This is a
+   BACKSTOP to the imperative visual-viewport sizing in DesignerCanvas: the app is
+   sized frame-by-frame to the visible area so the focused text box is always above
+   the keyboard WITHOUT the browser needing to scroll — locking scroll here just
+   guarantees a stray scroll can't push the app off-screen (the "black flash" bug).
+   NOTE: this is overflow-lock only, NOT position:fixed. A fixed body was tried and
+   rejected — combined with a lagging React height it caused the very off-screen
+   shift we're preventing. The canvas owns its own gestures via touch-action:none on
+   the stage; the page has no horizontal overflow so it can't drift sideways. */
 html.designer-touch-lock,
 body.designer-touch-lock {
+  overflow: hidden;
   overscroll-behavior: none;
 }
 
