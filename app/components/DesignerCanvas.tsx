@@ -2664,7 +2664,7 @@ export default function DesignerCanvas({
           {/* Alignment toolbar — DESKTOP only now; on mobile it moves to the slim
               top strip below the header so it stops eating the shirt's space. */}
           {!isMobile && (
-          <div className="flex items-center gap-1 mb-2 px-1 flex-wrap">
+          <div className="shrink-0 flex items-center gap-1 mb-2 px-1 flex-wrap">
             <span className="text-xs text-gray-800 font-mono uppercase tracking-widest mr-1">Align:</span>
             {[
               { label: '⬛◻◻', title: 'Align Left', fn: 'left' },
@@ -2704,9 +2704,16 @@ export default function DesignerCanvas({
             transform-scaled. On desktop stageScale===1 → outer is 680×850, inner
             has NO transform → identical to rendering <CanvasStage> alone (the flex
             section centers a 680×850 box either way). Parity proves it. */}
-        <div style={{ width: 680 * stageScale, height: 850 * stageScale }}>
-          <div style={{ width: 680, height: 850, transformOrigin: 'top left', transform: stageScale !== 1 ? `scale(${stageScale})` : undefined }}>
-            <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} onReady={handleCanvasReady} emptyState={emptyState} />
+        {/* Canvas-centering wrapper (fix): the align row above is shrink-0 and this
+            takes the REMAINING space (flex-1) and centers the canvas in it. So the
+            align controls are always visible (never clipped by the section's
+            overflow), while the canvas stays centered. Its own overflow-hidden keeps
+            an over-tall desktop canvas from spilling up over the align row. */}
+        <div className="flex w-full min-h-0 flex-1 items-center justify-center overflow-hidden">
+          <div style={{ width: 680 * stageScale, height: 850 * stageScale }}>
+            <div style={{ width: 680, height: 850, transformOrigin: 'top left', transform: stageScale !== 1 ? `scale(${stageScale})` : undefined }}>
+              <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} onReady={handleCanvasReady} emptyState={emptyState} />
+            </div>
           </div>
         </div>
 
