@@ -245,26 +245,25 @@ export default function DesignerCanvas({
   // the keyboard on its own — no manual visualViewport docking (that fought the
   // browser and kept failing). See the .designer-touch-lock note in globals.css.
   //
-  // One cleanup the browser doesn't do for us: after the keyboard CLOSES, the document
-  // is often left scrolled up by the (now-gone) keyboard height, leaving a blank strip
-  // at the bottom (you had to swipe down to clear it). Reclaim it deterministically:
-  // whenever the page is scrolled AND no text field is focused (i.e. the keyboard is
-  // down), snap scroll back to 0. Gated on "not focused" so it NEVER fights the
-  // browser's scroll-into-view while you're typing. Fired on blur (with a couple of
-  // delays to outlast the close animation) and on any viewport change.
+  // The mobile app is sized to the VISUAL viewport, not 100dvh. On iOS Chrome, 100dvh
+  // SHRINKS when the keyboard opens and does NOT recalc when it closes, leaving a stale
+  // dark gap at the bottom (the "black strip" — a swipe just forced a re-measure).
+  // window.visualViewport.height is reliable and fires on BOTH open and close, so the
+  // app always exactly fills the visible area: the text box stays above the keyboard
+  // while typing (the app bottom == keyboard top), and there's simply no gap to leave
+  // behind on dismiss. Mobile only; desktop keeps h-screen (vpHeight stays 0 → the
+  // h-dvh/lg:h-screen className wins, byte-identical).
+  const [vpHeight, setVpHeight] = useState(0)
   useEffect(() => {
-    if (!isMobile || typeof window === 'undefined') return
-    const reclaim = () => {
-      const ae = document.activeElement
-      const typing = ae instanceof HTMLElement && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')
-      if (!typing && window.scrollY !== 0) window.scrollTo(0, 0)
-    }
-    const onFocusOut = () => { setTimeout(reclaim, 100); setTimeout(reclaim, 400) }
-    document.addEventListener('focusout', onFocusOut)
-    window.visualViewport?.addEventListener('resize', reclaim)
+    if (!isMobile || typeof window === 'undefined' || !window.visualViewport) { setVpHeight(0); return }
+    const vv = window.visualViewport
+    const update = () => setVpHeight(vv.height)
+    update()
+    vv.addEventListener('resize', update)
+    window.addEventListener('orientationchange', update)
     return () => {
-      document.removeEventListener('focusout', onFocusOut)
-      window.visualViewport?.removeEventListener('resize', reclaim)
+      vv.removeEventListener('resize', update)
+      window.removeEventListener('orientationchange', update)
     }
   }, [isMobile])
 
@@ -2633,7 +2632,7 @@ export default function DesignerCanvas({
   // Desktop keeps h-screen exactly (lg:h-screen) — parity-safe; the overflow /
   // overscroll locks are no-ops on desktop. dvh accounts for the mobile URL bar.
   return (
-    <div className="flex flex-col h-dvh lg:h-screen overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
+    <div className="flex flex-col h-dvh lg:h-screen overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif', height: isMobile && vpHeight ? vpHeight : undefined }}>
 
       {/* Header — extracted to <ActionBar> (D0 restructure step 1a, move-not-
           rewrite). Phase 2: becomes the sealed "price + Save + Next" bottom bar
