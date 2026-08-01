@@ -247,19 +247,25 @@ export default function DesignerCanvas({
   //
   // One cleanup the browser doesn't do for us: after the keyboard CLOSES, the document
   // is often left scrolled up by the (now-gone) keyboard height, leaving a blank strip
-  // at the bottom. When the visual viewport returns to ~full (keyboard down), snap the
-  // scroll back to 0 to reclaim it. This never fires while the keyboard is UP (the gap
-  // is large then), so it doesn't fight the browser's scroll-into-view.
+  // at the bottom (you had to swipe down to clear it). Reclaim it deterministically:
+  // whenever the page is scrolled AND no text field is focused (i.e. the keyboard is
+  // down), snap scroll back to 0. Gated on "not focused" so it NEVER fights the
+  // browser's scroll-into-view while you're typing. Fired on blur (with a couple of
+  // delays to outlast the close animation) and on any viewport change.
   useEffect(() => {
-    if (!isMobile || typeof window === 'undefined' || !window.visualViewport) return
-    const vv = window.visualViewport
-    let baseline = vv.height
-    const onResize = () => {
-      if (vv.height > baseline) baseline = vv.height
-      if (baseline - vv.height < 80) window.scrollTo(0, 0)
+    if (!isMobile || typeof window === 'undefined') return
+    const reclaim = () => {
+      const ae = document.activeElement
+      const typing = ae instanceof HTMLElement && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')
+      if (!typing && window.scrollY !== 0) window.scrollTo(0, 0)
     }
-    vv.addEventListener('resize', onResize)
-    return () => vv.removeEventListener('resize', onResize)
+    const onFocusOut = () => { setTimeout(reclaim, 100); setTimeout(reclaim, 400) }
+    document.addEventListener('focusout', onFocusOut)
+    window.visualViewport?.addEventListener('resize', reclaim)
+    return () => {
+      document.removeEventListener('focusout', onFocusOut)
+      window.visualViewport?.removeEventListener('resize', reclaim)
+    }
   }, [isMobile])
 
   // Below the lg breakpoint (1024px — tablets are touch users too), CSS-scale the
