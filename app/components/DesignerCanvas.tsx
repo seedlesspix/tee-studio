@@ -13,6 +13,7 @@ import Stepper from './Stepper'
 import Rail from './Rail'
 import SelectionPanel from './SelectionPanel'
 import MobileToolBand from './MobileToolBand'
+import MobileTextBand from './MobileTextBand'
 import { type UploadItem } from './MyUploadsPanel'
 import MyDesignsDrawer, { type SavedDesign } from './MyDesignsDrawer'
 import { useCustomerSession } from '../hooks/useCustomerSession'
@@ -2524,16 +2525,23 @@ export default function DesignerCanvas({
   // The tool panel body — defined ONCE and rendered in exactly one place at a
   // time (desktop left aside OR mobile sheet), so its textInputRef binds to a
   // single textarea (two live copies would fight over the ref).
+  const textProps = { textInput, textInputRef, handleTextInputChange, selectedObjectType, startNewText, dbFonts, fonts, selectedFont, setSelectedFont, selectedTextPreview, fontSize, setFontSize, letterSpacing, setLetterSpacing, textColor, setTextColor, textDirection, setTextDirection, curveAmount, setCurveAmount, textIsMultiline, textAlign, handleTextAlign, isBold, setIsBold, isItalic, setIsItalic, isUppercase, setIsUppercase }
   const selectionPanel = (
     <SelectionPanel
       activeTab={activeTab}
       dbColors={dbColors}
       deleteSelected={deleteSelected}
-      text={{ textInput, textInputRef, handleTextInputChange, selectedObjectType, startNewText, dbFonts, fonts, selectedFont, setSelectedFont, selectedTextPreview, fontSize, setFontSize, letterSpacing, setLetterSpacing, textColor, setTextColor, textDirection, setTextDirection, curveAmount, setCurveAmount, textIsMultiline, textAlign, handleTextAlign, isBold, setIsBold, isItalic, setIsItalic, isUppercase, setIsUppercase }}
+      text={textProps}
       upload={{ handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload }}
       clipart={{ printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor }}
     />
   )
+  // On mobile the Text tool gets a purpose-built compact band (MobileTextBand, the
+  // horizontal font row etc.); Upload/Art keep the shared panel until their Stage-3
+  // reformat. Desktop always uses the vertical SelectionPanel (untouched).
+  const mobileBandContent = activeTab === 'text'
+    ? <MobileTextBand text={textProps} dbColors={dbColors} deleteSelected={deleteSelected} />
+    : selectionPanel
 
   // Root is a fixed, app-like viewport: no page scroll / pull-to-refresh on
   // mobile, so touch gestures reach the canvas + sheet instead of the browser.
@@ -2793,7 +2801,7 @@ export default function DesignerCanvas({
           owns the single SelectionPanel. */}
       {isMobile && (
         <MobileToolBand open={bandOpen} activeTab={activeTab} onSelectTab={bandSelectTab}>
-          {selectionPanel}
+          {mobileBandContent}
         </MobileToolBand>
       )}
 
