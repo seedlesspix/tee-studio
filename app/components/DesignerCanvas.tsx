@@ -2596,6 +2596,42 @@ export default function DesignerCanvas({
         <Stepper current={1} />
       </div>
 
+      {/* Slim top align strip — MOBILE only (ImprintNext pattern). Replaces the
+          in-stage align toolbar so it stops eating the shirt's vertical space; acts
+          on the selected object, Clear All always available. Desktop never mounts
+          it (isMobile + lg:hidden). */}
+      {isMobile && (
+        <div className="lg:hidden flex shrink-0 items-center gap-1 overflow-x-auto border-b border-gray-200 bg-white px-3 py-1.5">
+          <span className="mr-0.5 shrink-0 font-mono text-[10px] uppercase tracking-widest text-gray-400">Align</span>
+          {[
+            { label: '⬛◻◻', title: 'Align Left', fn: 'left' },
+            { label: '◻⬛◻', title: 'Align Center', fn: 'center' },
+            { label: '◻◻⬛', title: 'Align Right', fn: 'right' },
+            { label: '⬆', title: 'Align Top', fn: 'top' },
+            { label: '↕', title: 'Align Middle', fn: 'middle' },
+            { label: '⬇', title: 'Align Bottom', fn: 'bottom' },
+          ].map(({ label, title, fn }) => (
+            <button key={fn} title={title}
+              onPointerDown={e => { e.preventDefault(); alignObject(fn) }}
+              className="shrink-0 rounded border border-gray-200 bg-gray-100 px-2 py-1 font-mono text-xs text-gray-800">
+              {label}
+            </button>
+          ))}
+          <button
+            title="Clear all objects from canvas"
+            onPointerDown={e => {
+              e.preventDefault()
+              if (!confirm('Clear all design elements?')) return
+              const canvas = fabricCanvasRef.current
+              if (!canvas) return
+              canvas.clear(); canvas.renderAll()
+            }}
+            className="ml-1 shrink-0 rounded border border-gray-200 bg-gray-100 px-2 py-1 font-mono text-xs text-red-500">
+            Clear All
+          </button>
+        </div>
+      )}
+
       {/* Main layout */}
       <div className="flex flex-1 overflow-hidden">
 
@@ -2625,7 +2661,9 @@ export default function DesignerCanvas({
             </div>
           )}
 
-          {/* Persistent alignment toolbar */}
+          {/* Alignment toolbar — DESKTOP only now; on mobile it moves to the slim
+              top strip below the header so it stops eating the shirt's space. */}
+          {!isMobile && (
           <div className="flex items-center gap-1 mb-2 px-1 flex-wrap">
             <span className="text-xs text-gray-800 font-mono uppercase tracking-widest mr-1">Align:</span>
             {[
@@ -2660,6 +2698,7 @@ export default function DesignerCanvas({
               Clear All
             </button>
           </div>
+          )}
           {/* Scale-to-fit wrapper (mobile only). Outer = the SCALED layout box so
             the shirt doesn't overflow; inner keeps the true 680×850 and is CSS
             transform-scaled. On desktop stageScale===1 → outer is 680×850, inner
