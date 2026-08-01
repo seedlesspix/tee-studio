@@ -12,7 +12,7 @@ import ActionBar from './ActionBar'
 import Stepper from './Stepper'
 import Rail from './Rail'
 import SelectionPanel from './SelectionPanel'
-import MobileToolSheet from './MobileToolSheet'
+import MobileToolBand from './MobileToolBand'
 import { type UploadItem } from './MyUploadsPanel'
 import MyDesignsDrawer, { type SavedDesign } from './MyDesignsDrawer'
 import { useCustomerSession } from '../hooks/useCustomerSession'
@@ -222,15 +222,12 @@ export default function DesignerCanvas({
     }
   }, [isMobile])
 
-  // Mobile tool sheet (pass 3, v3): a tap-driven PARTIAL bottom overlay — no drag-
-  // resize. Selecting an object on the shirt auto-opens it so the controls are
-  // findable — the selection-aware design, on mobile. The shirt stays FULL SIZE
-  // (no reserve / shrink); the sheet overlays the bottom and its options scroll
-  // natively. Desktop: isMobile false → the sheet never mounts.
-  const [sheetOpen, setSheetOpen] = useState(false)
-  useEffect(() => {
-    if (isMobile && selectedObjectType) setSheetOpen(true)
-  }, [selectedObjectType, isMobile])
+  // Mobile tool band (rework, ImprintNext pattern): the tools live in an IN-FLOW
+  // fixed-height band at the bottom of the mobile column (MobileToolBand), NOT an
+  // overlay — so the shirt is never covered and never resizes when you switch
+  // tools. Selecting an object already switches the active tool via the
+  // selection-driven activeTab (sectionForObject), so no open/close state is
+  // needed here anymore. Desktop: isMobile false → the band never mounts.
 
   // Below the lg breakpoint (1024px — tablets are touch users too), CSS-scale the
   // fixed 680×850 stage to fit the canvas area. The COORDINATE space stays 680×850
@@ -1614,15 +1611,6 @@ export default function DesignerCanvas({
     setActiveTab(tab)
   }
 
-  // Mobile sheet tab tap: switch tool AND open the sheet so the tool's controls
-  // come into view. Tapping the ALREADY-active tab while open collapses it (the
-  // reliable tap-toggle that replaces the removed drag-to-resize).
-  const sheetSelectTab = (tab: 'text' | 'upload' | 'clipart') => {
-    if (sheetOpen && activeTab === tab) { setSheetOpen(false); return }
-    handleSelectTab(tab)
-    setSheetOpen(true)
-  }
-
   // Put a new text on the shirt from the box's first keystroke. Deliberately
   // does NOT enter Fabric's edit mode: the caret stays in the box, which is what
   // makes live wrapping safe — we can re-wrap obj.text freely because we never
@@ -2274,10 +2262,11 @@ export default function DesignerCanvas({
   // the back) it's CTAs only. Add Text focuses the box (the discoverability fix).
   const emptyState = canvasObjectCount === 0 ? {
     showGreeting: shirtView === 'front' && backObjectsRef.current.length === 0,
-    // On mobile the tools live in the sheet, so each CTA also opens it.
-    onAddText: () => { setActiveTab('text'); if (isMobile) setSheetOpen(true); setTimeout(() => textInputRef.current?.focus(), 0) },
-    onUpload: () => { setActiveTab('upload'); if (isMobile) setSheetOpen(true) },
-    onAddArt: () => { setActiveTab('clipart'); if (isMobile) setSheetOpen(true) },
+    // The tools live in the always-visible band on mobile, so a CTA just selects
+    // the tool (Add Text also focuses the box).
+    onAddText: () => { setActiveTab('text'); setTimeout(() => textInputRef.current?.focus(), 0) },
+    onUpload: () => { setActiveTab('upload') },
+    onAddArt: () => { setActiveTab('clipart') },
   } : null
   // Per-side surcharge. designer_pricing.sides is a SIDE IDENTITY (1 = Front,
   // 2 = Back), NOT a count — each side is charged independently. Sum the price
@@ -2579,13 +2568,12 @@ export default function DesignerCanvas({
           </aside>
         )}
 
-        {/* Canvas center. On mobile the full-size shirt is TOP-anchored (justify-
-            start) so the bottom sheet overlays empty space below it rather than the
-            print area. Desktop keeps justify-center → the className resolves to the
-            exact prior string, byte-identical (parity-safe). */}
+        {/* Canvas center. The tool band sits BELOW this in the mobile column (in
+            flow), so the shirt is never covered and can center normally on both
+            desktop and mobile — one identical string, byte-for-byte. */}
         <section
           ref={stageAreaRef}
-          className={`flex-1 flex flex-col items-center ${isMobile ? 'justify-start pt-3' : 'justify-center'} bg-gray-50 relative overflow-hidden touch-none`}>
+          className="flex-1 flex flex-col items-center justify-center bg-gray-50 relative overflow-hidden touch-none">
 
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center text-gray-800 text-sm z-10">
@@ -2639,12 +2627,10 @@ export default function DesignerCanvas({
           </div>
         </div>
 
-          {/* Front / Back toggle. On mobile it floats just above the sheet so the
-              open 50dvh overlay can't hide it (needed to switch sides). Desktop
-              branch is the LITERAL prior string → byte-identical. */}
-          <div className={isMobile
-            ? `absolute ${sheetOpen ? 'bottom-[calc(50dvh_+_0.5rem)]' : 'bottom-[calc(64px_+_0.5rem)]'} flex gap-2 transition-all`
-            : 'absolute bottom-5 flex gap-2'}>
+          {/* Front / Back toggle. The band is below the shirt now (not an overlay),
+              so the toggle sits at the bottom of the stage on both platforms —
+              one identical string, byte-for-byte. */}
+          <div className="absolute bottom-5 flex gap-2">
             <button
               onClick={() => {
                 if (shirtView === 'front') return
@@ -2790,12 +2776,13 @@ export default function DesignerCanvas({
         </aside>
       </div>
 
-      {/* Mobile tool sheet — a tap-driven partial bottom overlay with native
-          scroll. Mounted only on mobile, so it owns the single SelectionPanel. */}
+      {/* Mobile tool band — an IN-FLOW fixed-height band + Rail strip at the bottom
+          of the column (never overlays the shirt). Mounted only on mobile, so it
+          owns the single SelectionPanel. */}
       {isMobile && (
-        <MobileToolSheet open={sheetOpen} onClose={() => setSheetOpen(false)} activeTab={activeTab} onSelectTab={sheetSelectTab}>
+        <MobileToolBand activeTab={activeTab} onSelectTab={handleSelectTab}>
           {selectionPanel}
-        </MobileToolSheet>
+        </MobileToolBand>
       )}
 
       <MyDesignsDrawer
