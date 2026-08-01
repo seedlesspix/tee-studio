@@ -267,6 +267,35 @@ export default function DesignerCanvas({
     }
   }, [isMobile])
 
+  // ---- DEBUG (keyboard trace — remove after diagnosing) ----------------------------
+  // Paints live values into a fixed overlay every animation frame (so it updates even
+  // if React stops re-rendering). `f` = rAF frames (paint loop alive?), `r` = React
+  // renders (frozen r while f ticks == "viewport changed but no re-render").
+  const kbdRootRef = useRef<HTMLDivElement>(null)
+  const kbdDbgRef = useRef<HTMLDivElement>(null)
+  const kbdRenderRef = useRef(0)
+  kbdRenderRef.current++
+  useEffect(() => {
+    if (!isMobile || typeof window === 'undefined') return
+    let raf = 0
+    let frame = 0
+    const tick = () => {
+      frame++
+      const vv = window.visualViewport
+      const ae = document.activeElement as HTMLElement | null
+      const rootH = kbdRootRef.current ? Math.round(kbdRootRef.current.getBoundingClientRect().height) : -1
+      if (kbdDbgRef.current) {
+        kbdDbgRef.current.textContent =
+          `f${frame} r${kbdRenderRef.current} innerH${window.innerHeight} vvH${vv ? Math.round(vv.height) : '-'}` +
+          ` vvTop${vv ? Math.round(vv.offsetTop) : '-'} rootH${rootH} sY${Math.round(window.scrollY)} focus:${ae ? ae.tagName : '-'}`
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [isMobile])
+  // ---- END DEBUG -------------------------------------------------------------------
+
   // Below the lg breakpoint (1024px — tablets are touch users too), CSS-scale the
   // fixed 680×850 stage to fit the canvas area. The COORDINATE space stays 680×850
   // (objects/bounds/saves unchanged); only the DISPLAY scales — Fabric's pointer
@@ -2632,7 +2661,11 @@ export default function DesignerCanvas({
   // Desktop keeps h-screen exactly (lg:h-screen) — parity-safe; the overflow /
   // overscroll locks are no-ops on desktop. dvh accounts for the mobile URL bar.
   return (
-    <div className="flex flex-col h-dvh lg:h-screen overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif', height: isMobile && vpHeight ? vpHeight : undefined }}>
+    <div ref={kbdRootRef} className="flex flex-col h-dvh lg:h-screen overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif', height: isMobile && vpHeight ? vpHeight : undefined }}>
+      {/* DEBUG keyboard-trace overlay (remove after diagnosing) */}
+      {isMobile && (
+        <div ref={kbdDbgRef} className="fixed left-0 top-0 z-[9999] bg-yellow-300 px-1 py-0.5 font-mono text-[10px] leading-tight text-black pointer-events-none" style={{ maxWidth: '100vw' }} />
+      )}
 
       {/* Header — extracted to <ActionBar> (D0 restructure step 1a, move-not-
           rewrite). Phase 2: becomes the sealed "price + Save + Next" bottom bar
