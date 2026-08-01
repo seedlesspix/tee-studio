@@ -1,80 +1,99 @@
 'use client'
-import { type ReactNode } from 'react'
-import { Drawer } from 'vaul'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { ChevronDown } from 'lucide-react'
 import Rail from './Rail'
 
-// MobileToolSheet — BLOCKER-2 pass 3 (v2, vaul). A bottom sheet (peek / half /
-// full) that brings the tools to mobile: a horizontal Rail tab bar + the shared
-// SelectionPanel (passed as children). Only rendered when the parent is in mobile
-// mode — desktop never mounts it (the desktop left aside owns the single
-// SelectionPanel), so desktop stays byte-identical.
+// MobileToolSheet — BLOCKER-2 pass 3 (v3, native). A tap-driven PARTIAL bottom
+// overlay that brings the tools to mobile: a horizontal Rail tab bar (always
+// peeking) + the shared SelectionPanel (children) in one native-scroll region.
+// Only mounted when the parent is in mobile mode — desktop never renders it (the
+// desktop left aside owns the single SelectionPanel), so desktop stays identical.
 //
-// v1 hand-built the drag with pointer events; on a real phone it didn't register
-// (Denise's backstop) and its scroll region ran off-screen at the half snap. v2
-// hands the drag to vaul — purpose-built mobile-sheet drag + snap points — after
-// the pre-agreed "vaul-on-evidence" call. modal={false} keeps the canvas behind
-// it fully interactive (no overlay, no scroll-lock); dismissible={false} + always-
-// open means it never fully closes (peek is the floor). Inner scroll is enabled
-// ONLY at the full snap so partial-open drags aren't stolen by the tool list;
-// reaching the bottom options = open to full (parent also reserves stage space so
-// the shirt sits above the sheet). The parent still owns snap state and drives it
-// via snap/setSnap; activeSnapPoint bridges to vaul.
-type Snap = 'peek' | 'half' | 'full'
+// WHY NO DRAG LIBRARY. v1 hand-built pointer-drag didn't register on a real
+// phone; v2 used vaul but its drag/scroll were EATEN by iOS/WebKit — vaul sets
+// `touch-action: none` on its content (so the inner list, a descendant, can't get
+// native scroll) and its JS drag is torn down by pointercancel from the fixed-body
+// overscroll engine. Denise's new spec dropped drag-to-resize, so v3 removes the
+// library entirely: the sheet just slides between two states via a CSS transform
+// (tap-driven), and the options scroll with a plain native `overflow-y-auto`
+// region. Nothing intercepts touchmove, so WebKit gives momentum scroll for free.
+//
+// The two load-bearing details (either one missing reproduces "won't scroll"):
+//   1. the scroll region MUST be `min-h-0 flex-1` — a flex child defaults to
+//      min-height:auto and never shrinks below its content, so it never overflows,
+//      so it never scrolls; and
+//   2. `overflow-y-auto` is UNCONDITIONAL (no snap gate), and NO ancestor between
+//      it and <body> may be `touch-action: none` (the sheet is a SIBLING of the
+//      Fabric `touch-none` <section>, not a descendant — verified).
+// The document lock (position:fixed body) stays; it only stops the PAGE panning
+// and does not fight a genuinely-scrollable child.
 type Tab = 'text' | 'upload' | 'clipart'
 
-// Fractions of screen height: peek shows handle + tab bar; half leaves room for
-// the shirt above it; full ~= almost the whole screen. Least → most visible, as
-// vaul requires.
-const SNAP_POINTS = [0.16, 0.48, 0.92]
-const INDEX: Record<Snap, number> = { peek: 0, half: 1, full: 2 }
-
 export default function MobileToolSheet({
-  snap,
-  setSnap,
+  open,
+  onClose,
   activeTab,
   onSelectTab,
   children,
 }: {
-  snap: Snap
-  setSnap: (s: Snap) => void
+  open: boolean
+  onClose: () => void
   activeTab: string
   onSelectTab: (tab: Tab) => void
   children: ReactNode
 }) {
-  const activeSnapPoint = SNAP_POINTS[INDEX[snap]]
-  const setActiveSnapPoint = (v: number | string | null) => {
-    if (v == null) return
-    const i = SNAP_POINTS.indexOf(v as number)
-    if (i < 0) return // unknown value: don't fight vaul's own snap
-    setSnap(i >= 2 ? 'full' : i === 1 ? 'half' : 'peek')
-  }
+  // Measure the peek header (Rail) so the collapsed sheet reveals exactly it —
+  // robust to Rail height changes (iOS Dynamic Type, etc.) instead of a hardcoded
+  // peek height.
+  const headerRef = useRef<HTMLDivElement>(null)
+  const [headerH, setHeaderH] = useState(64)
+  useEffect(() => {
+    const el = headerRef.current
+    if (!el) return
+    const update = () => setHeaderH(el.offsetHeight)
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   return (
-    <Drawer.Root
-      defaultOpen
-      modal={false}
-      dismissible={false}
-      snapPoints={SNAP_POINTS}
-      activeSnapPoint={activeSnapPoint}
-      setActiveSnapPoint={setActiveSnapPoint}
-      repositionInputs={false}
+    <div
+      role="dialog"
+      aria-modal="false"
+      aria-label="Design tools"
+      className="lg:hidden fixed inset-x-0 bottom-0 z-30 flex flex-col rounded-t-2xl bg-white shadow-[0_-4px_24px_rgba(0,0,0,0.14)] transition-transform duration-300 ease-out will-change-transform"
+      style={{
+        height: '50dvh',
+        transform: open ? 'translateY(0)' : `translateY(calc(100% - ${headerH}px))`,
+      }}
     >
-      <Drawer.Portal>
-        <Drawer.Content
-          className="lg:hidden fixed inset-x-0 bottom-0 z-30 flex h-[97dvh] flex-col rounded-t-2xl bg-white shadow-[0_-4px_24px_rgba(0,0,0,0.14)] outline-none"
-        >
-          <Drawer.Handle className="mx-auto my-3 !w-10 !bg-gray-300" />
-          <Drawer.Title className="sr-only">Design tools</Drawer.Title>
+      {/* Peek header: the tool tabs (always visible) + a collapse chevron (only
+          offers itself when open). Tapping a tab opens the sheet to that tool;
+          tapping the active tab again collapses it (the parent's sheetSelectTab). */}
+      <div ref={headerRef} className="flex items-stretch shrink-0 border-b border-gray-200">
+        <div className="flex-1 min-w-0">
           <Rail orientation="horizontal" activeTab={activeTab} onSelectTab={onSelectTab} />
-          <div
-            className={`min-h-0 flex-1 overscroll-contain ${
-              snap === 'full' ? 'overflow-y-auto' : 'overflow-hidden'
-            }`}
-          >
-            {children}
-          </div>
-        </Drawer.Content>
-      </Drawer.Portal>
-    </Drawer.Root>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Collapse tools"
+          className={`flex w-12 shrink-0 items-center justify-center text-gray-500 transition-opacity ${
+            open ? 'opacity-100' : 'pointer-events-none opacity-0'
+          }`}
+        >
+          <ChevronDown size={22} strokeWidth={2} />
+        </button>
+      </div>
+
+      {/* The one native scroll region. See the load-bearing notes above. */}
+      <div
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y"
+        style={{ WebkitOverflowScrolling: 'touch', paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        {children}
+      </div>
+    </div>
   )
 }

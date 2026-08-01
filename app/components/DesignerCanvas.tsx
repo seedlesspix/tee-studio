@@ -195,18 +195,12 @@ export default function DesignerCanvas({
   const stageAreaRef = useRef<HTMLElement>(null)
   const [isMobile, setIsMobile] = useState(false)
   const [stageScale, setStageScale] = useState(1)
-  const [vh, setVh] = useState(() => (typeof window !== 'undefined' ? window.innerHeight : 800))
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 1023px)')
     const update = () => setIsMobile(mq.matches)
     update()
     mq.addEventListener('change', update)
-    const onResize = () => setVh(window.innerHeight)
-    window.addEventListener('resize', onResize)
-    return () => {
-      mq.removeEventListener('change', update)
-      window.removeEventListener('resize', onResize)
-    }
+    return () => mq.removeEventListener('change', update)
   }, [])
 
   // iOS/WebKit only honours a fixed app viewport when the DOCUMENT itself is
@@ -228,42 +222,35 @@ export default function DesignerCanvas({
     }
   }, [isMobile])
 
-  // Mobile tool sheet (pass 3, vaul): peek / half / full. Selecting an object on
-  // the shirt auto-opens the sheet to HALF so its controls are findable — the
-  // selection-aware design, on mobile. The stage RESERVES bottom space equal to
-  // the sheet's current height so the shirt rises ABOVE the sheet (live edits stay
-  // visible) instead of hiding behind it. Desktop: isMobile false → reserve 0.
-  const [sheetSnap, setSheetSnap] = useState<'peek' | 'half' | 'full'>('peek')
+  // Mobile tool sheet (pass 3, v3): a tap-driven PARTIAL bottom overlay — no drag-
+  // resize. Selecting an object on the shirt auto-opens it so the controls are
+  // findable — the selection-aware design, on mobile. The shirt stays FULL SIZE
+  // (no reserve / shrink); the sheet overlays the bottom and its options scroll
+  // natively. Desktop: isMobile false → the sheet never mounts.
+  const [sheetOpen, setSheetOpen] = useState(false)
   useEffect(() => {
-    if (isMobile && selectedObjectType) setSheetSnap(s => (s === 'peek' ? 'half' : s))
+    if (isMobile && selectedObjectType) setSheetOpen(true)
   }, [selectedObjectType, isMobile])
-  // Reserve stage space so the shirt rises above the sheet. A HALF sheet can't
-  // sit above a full-size shirt on a phone, so at half/full we reserve a gentler
-  // ~0.44·vh (not the full sheet height) — the shirt shrinks moderately and its
-  // print area clears the sheet, rather than shrinking tiny (finding #4). Peek
-  // reserves just the visible sheet band. Desktop: 0.
-  const sheetReservePx = !isMobile ? 0 : sheetSnap === 'peek' ? 140 : Math.round(vh * 0.44)
 
   // Below the lg breakpoint (1024px — tablets are touch users too), CSS-scale the
-  // fixed 680×850 stage to fit the canvas area MINUS the reserved sheet band. The
-  // COORDINATE space stays 680×850 (objects/bounds/saves unchanged); only the
-  // DISPLAY scales — Fabric's pointer math and our bounds math both read
-  // getBoundingClientRect, which includes the transform, so it's scale-invariant.
-  // On DESKTOP `isMobile` is false → stageScale stays 1 → NO transform → layout
-  // byte-identical (proven by the parity harness).
+  // fixed 680×850 stage to fit the canvas area. The COORDINATE space stays 680×850
+  // (objects/bounds/saves unchanged); only the DISPLAY scales — Fabric's pointer
+  // math and our bounds math both read getBoundingClientRect, which includes the
+  // transform, so it's scale-invariant. On DESKTOP `isMobile` is false → stageScale
+  // stays 1 → NO transform → layout byte-identical (proven by the parity harness).
   useEffect(() => {
     if (!isMobile) { setStageScale(1); return }
     const el = stageAreaRef.current
     if (!el) return
     const compute = () => {
-      const w = el.clientWidth, h = el.clientHeight - sheetReservePx
+      const w = el.clientWidth, h = el.clientHeight
       if (w > 0 && h > 0) setStageScale(Math.min(w / 680, h / 850, 1))
     }
     compute()
     const ro = new ResizeObserver(compute)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [isMobile, sheetReservePx])
+  }, [isMobile])
 
   // Helper to constrain all objects on canvas after property changes
   const constrainAllObjects = () => {
@@ -1627,11 +1614,13 @@ export default function DesignerCanvas({
     setActiveTab(tab)
   }
 
-  // Mobile sheet tab tap: switch tool AND expand the sheet from peek → half so
-  // the tool's controls come into view.
+  // Mobile sheet tab tap: switch tool AND open the sheet so the tool's controls
+  // come into view. Tapping the ALREADY-active tab while open collapses it (the
+  // reliable tap-toggle that replaces the removed drag-to-resize).
   const sheetSelectTab = (tab: 'text' | 'upload' | 'clipart') => {
+    if (sheetOpen && activeTab === tab) { setSheetOpen(false); return }
     handleSelectTab(tab)
-    setSheetSnap(s => (s === 'peek' ? 'half' : s))
+    setSheetOpen(true)
   }
 
   // Put a new text on the shirt from the box's first keystroke. Deliberately
@@ -2285,10 +2274,10 @@ export default function DesignerCanvas({
   // the back) it's CTAs only. Add Text focuses the box (the discoverability fix).
   const emptyState = canvasObjectCount === 0 ? {
     showGreeting: shirtView === 'front' && backObjectsRef.current.length === 0,
-    // On mobile the tools live in the sheet, so each CTA also opens it to half.
-    onAddText: () => { setActiveTab('text'); if (isMobile) setSheetSnap('half'); setTimeout(() => textInputRef.current?.focus(), 0) },
-    onUpload: () => { setActiveTab('upload'); if (isMobile) setSheetSnap('half') },
-    onAddArt: () => { setActiveTab('clipart'); if (isMobile) setSheetSnap('half') },
+    // On mobile the tools live in the sheet, so each CTA also opens it.
+    onAddText: () => { setActiveTab('text'); if (isMobile) setSheetOpen(true); setTimeout(() => textInputRef.current?.focus(), 0) },
+    onUpload: () => { setActiveTab('upload'); if (isMobile) setSheetOpen(true) },
+    onAddArt: () => { setActiveTab('clipart'); if (isMobile) setSheetOpen(true) },
   } : null
   // Per-side surcharge. designer_pricing.sides is a SIDE IDENTITY (1 = Front,
   // 2 = Back), NOT a count — each side is charged independently. Sum the price
@@ -2590,11 +2579,13 @@ export default function DesignerCanvas({
           </aside>
         )}
 
-        {/* Canvas center */}
+        {/* Canvas center. On mobile the full-size shirt is TOP-anchored (justify-
+            start) so the bottom sheet overlays empty space below it rather than the
+            print area. Desktop keeps justify-center → the className resolves to the
+            exact prior string, byte-identical (parity-safe). */}
         <section
           ref={stageAreaRef}
-          style={sheetReservePx ? { paddingBottom: sheetReservePx } : undefined}
-          className="flex-1 flex flex-col items-center justify-center bg-gray-50 relative overflow-hidden touch-none">
+          className={`flex-1 flex flex-col items-center ${isMobile ? 'justify-start pt-3' : 'justify-center'} bg-gray-50 relative overflow-hidden touch-none`}>
 
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center text-gray-800 text-sm z-10">
@@ -2648,8 +2639,12 @@ export default function DesignerCanvas({
           </div>
         </div>
 
-          {/* Front / Back toggle */}
-          <div className="absolute bottom-5 flex gap-2">
+          {/* Front / Back toggle. On mobile it floats just above the sheet so the
+              open 50dvh overlay can't hide it (needed to switch sides). Desktop
+              branch is the LITERAL prior string → byte-identical. */}
+          <div className={isMobile
+            ? `absolute ${sheetOpen ? 'bottom-[calc(50dvh_+_0.5rem)]' : 'bottom-[calc(64px_+_0.5rem)]'} flex gap-2 transition-all`
+            : 'absolute bottom-5 flex gap-2'}>
             <button
               onClick={() => {
                 if (shirtView === 'front') return
@@ -2795,10 +2790,10 @@ export default function DesignerCanvas({
         </aside>
       </div>
 
-      {/* Mobile tool sheet — brings the tools to the phone (peek/half/full).
-          Mounted only on mobile, so it owns the single SelectionPanel. */}
+      {/* Mobile tool sheet — a tap-driven partial bottom overlay with native
+          scroll. Mounted only on mobile, so it owns the single SelectionPanel. */}
       {isMobile && (
-        <MobileToolSheet snap={sheetSnap} setSnap={setSheetSnap} activeTab={activeTab} onSelectTab={sheetSelectTab}>
+        <MobileToolSheet open={sheetOpen} onClose={() => setSheetOpen(false)} activeTab={activeTab} onSelectTab={sheetSelectTab}>
           {selectionPanel}
         </MobileToolSheet>
       )}

@@ -27,9 +27,10 @@ body {
 
 /* Mobile designer document lock. The designer adds this class to <html>/<body>
    (via JS, only on mobile) so iOS/WebKit can't pan or rubber-band the page — that
-   was letting the whole page drift sideways and bounce under the tool sheet's
-   drag. position:fixed on body is the proven iOS scroll-lock; the canvas (Fabric)
-   and the sheet (vaul) keep full ownership of touch gestures. Applied ONLY on the
+   was letting the whole page drift sideways and bounce under the tool sheet.
+   position:fixed on body is the proven iOS scroll-lock; the canvas (Fabric) and
+   the sheet (a native overflow-y-auto region) keep full ownership of touch
+   gestures — it only stops the PAGE panning, not a scrollable child. Applied on the
    designer at mobile widths and removed on unmount, so desktop and every other
    page are completely untouched. */
 html.designer-touch-lock {
