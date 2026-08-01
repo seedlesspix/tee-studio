@@ -1,5 +1,6 @@
 'use client'
 import ClipartPanel from './ClipartPanel'
+import MobileAlignRow from './MobileAlignRow'
 
 // MobileArtBand — BLOCKER-2 mobile rework. The Art (clipart) tool for the compact
 // bottom band, MODE-SWITCHED so nothing ever gets clipped:
@@ -11,15 +12,6 @@ import ClipartPanel from './ClipartPanel'
 // Align lives here now (the old top align strip was removed to stop the shirt
 // shrinking twice). Mobile-only — desktop keeps the vertical SelectionPanel.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-const ALIGN: { label: string; title: string; fn: string }[] = [
-  { label: '⬛◻◻', title: 'Align Left', fn: 'left' },
-  { label: '◻⬛◻', title: 'Align Center', fn: 'center' },
-  { label: '◻◻⬛', title: 'Align Right', fn: 'right' },
-  { label: '⬆', title: 'Align Top', fn: 'top' },
-  { label: '↕', title: 'Align Middle', fn: 'middle' },
-  { label: '⬇', title: 'Align Bottom', fn: 'bottom' },
-]
-
 export default function MobileArtBand({
   printMethod,
   onSelect,
@@ -64,29 +56,8 @@ export default function MobileArtBand({
             ))}
           </div>
         )}
-        {/* Align + Delete (Delete pinned, always visible) */}
-        <div className="flex items-center gap-1.5">
-          <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
-            {ALIGN.map(({ label, title, fn }) => (
-              <button
-                key={fn}
-                type="button"
-                title={title}
-                onPointerDown={e => { e.preventDefault(); alignObject(fn) }}
-                className="shrink-0 rounded border border-gray-200 bg-gray-100 px-2 py-1 font-mono text-xs text-gray-800"
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={deleteSelected}
-            className="ml-auto shrink-0 rounded border border-red-300 px-3 py-1 text-xs text-red-500 transition-colors hover:bg-red-50"
-          >
-            Delete
-          </button>
-        </div>
+        {/* Align (compact icons) + pinned Delete */}
+        <MobileAlignRow alignObject={alignObject} onDelete={deleteSelected} />
       </div>
     )
   }

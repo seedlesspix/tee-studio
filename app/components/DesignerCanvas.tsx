@@ -246,7 +246,7 @@ export default function DesignerCanvas({
   // remounted (keyboard mode is class/inline-style diffs only), so focus is preserved
   // and there's no flicker loop. isMobile-gated → desktop attaches nothing.
   const [keyboardOpen, setKeyboardOpen] = useState(false)
-  const [vvHeight, setVvHeight] = useState(0)
+  const [kbInset, setKbInset] = useState(0)
   useEffect(() => {
     if (!isMobile || typeof window === 'undefined' || !window.visualViewport) return
     const vv = window.visualViewport
@@ -254,14 +254,15 @@ export default function DesignerCanvas({
     // seen value (keyboard-down / URL-bar-hidden). This is robust across iOS Safari
     // AND Chrome — unlike `window.innerHeight - vv.height`, which fails on iOS Chrome
     // where innerHeight shrinks together with the keyboard (inset would read ~0).
+    // kbInset = that drop = the keyboard height, used to dock the text box above it.
     let baseline = vv.height
     let raf = 0
     let settle: ReturnType<typeof setTimeout> | undefined
     const read = () => {
       if (vv.height > baseline) baseline = vv.height
-      const kb = baseline - vv.height
+      const kb = Math.max(0, baseline - vv.height)
       const open = kb > 120 && document.activeElement === textInputRef.current
-      setVvHeight(vv.height)
+      setKbInset(kb)
       setKeyboardOpen(open)
       if (open) setBandOpen(true)
     }
@@ -2645,7 +2646,7 @@ export default function DesignerCanvas({
   // Desktop keeps h-screen exactly (lg:h-screen) — parity-safe; the overflow /
   // overscroll locks are no-ops on desktop. dvh accounts for the mobile URL bar.
   return (
-    <div className="flex flex-col h-dvh lg:h-screen overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif', height: isMobile && keyboardOpen ? vvHeight : undefined }}>
+    <div className="flex flex-col h-dvh lg:h-screen overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
 
       {/* Header — extracted to <ActionBar> (D0 restructure step 1a, move-not-
           rewrite). Phase 2: becomes the sealed "price + Save + Next" bottom bar
@@ -2675,10 +2676,8 @@ export default function DesignerCanvas({
           select, shrinking the shirt twice. Align now lives inside each tool's band
           edit controls; Clear All moved to the ☰ menu.) */}
 
-      {/* Main layout. On mobile min-h-0 lets this row yield when the column height
-          is clamped in keyboard mode, so the shrink-0 band keeps its height and docks
-          above the keyboard (desktop string unchanged). */}
-      <div className={isMobile ? 'flex flex-1 overflow-hidden min-h-0' : 'flex flex-1 overflow-hidden'}>
+      {/* Main layout */}
+      <div className="flex flex-1 overflow-hidden">
 
         {/* Left tool panel — DESKTOP only (mobile uses the bottom sheet below).
             Rendered conditionally (not CSS-hidden) so exactly one SelectionPanel
@@ -2908,7 +2907,7 @@ export default function DesignerCanvas({
           of the column (never overlays the shirt). Mounted only on mobile, so it
           owns the single SelectionPanel. */}
       {isMobile && (
-        <MobileToolBand open={bandOpen} keyboardMode={isMobile && keyboardOpen} activeTab={activeTab} onSelectTab={bandSelectTab}>
+        <MobileToolBand open={bandOpen} keyboardMode={isMobile && keyboardOpen} keyboardInset={kbInset} activeTab={activeTab} onSelectTab={bandSelectTab}>
           {mobileBandContent}
         </MobileToolBand>
       )}

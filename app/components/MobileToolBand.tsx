@@ -28,22 +28,31 @@ type Tab = 'text' | 'upload' | 'clipart'
 export default function MobileToolBand({
   open,
   keyboardMode = false,
+  keyboardInset = 0,
   activeTab,
   onSelectTab,
   children,
 }: {
   open: boolean
-  // Keyboard mode: the column is clamped to sit above the iOS keyboard, so this band
-  // docks above it showing ONLY the textarea (its children hide their own chrome);
-  // we hide the Rail + safe-area here so the box lands right on the keyboard. Same
-  // DOM (class-only), so the textarea is never remounted → focus preserved.
+  // Keyboard mode: the whole band becomes a FIXED white bar docked directly above
+  // the iOS keyboard (bottom = the keyboard height), showing ONLY the textarea (its
+  // children hide their own chrome; the Rail + safe-area hide here). It's an explicit
+  // white background so nothing shows through, and the column is left untouched so it
+  // can't collapse to a black void. Same textarea DOM node (class/position only) → no
+  // remount, focus preserved. When keyboard is DOWN it's a normal in-flow band.
   keyboardMode?: boolean
+  keyboardInset?: number
   activeTab: string
   onSelectTab: (tab: Tab) => void
   children: ReactNode
 }) {
   return (
-    <div className="lg:hidden flex flex-col shrink-0 border-t border-gray-200 bg-white">
+    <div
+      className={`lg:hidden flex flex-col shrink-0 border-t border-gray-200 bg-white ${
+        keyboardMode ? 'fixed inset-x-0 z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.12)]' : ''
+      }`}
+      style={keyboardMode ? { bottom: keyboardInset } : undefined}
+    >
       {/* Fixed-height controls band — only when OPEN. Compact horizontal tool layouts
           live in the children; in keyboard mode the children show only the textarea. */}
       {open && (
