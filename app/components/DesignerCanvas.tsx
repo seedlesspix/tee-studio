@@ -244,6 +244,23 @@ export default function DesignerCanvas({
   // no longer sets position:fixed), so when the text box focuses, iOS scrolls it above
   // the keyboard on its own — no manual visualViewport docking (that fought the
   // browser and kept failing). See the .designer-touch-lock note in globals.css.
+  //
+  // One cleanup the browser doesn't do for us: after the keyboard CLOSES, the document
+  // is often left scrolled up by the (now-gone) keyboard height, leaving a blank strip
+  // at the bottom. When the visual viewport returns to ~full (keyboard down), snap the
+  // scroll back to 0 to reclaim it. This never fires while the keyboard is UP (the gap
+  // is large then), so it doesn't fight the browser's scroll-into-view.
+  useEffect(() => {
+    if (!isMobile || typeof window === 'undefined' || !window.visualViewport) return
+    const vv = window.visualViewport
+    let baseline = vv.height
+    const onResize = () => {
+      if (vv.height > baseline) baseline = vv.height
+      if (baseline - vv.height < 80) window.scrollTo(0, 0)
+    }
+    vv.addEventListener('resize', onResize)
+    return () => vv.removeEventListener('resize', onResize)
+  }, [isMobile])
 
   // Below the lg breakpoint (1024px — tablets are touch users too), CSS-scale the
   // fixed 680×850 stage to fit the canvas area. The COORDINATE space stays 680×850
