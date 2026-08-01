@@ -224,10 +224,14 @@ export default function DesignerCanvas({
 
   // Mobile tool band (rework, ImprintNext pattern): the tools live in an IN-FLOW
   // fixed-height band at the bottom of the mobile column (MobileToolBand), NOT an
-  // overlay — so the shirt is never covered and never resizes when you switch
-  // tools. Selecting an object already switches the active tool via the
-  // selection-driven activeTab (sectionForObject), so no open/close state is
-  // needed here anymore. Desktop: isMobile false → the band never mounts.
+  // overlay — so the shirt is never covered. On load the band is CLOSED (just the
+  // icon strip; the shirt gets full space and the on-shirt "Let's build it" card is
+  // the invitation). It OPENS when you tap a tool/CTA or select an object; switching
+  // tools while open doesn't resize the shirt. Desktop: isMobile false → never mounts.
+  const [bandOpen, setBandOpen] = useState(false)
+  useEffect(() => {
+    if (isMobile && selectedObjectType) setBandOpen(true)
+  }, [selectedObjectType, isMobile])
 
   // Below the lg breakpoint (1024px — tablets are touch users too), CSS-scale the
   // fixed 680×850 stage to fit the canvas area. The COORDINATE space stays 680×850
@@ -1611,6 +1615,14 @@ export default function DesignerCanvas({
     setActiveTab(tab)
   }
 
+  // Mobile band tab tap: switch tool AND open the band; tapping the ALREADY-active
+  // tab closes it (back to just the icon strip, shirt at full size).
+  const bandSelectTab = (tab: 'text' | 'upload' | 'clipart') => {
+    if (bandOpen && activeTab === tab) { setBandOpen(false); return }
+    handleSelectTab(tab)
+    setBandOpen(true)
+  }
+
   // Put a new text on the shirt from the box's first keystroke. Deliberately
   // does NOT enter Fabric's edit mode: the caret stays in the box, which is what
   // makes live wrapping safe — we can re-wrap obj.text freely because we never
@@ -2262,11 +2274,11 @@ export default function DesignerCanvas({
   // the back) it's CTAs only. Add Text focuses the box (the discoverability fix).
   const emptyState = canvasObjectCount === 0 ? {
     showGreeting: shirtView === 'front' && backObjectsRef.current.length === 0,
-    // The tools live in the always-visible band on mobile, so a CTA just selects
-    // the tool (Add Text also focuses the box).
-    onAddText: () => { setActiveTab('text'); setTimeout(() => textInputRef.current?.focus(), 0) },
-    onUpload: () => { setActiveTab('upload') },
-    onAddArt: () => { setActiveTab('clipart') },
+    // A CTA selects the tool and OPENS the mobile band (no-op on desktop); Add Text
+    // also focuses the box once the band has mounted it.
+    onAddText: () => { setActiveTab('text'); setBandOpen(true); setTimeout(() => textInputRef.current?.focus(), 0) },
+    onUpload: () => { setActiveTab('upload'); setBandOpen(true) },
+    onAddArt: () => { setActiveTab('clipart'); setBandOpen(true) },
   } : null
   // Per-side surcharge. designer_pricing.sides is a SIDE IDENTITY (1 = Front,
   // 2 = Back), NOT a count — each side is charged independently. Sum the price
@@ -2780,7 +2792,7 @@ export default function DesignerCanvas({
           of the column (never overlays the shirt). Mounted only on mobile, so it
           owns the single SelectionPanel. */}
       {isMobile && (
-        <MobileToolBand activeTab={activeTab} onSelectTab={handleSelectTab}>
+        <MobileToolBand open={bandOpen} activeTab={activeTab} onSelectTab={bandSelectTab}>
           {selectionPanel}
         </MobileToolBand>
       )}

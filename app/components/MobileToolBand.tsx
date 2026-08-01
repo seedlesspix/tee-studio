@@ -17,31 +17,39 @@ import Rail from './Rail'
 // scroll HORIZONTALLY — added per-tool in the following stages. Only rendered on
 // mobile (isMobile); desktop uses the left aside, so desktop is untouched.
 //
-// Stage 1 is the STRUCTURE only: the band currently shows the existing controls in
-// a vertical scroll (interim). Stages 2+ replace each tool with a compact
-// horizontal layout (font chips + horizontal preview row, colour row, etc.).
+// The band is CLOSED on load (just the icon strip) so the shirt gets full space
+// and the on-shirt "Let's build it" card is the sole invitation; it OPENS when a
+// tool/CTA is tapped or an object is selected. Stage 1 is STRUCTURE only: while
+// open it shows the existing controls in a vertical scroll (interim). Stages 2+
+// replace each tool with a compact horizontal layout (font chips + horizontal
+// preview row, colour row, etc.).
 type Tab = 'text' | 'upload' | 'clipart'
 
 export default function MobileToolBand({
+  open,
   activeTab,
   onSelectTab,
   children,
 }: {
+  open: boolean
   activeTab: string
   onSelectTab: (tab: Tab) => void
   children: ReactNode
 }) {
   return (
     <div className="lg:hidden flex flex-col shrink-0 border-t border-gray-200 bg-white">
-      {/* Fixed-height controls band. INTERIM (Stage 1): existing controls in a
-          vertical scroll; later stages make each tool a compact horizontal row. */}
-      <div
-        className="h-40 overflow-y-auto overscroll-contain touch-pan-y"
-        style={{ WebkitOverflowScrolling: 'touch' }}
-      >
-        {children}
-      </div>
-      {/* Bottom icon strip — tool categories */}
+      {/* Fixed-height controls band — only when OPEN. INTERIM (Stage 1): existing
+          controls in a vertical scroll; later stages make each tool a compact
+          horizontal row. Closed → the shirt keeps this space. */}
+      {open && (
+        <div
+          className="h-40 overflow-y-auto overscroll-contain touch-pan-y"
+          style={{ WebkitOverflowScrolling: 'touch' }}
+        >
+          {children}
+        </div>
+      )}
+      {/* Bottom icon strip — tool categories (always visible) */}
       <Rail orientation="horizontal" activeTab={activeTab} onSelectTab={onSelectTab} />
       {/* Home-indicator safe area so the strip clears the gesture bar */}
       <div style={{ height: 'env(safe-area-inset-bottom)' }} />
