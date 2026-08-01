@@ -126,7 +126,7 @@ export default function ClipartPanel({ printMethod, onSelect }: Props) {
                 src={item.file_url}
                 alt={item.name}
                 className="w-12 h-12 object-contain"
-                loading="lazy"
+                decoding="async"
               />
               <span className="text-[9px] text-gray-600 font-mono text-center leading-tight truncate w-full">
                 {item.name}

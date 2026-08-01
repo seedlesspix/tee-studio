@@ -79,11 +79,13 @@ export default function MobileToolSheet({
           type="button"
           onClick={onClose}
           aria-label="Collapse tools"
-          className={`flex w-12 shrink-0 items-center justify-center text-gray-500 transition-opacity ${
+          className={`flex w-12 shrink-0 items-center justify-center transition-opacity ${
             open ? 'opacity-100' : 'pointer-events-none opacity-0'
           }`}
         >
-          <ChevronDown size={22} strokeWidth={2} />
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-gray-700">
+            <ChevronDown size={18} strokeWidth={2.5} />
+          </span>
         </button>
       </div>
 
