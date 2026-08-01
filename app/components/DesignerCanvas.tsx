@@ -242,19 +242,28 @@ export default function DesignerCanvas({
   // math and our bounds math both read getBoundingClientRect, which includes the
   // transform, so it's scale-invariant. On DESKTOP `isMobile` is false → stageScale
   // stays 1 → NO transform → layout byte-identical (proven by the parity harness).
+  //
+  // PIN (Denise): the shirt must NOT resize when the band opens. The band's controls
+  // area (h-40 = 160px) is the only part that changes the section height, so we
+  // always size the shirt as if it were open — subtract 160 when the band is CLOSED
+  // (the section is taller then), use the section as-is when OPEN. Same target height
+  // either way → no resize; the centering wrapper just re-centers the fixed-size shirt
+  // in whatever space the section currently has.
   useEffect(() => {
     if (!isMobile) { setStageScale(1); return }
     const el = stageAreaRef.current
     if (!el) return
+    const CONTROLS_BAND_PX = 160
     const compute = () => {
-      const w = el.clientWidth, h = el.clientHeight
+      const w = el.clientWidth
+      const h = el.clientHeight - (bandOpen ? 0 : CONTROLS_BAND_PX)
       if (w > 0 && h > 0) setStageScale(Math.min(w / 680, h / 850, 1))
     }
     compute()
     const ro = new ResizeObserver(compute)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [isMobile])
+  }, [isMobile, bandOpen])
 
   // Helper to constrain all objects on canvas after property changes
   const constrainAllObjects = () => {
@@ -2625,6 +2634,8 @@ export default function DesignerCanvas({
               const canvas = fabricCanvasRef.current
               if (!canvas) return
               canvas.clear(); canvas.renderAll()
+              // Design is blank now → collapse the band back to the clean/greeting state.
+              setBandOpen(false)
             }}
             className="ml-1 shrink-0 rounded border border-gray-200 bg-gray-100 px-2 py-1 font-mono text-xs text-red-500">
             Clear All
