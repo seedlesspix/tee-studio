@@ -250,11 +250,17 @@ export default function DesignerCanvas({
   useEffect(() => {
     if (!isMobile || typeof window === 'undefined' || !window.visualViewport) return
     const vv = window.visualViewport
+    // Detect the keyboard by the DROP in visual-viewport height from its tallest
+    // seen value (keyboard-down / URL-bar-hidden). This is robust across iOS Safari
+    // AND Chrome — unlike `window.innerHeight - vv.height`, which fails on iOS Chrome
+    // where innerHeight shrinks together with the keyboard (inset would read ~0).
+    let baseline = vv.height
     let raf = 0
     let settle: ReturnType<typeof setTimeout> | undefined
     const read = () => {
-      const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
-      const open = inset > 120 && document.activeElement === textInputRef.current
+      if (vv.height > baseline) baseline = vv.height
+      const kb = baseline - vv.height
+      const open = kb > 120 && document.activeElement === textInputRef.current
       setVvHeight(vv.height)
       setKeyboardOpen(open)
       if (open) setBandOpen(true)
@@ -1102,6 +1108,10 @@ export default function DesignerCanvas({
         setSelectedTextPreview('')
         setSelectedObjectType(null)
         setTextInput('')
+        // Tapping empty shirt space (deselect) = "I'm done with tools" → collapse the
+        // mobile band so the shirt returns to full size. Harmless on desktop (the band
+        // isn't rendered there). setBandOpen is a stable setter, safe in this handler.
+        setBandOpen(false)
       })
 
       // ONE editing surface: the box.
@@ -1671,6 +1681,20 @@ export default function DesignerCanvas({
     if (bandOpen && activeTab === tab) { setBandOpen(false); return }
     handleSelectTab(tab)
     setBandOpen(true)
+  }
+
+  // Clear All — one shared handler for desktop (in-stage) and mobile (the ☰ menu),
+  // so both give the same clean slate: discard selection, empty the canvas, collapse
+  // the mobile band. The canvas going empty re-shows the "Let's build it" greeting on
+  // both layouts (canvasObjectCount → 0). setBandOpen is a no-op on desktop.
+  const handleClearAll = () => {
+    if (!confirm('Clear all design elements?')) return
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    canvas.discardActiveObject()
+    canvas.clear()
+    canvas.renderAll()
+    setBandOpen(false)
   }
 
   // Put a new text on the shirt from the box's first keystroke. Deliberately
@@ -2598,6 +2622,7 @@ export default function DesignerCanvas({
         deleteLibraryUpload={deleteLibraryUpload}
         selectedObjectType={selectedObjectType}
         deleteSelected={deleteSelected}
+        alignObject={alignObject}
       />
     )
     : activeTab === 'clipart' ? (
@@ -2610,6 +2635,7 @@ export default function DesignerCanvas({
         selectedSvgColor={selectedSvgColor}
         setSelectedSvgColor={setSelectedSvgColor}
         deleteSelected={deleteSelected}
+        alignObject={alignObject}
       />
     )
     : selectionPanel
@@ -2634,6 +2660,8 @@ export default function DesignerCanvas({
         onBeforeLogin={prepareLoginRedirect}
         onNextStep={handleNextStep}
         pricePerItem={pricePerItem}
+        onClearAll={handleClearAll}
+        canClear={canvasObjectCount > 0}
       />
 
       {/* Progress strip under the top bar — Build It (here) → Order It → Pick Up/Ship.
@@ -2643,43 +2671,9 @@ export default function DesignerCanvas({
         <Stepper current={1} />
       </div>
 
-      {/* Slim top align strip — MOBILE only (ImprintNext pattern). CONTEXTUAL: only
-          when an object is selected (that's the only time align/Clear-All apply), so
-          it frees the whole row — and gives the shirt more space — the rest of the
-          time. Desktop never mounts it (isMobile + lg:hidden). */}
-      {isMobile && selectedObjectType && !keyboardOpen && (
-        <div className="lg:hidden flex shrink-0 items-center gap-1 overflow-x-auto border-b border-gray-200 bg-white px-3 py-1.5">
-          <span className="mr-0.5 shrink-0 font-mono text-[10px] uppercase tracking-widest text-gray-400">Align</span>
-          {[
-            { label: '⬛◻◻', title: 'Align Left', fn: 'left' },
-            { label: '◻⬛◻', title: 'Align Center', fn: 'center' },
-            { label: '◻◻⬛', title: 'Align Right', fn: 'right' },
-            { label: '⬆', title: 'Align Top', fn: 'top' },
-            { label: '↕', title: 'Align Middle', fn: 'middle' },
-            { label: '⬇', title: 'Align Bottom', fn: 'bottom' },
-          ].map(({ label, title, fn }) => (
-            <button key={fn} title={title}
-              onPointerDown={e => { e.preventDefault(); alignObject(fn) }}
-              className="shrink-0 rounded border border-gray-200 bg-gray-100 px-2 py-1 font-mono text-xs text-gray-800">
-              {label}
-            </button>
-          ))}
-          <button
-            title="Clear all objects from canvas"
-            onPointerDown={e => {
-              e.preventDefault()
-              if (!confirm('Clear all design elements?')) return
-              const canvas = fabricCanvasRef.current
-              if (!canvas) return
-              canvas.clear(); canvas.renderAll()
-              // Design is blank now → collapse the band back to the clean/greeting state.
-              setBandOpen(false)
-            }}
-            className="ml-1 shrink-0 rounded border border-gray-200 bg-gray-100 px-2 py-1 font-mono text-xs text-red-500">
-            Clear All
-          </button>
-        </div>
-      )}
+      {/* (The mobile top align strip was removed — it added a SECOND in-flow row on
+          select, shrinking the shirt twice. Align now lives inside each tool's band
+          edit controls; Clear All moved to the ☰ menu.) */}
 
       {/* Main layout. On mobile min-h-0 lets this row yield when the column height
           is clamped in keyboard mode, so the shrink-0 band keeps its height and docks
@@ -2737,14 +2731,7 @@ export default function DesignerCanvas({
             <span className="w-px h-4 bg-gray-200 mx-1" />
             <button
               title="Clear all objects from canvas"
-              onPointerDown={e => {
-                e.preventDefault()
-                if (!confirm('Clear all design elements?')) return
-                const canvas = fabricCanvasRef.current
-                if (!canvas) return
-                canvas.clear()
-                canvas.renderAll()
-              }}
+              onPointerDown={e => { e.preventDefault(); handleClearAll() }}
               className="px-2 py-1 rounded text-xs font-mono bg-gray-100 border border-gray-200 text-red-500 hover:border-red-700 hover:bg-red-900/20 transition-all">
               Clear All
             </button>

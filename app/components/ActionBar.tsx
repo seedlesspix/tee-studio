@@ -30,6 +30,8 @@ export default function ActionBar({
   onBeforeLogin,
   onNextStep,
   pricePerItem,
+  onClearAll,
+  canClear,
 }: {
   productTitle: string
   onSave: () => Promise<{ restoreUrl: string } | null>
@@ -40,6 +42,10 @@ export default function ActionBar({
   onBeforeLogin: () => Promise<string | null>
   onNextStep: () => void
   pricePerItem?: number
+  // Clear All lives in the mobile ☰ menu (the mobile top align strip that used to
+  // hold it was removed). Desktop has its own in-stage Clear All.
+  onClearAll?: () => void
+  canClear?: boolean
 }) {
   // Mobile (BLOCKER-2 condensed-top-bar pass): the wordmark/title/Save/My Designs/
   // Log-in collapse into a ☰ menu below the lg breakpoint; price + Next Step stay
@@ -113,6 +119,14 @@ export default function ActionBar({
             <div className="px-4 py-2" onClick={() => setMenuOpen(false)}>
               <CustomerAuthButton variant="quiet" onBeforeLogin={onBeforeLogin} />
             </div>
+            {onClearAll && canClear && (
+              <button
+                onClick={() => { onClearAll(); setMenuOpen(false) }}
+                className="block w-full border-t border-gray-100 px-4 py-2 text-left text-sm text-[#dd3333] hover:bg-gray-50"
+              >
+                Clear All
+              </button>
+            )}
           </div>
         </>
       )}
