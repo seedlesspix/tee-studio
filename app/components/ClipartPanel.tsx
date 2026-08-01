@@ -12,9 +12,12 @@ interface Props {
   // Mobile band layout: category CHIPS + one horizontal thumbnail row instead of
   // the desktop dropdown + vertical grid. Defaults false → desktop is byte-identical.
   horizontal?: boolean
+  // Hide the search box (mobile band, when edit controls need the room). Default
+  // true → desktop and browse-mode unchanged.
+  showSearch?: boolean
 }
 
-export default function ClipartPanel({ printMethod, onSelect, horizontal = false }: Props) {
+export default function ClipartPanel({ printMethod, onSelect, horizontal = false, showSearch = true }: Props) {
   const [categories, setCategories] = useState<Category[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [items, setItems] = useState<ClipartItem[]>([])
@@ -81,15 +84,17 @@ export default function ClipartPanel({ printMethod, onSelect, horizontal = false
   return (
     <div className={horizontal ? 'flex h-full flex-col gap-2' : 'flex flex-col gap-2'}>
       {/* Search */}
-      <input
-        type="text"
-        placeholder="Search all clipart..."
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        className={horizontal
-          ? 'w-full shrink-0 bg-white border border-gray-200 rounded px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333]'
-          : 'w-full bg-white border border-gray-200 rounded px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333]'}
-      />
+      {showSearch && (
+        <input
+          type="text"
+          placeholder="Search all clipart..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className={horizontal
+            ? 'w-full shrink-0 bg-white border border-gray-200 rounded px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333]'
+            : 'w-full bg-white border border-gray-200 rounded px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333]'}
+        />
+      )}
 
       {/* Category selector — chips (mobile) / dropdown (desktop); hidden when searching */}
       {!search.trim() && (

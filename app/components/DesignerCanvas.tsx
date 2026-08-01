@@ -1110,9 +1110,12 @@ export default function DesignerCanvas({
         setSelectedObjectType(null)
         setTextInput('')
         // Tapping empty shirt space (deselect) = "I'm done with tools" → collapse the
-        // mobile band so the shirt returns to full size. Harmless on desktop (the band
-        // isn't rendered there). setBandOpen is a stable setter, safe in this handler.
-        setBandOpen(false)
+        // mobile band so the shirt returns to full size. BUT only when the text box
+        // isn't focused: creating a text on the first keystroke fires selection:cleared
+        // (the old object is discarded before the new one selects) while the box IS
+        // focused — closing then would unmount the docked box mid-type. So gate on the
+        // textarea NOT being the active element. Harmless on desktop (no band).
+        if (document.activeElement !== textInputRef.current) setBandOpen(false)
       })
 
       // ONE editing surface: the box.
@@ -2613,7 +2616,7 @@ export default function DesignerCanvas({
   // On mobile every tool gets a purpose-built compact band (horizontal rows), all
   // mobile-only so the desktop vertical SelectionPanel stays untouched.
   const mobileBandContent =
-    activeTab === 'text' ? <MobileTextBand text={textProps} dbColors={dbColors} deleteSelected={deleteSelected} keyboardMode={isMobile && keyboardOpen} />
+    activeTab === 'text' ? <MobileTextBand text={textProps} dbColors={dbColors} deleteSelected={deleteSelected} alignObject={alignObject} keyboardMode={isMobile && keyboardOpen} />
     : activeTab === 'upload' ? (
       <MobileUploadBand
         handleImageUpload={handleImageUpload}

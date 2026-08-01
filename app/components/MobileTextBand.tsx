@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import MobileAlignRow from './MobileAlignRow'
 
 // MobileTextBand — BLOCKER-2 mobile rework, Stage 2. The Text tool's controls laid
 // out for the compact bottom band, ImprintNext-style: a sub-tool row
@@ -27,11 +28,13 @@ export default function MobileTextBand({
   text,
   dbColors,
   deleteSelected,
+  alignObject,
   keyboardMode = false,
 }: {
   text: any
   dbColors: any[]
   deleteSelected: () => void
+  alignObject: (fn: string) => void
   // Keyboard mode: the iOS keyboard is up and this band is docked above it — show
   // ONLY the textarea (hide the sub-tool chips + Add button) so the typing surface
   // sits right on the keyboard. The textarea element itself is untouched → focus kept.
@@ -186,7 +189,9 @@ export default function MobileTextBand({
 
         {sub === 'style' && (
           <div className="flex h-full flex-col justify-center gap-2 overflow-y-auto">
-            {/* Align + effects */}
+            {/* Position the text on the shirt (same compact icons as Art) + Delete */}
+            <MobileAlignRow alignObject={alignObject} onDelete={deleteSelected} />
+            {/* Text justify (within the box) + effects */}
             <div className="flex items-center gap-1.5">
               {(['left', 'center', 'right'] as const).map(a => (
                 <button
@@ -246,14 +251,6 @@ export default function MobileTextBand({
                 className={`flex-1 rounded py-1.5 text-xs font-mono transition-all disabled:opacity-40 ${textDirection === 'vertical' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 border border-gray-200'}`}
               >↕ Vertical</button>
             </div>
-            {selectedObjectType === 'text' && (
-              <button
-                onClick={deleteSelected}
-                className="rounded border border-red-300 py-1.5 text-xs text-red-500 transition-colors hover:bg-red-50"
-              >
-                Delete text
-              </button>
-            )}
           </div>
         )}
       </div>

@@ -119,10 +119,11 @@ export default function ActionBar({
             <div className="px-4 py-2" onClick={() => setMenuOpen(false)}>
               <CustomerAuthButton variant="quiet" onBeforeLogin={onBeforeLogin} />
             </div>
-            {onClearAll && canClear && (
+            {onClearAll && (
               <button
                 onClick={() => { onClearAll(); setMenuOpen(false) }}
-                className="block w-full border-t border-gray-100 px-4 py-2 text-left text-sm text-[#dd3333] hover:bg-gray-50"
+                disabled={!canClear}
+                className="block w-full border-t border-gray-100 px-4 py-2 text-left text-sm text-[#dd3333] hover:bg-gray-50 disabled:text-gray-300 disabled:hover:bg-transparent"
               >
                 Clear All
               </button>
