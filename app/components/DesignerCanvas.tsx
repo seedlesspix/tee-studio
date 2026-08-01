@@ -243,27 +243,24 @@ export default function DesignerCanvas({
   // transform, so it's scale-invariant. On DESKTOP `isMobile` is false → stageScale
   // stays 1 → NO transform → layout byte-identical (proven by the parity harness).
   //
-  // PIN (Denise): the shirt must NOT resize when the band opens. The band's controls
-  // area (h-40 = 160px) is the only part that changes the section height, so we
-  // always size the shirt as if it were open — subtract 160 when the band is CLOSED
-  // (the section is taller then), use the section as-is when OPEN. Same target height
-  // either way → no resize; the centering wrapper just re-centers the fixed-size shirt
-  // in whatever space the section currently has.
+  // NOT pinned (Denise's call): the shirt fills the space it actually HAS — biggest
+  // on load (band closed, ~width-bound), then re-fits smaller when the band opens.
+  // Pinning to the band-open size made the load shirt tiny with a huge empty halo;
+  // the moderate re-fit is the better trade. The ResizeObserver re-fits on any
+  // section-height change (band open/close, contextual align strip).
   useEffect(() => {
     if (!isMobile) { setStageScale(1); return }
     const el = stageAreaRef.current
     if (!el) return
-    const CONTROLS_BAND_PX = 160
     const compute = () => {
-      const w = el.clientWidth
-      const h = el.clientHeight - (bandOpen ? 0 : CONTROLS_BAND_PX)
+      const w = el.clientWidth, h = el.clientHeight
       if (w > 0 && h > 0) setStageScale(Math.min(w / 680, h / 850, 1))
     }
     compute()
     const ro = new ResizeObserver(compute)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [isMobile, bandOpen])
+  }, [isMobile])
 
   // Helper to constrain all objects on canvas after property changes
   const constrainAllObjects = () => {
@@ -2605,11 +2602,11 @@ export default function DesignerCanvas({
         <Stepper current={1} />
       </div>
 
-      {/* Slim top align strip — MOBILE only (ImprintNext pattern). Replaces the
-          in-stage align toolbar so it stops eating the shirt's vertical space; acts
-          on the selected object, Clear All always available. Desktop never mounts
-          it (isMobile + lg:hidden). */}
-      {isMobile && (
+      {/* Slim top align strip — MOBILE only (ImprintNext pattern). CONTEXTUAL: only
+          when an object is selected (that's the only time align/Clear-All apply), so
+          it frees the whole row — and gives the shirt more space — the rest of the
+          time. Desktop never mounts it (isMobile + lg:hidden). */}
+      {isMobile && selectedObjectType && (
         <div className="lg:hidden flex shrink-0 items-center gap-1 overflow-x-auto border-b border-gray-200 bg-white px-3 py-1.5">
           <span className="mr-0.5 shrink-0 font-mono text-[10px] uppercase tracking-widest text-gray-400">Align</span>
           {[
