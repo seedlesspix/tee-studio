@@ -27,10 +27,15 @@ export default function MobileTextBand({
   text,
   dbColors,
   deleteSelected,
+  keyboardMode = false,
 }: {
   text: any
   dbColors: any[]
   deleteSelected: () => void
+  // Keyboard mode: the iOS keyboard is up and this band is docked above it — show
+  // ONLY the textarea (hide the sub-tool chips + Add button) so the typing surface
+  // sits right on the keyboard. The textarea element itself is untouched → focus kept.
+  keyboardMode?: boolean
 }) {
   const {
     textInput, textInputRef, handleTextInputChange, selectedObjectType, startNewText,
@@ -60,8 +65,8 @@ export default function MobileTextBand({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Sub-tool row */}
-      <div className="flex shrink-0 gap-1.5 overflow-x-auto px-3 pt-2 pb-1.5">
+      {/* Sub-tool row (hidden in keyboard mode so only the textarea shows) */}
+      <div className={`flex shrink-0 gap-1.5 overflow-x-auto px-3 pt-2 pb-1.5 ${keyboardMode ? 'hidden' : ''}`}>
         {SUBS.map(({ key, label }) => (
           <button
             key={key}
@@ -85,7 +90,7 @@ export default function MobileTextBand({
               placeholder="Type something…  ↵ for a new line"
               className="min-h-0 flex-1 w-full resize-none rounded border border-gray-200 bg-gray-100 px-3 py-2 text-base leading-snug text-gray-900 outline-none focus:border-[#dd3333]"
             />
-            {selectedObjectType === 'text' && (
+            {selectedObjectType === 'text' && !keyboardMode && (
               <button
                 onClick={startNewText}
                 className="shrink-0 rounded border border-gray-300 py-1.5 text-xs text-gray-700 transition-colors hover:border-[#dd3333] hover:text-[#dd3333]"

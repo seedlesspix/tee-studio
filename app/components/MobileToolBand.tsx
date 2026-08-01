@@ -27,20 +27,25 @@ type Tab = 'text' | 'upload' | 'clipart'
 
 export default function MobileToolBand({
   open,
+  keyboardMode = false,
   activeTab,
   onSelectTab,
   children,
 }: {
   open: boolean
+  // Keyboard mode: the column is clamped to sit above the iOS keyboard, so this band
+  // docks above it showing ONLY the textarea (its children hide their own chrome);
+  // we hide the Rail + safe-area here so the box lands right on the keyboard. Same
+  // DOM (class-only), so the textarea is never remounted → focus preserved.
+  keyboardMode?: boolean
   activeTab: string
   onSelectTab: (tab: Tab) => void
   children: ReactNode
 }) {
   return (
     <div className="lg:hidden flex flex-col shrink-0 border-t border-gray-200 bg-white">
-      {/* Fixed-height controls band — only when OPEN. INTERIM (Stage 1): existing
-          controls in a vertical scroll; later stages make each tool a compact
-          horizontal row. Closed → the shirt keeps this space. */}
+      {/* Fixed-height controls band — only when OPEN. Compact horizontal tool layouts
+          live in the children; in keyboard mode the children show only the textarea. */}
       {open && (
         <div
           className="h-40 overflow-y-auto overscroll-contain touch-pan-y"
@@ -49,10 +54,12 @@ export default function MobileToolBand({
           {children}
         </div>
       )}
-      {/* Bottom icon strip — tool categories (always visible) */}
-      <Rail orientation="horizontal" activeTab={activeTab} onSelectTab={onSelectTab} />
+      {/* Bottom icon strip — tool categories (hidden in keyboard mode) */}
+      <div className={keyboardMode ? 'hidden' : ''}>
+        <Rail orientation="horizontal" activeTab={activeTab} onSelectTab={onSelectTab} />
+      </div>
       {/* Home-indicator safe area so the strip clears the gesture bar */}
-      <div style={{ height: 'env(safe-area-inset-bottom)' }} />
+      <div className={keyboardMode ? 'hidden' : ''} style={{ height: 'env(safe-area-inset-bottom)' }} />
     </div>
   )
 }

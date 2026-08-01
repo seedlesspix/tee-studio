@@ -236,6 +236,47 @@ export default function DesignerCanvas({
     if (isMobile && selectedObjectType) setBandOpen(true)
   }, [selectedObjectType, isMobile])
 
+  // Keyboard mode (Stage 5, ImprintNext). When the iOS keyboard opens on the text
+  // box we CLAMP the app column's height to the visual viewport, so its bottom edge
+  // sits exactly at the keyboard top: the band (showing only the textarea in this
+  // mode) docks above the keyboard and the existing stageScale ResizeObserver re-fits
+  // the shirt into the strip above (print area peeks). visualViewport is the only
+  // reliable iOS signal — the soft keyboard OVERLAYS content, it does NOT resize the
+  // layout viewport, so window 'resize' never fires. The textarea element is never
+  // remounted (keyboard mode is class/inline-style diffs only), so focus is preserved
+  // and there's no flicker loop. isMobile-gated → desktop attaches nothing.
+  const [keyboardOpen, setKeyboardOpen] = useState(false)
+  const [vvHeight, setVvHeight] = useState(0)
+  useEffect(() => {
+    if (!isMobile || typeof window === 'undefined' || !window.visualViewport) return
+    const vv = window.visualViewport
+    let raf = 0
+    let settle: ReturnType<typeof setTimeout> | undefined
+    const read = () => {
+      const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+      const open = inset > 120 && document.activeElement === textInputRef.current
+      setVvHeight(vv.height)
+      setKeyboardOpen(open)
+      if (open) setBandOpen(true)
+    }
+    const onChange = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(read)
+      if (settle) clearTimeout(settle)
+      settle = setTimeout(read, 280) // land on the FINAL settled height after the slide
+    }
+    vv.addEventListener('resize', onChange)
+    vv.addEventListener('scroll', onChange)
+    window.addEventListener('orientationchange', onChange)
+    return () => {
+      cancelAnimationFrame(raf)
+      if (settle) clearTimeout(settle)
+      vv.removeEventListener('resize', onChange)
+      vv.removeEventListener('scroll', onChange)
+      window.removeEventListener('orientationchange', onChange)
+    }
+  }, [isMobile])
+
   // Below the lg breakpoint (1024px — tablets are touch users too), CSS-scale the
   // fixed 680×850 stage to fit the canvas area. The COORDINATE space stays 680×850
   // (objects/bounds/saves unchanged); only the DISPLAY scales — Fabric's pointer
@@ -2547,7 +2588,7 @@ export default function DesignerCanvas({
   // On mobile every tool gets a purpose-built compact band (horizontal rows), all
   // mobile-only so the desktop vertical SelectionPanel stays untouched.
   const mobileBandContent =
-    activeTab === 'text' ? <MobileTextBand text={textProps} dbColors={dbColors} deleteSelected={deleteSelected} />
+    activeTab === 'text' ? <MobileTextBand text={textProps} dbColors={dbColors} deleteSelected={deleteSelected} keyboardMode={isMobile && keyboardOpen} />
     : activeTab === 'upload' ? (
       <MobileUploadBand
         handleImageUpload={handleImageUpload}
@@ -2578,7 +2619,7 @@ export default function DesignerCanvas({
   // Desktop keeps h-screen exactly (lg:h-screen) — parity-safe; the overflow /
   // overscroll locks are no-ops on desktop. dvh accounts for the mobile URL bar.
   return (
-    <div className="flex flex-col h-dvh lg:h-screen overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
+    <div className="flex flex-col h-dvh lg:h-screen overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif', height: isMobile && keyboardOpen ? vvHeight : undefined }}>
 
       {/* Header — extracted to <ActionBar> (D0 restructure step 1a, move-not-
           rewrite). Phase 2: becomes the sealed "price + Save + Next" bottom bar
@@ -2606,7 +2647,7 @@ export default function DesignerCanvas({
           when an object is selected (that's the only time align/Clear-All apply), so
           it frees the whole row — and gives the shirt more space — the rest of the
           time. Desktop never mounts it (isMobile + lg:hidden). */}
-      {isMobile && selectedObjectType && (
+      {isMobile && selectedObjectType && !keyboardOpen && (
         <div className="lg:hidden flex shrink-0 items-center gap-1 overflow-x-auto border-b border-gray-200 bg-white px-3 py-1.5">
           <span className="mr-0.5 shrink-0 font-mono text-[10px] uppercase tracking-widest text-gray-400">Align</span>
           {[
@@ -2640,8 +2681,10 @@ export default function DesignerCanvas({
         </div>
       )}
 
-      {/* Main layout */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* Main layout. On mobile min-h-0 lets this row yield when the column height
+          is clamped in keyboard mode, so the shrink-0 band keeps its height and docks
+          above the keyboard (desktop string unchanged). */}
+      <div className={isMobile ? 'flex flex-1 overflow-hidden min-h-0' : 'flex flex-1 overflow-hidden'}>
 
         {/* Left tool panel — DESKTOP only (mobile uses the bottom sheet below).
             Rendered conditionally (not CSS-hidden) so exactly one SelectionPanel
@@ -2878,7 +2921,7 @@ export default function DesignerCanvas({
           of the column (never overlays the shirt). Mounted only on mobile, so it
           owns the single SelectionPanel. */}
       {isMobile && (
-        <MobileToolBand open={bandOpen} activeTab={activeTab} onSelectTab={bandSelectTab}>
+        <MobileToolBand open={bandOpen} keyboardMode={isMobile && keyboardOpen} activeTab={activeTab} onSelectTab={bandSelectTab}>
           {mobileBandContent}
         </MobileToolBand>
       )}
