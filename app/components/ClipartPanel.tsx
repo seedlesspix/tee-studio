@@ -9,9 +9,12 @@ type ClipartItem = Pick<Tables<'clipart_items'>, 'id' | 'name' | 'file_url' | 'f
 interface Props {
   printMethod: string
   onSelect: (url: string, fileType: string) => void
+  // Mobile band layout: category CHIPS + one horizontal thumbnail row instead of
+  // the desktop dropdown + vertical grid. Defaults false → desktop is byte-identical.
+  horizontal?: boolean
 }
 
-export default function ClipartPanel({ printMethod, onSelect }: Props) {
+export default function ClipartPanel({ printMethod, onSelect, horizontal = false }: Props) {
   const [categories, setCategories] = useState<Category[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [items, setItems] = useState<ClipartItem[]>([])
@@ -76,43 +79,79 @@ export default function ClipartPanel({ printMethod, onSelect }: Props) {
   const selectedCategoryName = categories.find(c => c.id === selectedCategory)?.name || ''
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className={horizontal ? 'flex h-full flex-col gap-2' : 'flex flex-col gap-2'}>
       {/* Search */}
       <input
         type="text"
         placeholder="Search all clipart..."
         value={search}
         onChange={e => setSearch(e.target.value)}
-        className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333]"
+        className={horizontal
+          ? 'w-full shrink-0 bg-white border border-gray-200 rounded px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333]'
+          : 'w-full bg-white border border-gray-200 rounded px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333]'}
       />
 
-      {/* Category dropdown - hidden when searching */}
+      {/* Category selector — chips (mobile) / dropdown (desktop); hidden when searching */}
       {!search.trim() && (
-        <select
-          value={selectedCategory}
-          onChange={e => setSelectedCategory(e.target.value)}
-          className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333] font-mono cursor-pointer"
-        >
-          {categories.map(cat => (
-            <option key={cat.id} value={cat.id}>
-              {cat.name}
-            </option>
-          ))}
-        </select>
+        horizontal ? (
+          <div className="flex shrink-0 gap-1.5 overflow-x-auto pb-0.5">
+            {categories.map(cat => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setSelectedCategory(cat.id)}
+                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-mono transition-colors ${
+                  selectedCategory === cat.id
+                    ? 'bg-gray-900 text-white border-gray-900'
+                    : 'bg-white text-gray-600 border-gray-300'
+                }`}
+              >
+                {cat.name}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <select
+            value={selectedCategory}
+            onChange={e => setSelectedCategory(e.target.value)}
+            className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333] font-mono cursor-pointer"
+          >
+            {categories.map(cat => (
+              <option key={cat.id} value={cat.id}>
+                {cat.name}
+              </option>
+            ))}
+          </select>
+        )
       )}
 
       {/* Search results label */}
       {search.trim() && (
-        <p className="text-xs text-gray-600 font-mono">
+        <p className={horizontal ? 'shrink-0 text-xs text-gray-600 font-mono' : 'text-xs text-gray-600 font-mono'}>
           {filtered.length} result{filtered.length !== 1 ? 's' : ''} for &ldquo;{search}&rdquo;
         </p>
       )}
 
-      {/* Clipart grid */}
+      {/* Clipart tiles — horizontal row (mobile) / vertical grid (desktop) */}
       {loading ? (
         <p className="text-xs text-gray-600 text-center py-4">Loading...</p>
       ) : filtered.length === 0 ? (
         <p className="text-xs text-gray-600 text-center py-4">No clipart found</p>
+      ) : horizontal ? (
+        <div className="flex min-h-0 flex-1 items-center gap-2 overflow-x-auto pb-1">
+          {filtered.map(item => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onSelect(item.file_url, item.file_type ?? 'image')}
+              title={item.name}
+              className="flex w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white p-1.5"
+            >
+              <img src={item.file_url} alt={item.name} className="h-10 w-10 object-contain" decoding="async" />
+              <span className="w-full truncate text-center font-mono text-[8px] leading-tight text-gray-500">{item.name}</span>
+            </button>
+          ))}
+        </div>
       ) : (
         <div className="grid grid-cols-3 gap-2 max-h-96 overflow-y-auto pr-1">
           {filtered.map(item => (

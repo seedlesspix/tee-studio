@@ -14,6 +14,8 @@ import Rail from './Rail'
 import SelectionPanel from './SelectionPanel'
 import MobileToolBand from './MobileToolBand'
 import MobileTextBand from './MobileTextBand'
+import MobileUploadBand from './MobileUploadBand'
+import MobileArtBand from './MobileArtBand'
 import { type UploadItem } from './MyUploadsPanel'
 import MyDesignsDrawer, { type SavedDesign } from './MyDesignsDrawer'
 import { useCustomerSession } from '../hooks/useCustomerSession'
@@ -2536,11 +2538,33 @@ export default function DesignerCanvas({
       clipart={{ printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor }}
     />
   )
-  // On mobile the Text tool gets a purpose-built compact band (MobileTextBand, the
-  // horizontal font row etc.); Upload/Art keep the shared panel until their Stage-3
-  // reformat. Desktop always uses the vertical SelectionPanel (untouched).
-  const mobileBandContent = activeTab === 'text'
-    ? <MobileTextBand text={textProps} dbColors={dbColors} deleteSelected={deleteSelected} />
+  // On mobile every tool gets a purpose-built compact band (horizontal rows), all
+  // mobile-only so the desktop vertical SelectionPanel stays untouched.
+  const mobileBandContent =
+    activeTab === 'text' ? <MobileTextBand text={textProps} dbColors={dbColors} deleteSelected={deleteSelected} />
+    : activeTab === 'upload' ? (
+      <MobileUploadBand
+        handleImageUpload={handleImageUpload}
+        libraryUploads={libraryUploads}
+        libraryLoading={libraryLoading}
+        pickLibraryUpload={pickLibraryUpload}
+        deleteLibraryUpload={deleteLibraryUpload}
+        selectedObjectType={selectedObjectType}
+        deleteSelected={deleteSelected}
+      />
+    )
+    : activeTab === 'clipart' ? (
+      <MobileArtBand
+        printMethod={printMethod}
+        onSelect={handleClipartSelect}
+        selectedObjectType={selectedObjectType}
+        dbColors={dbColors}
+        recolorSvg={recolorSvg}
+        selectedSvgColor={selectedSvgColor}
+        setSelectedSvgColor={setSelectedSvgColor}
+        deleteSelected={deleteSelected}
+      />
+    )
     : selectionPanel
 
   // Root is a fixed, app-like viewport: no page scroll / pull-to-refresh on
