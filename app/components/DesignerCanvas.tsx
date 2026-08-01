@@ -17,6 +17,10 @@ import MobileTextBand from './MobileTextBand'
 import MobileUploadBand from './MobileUploadBand'
 import MobileArtBand from './MobileArtBand'
 import { type UploadItem } from './MyUploadsPanel'
+import {
+  AlignLeft, AlignCenter, AlignRight,
+  AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
+} from 'lucide-react'
 import MyDesignsDrawer, { type SavedDesign } from './MyDesignsDrawer'
 import { useCustomerSession } from '../hooks/useCustomerSession'
 
@@ -2664,8 +2668,6 @@ export default function DesignerCanvas({
         onBeforeLogin={prepareLoginRedirect}
         onNextStep={handleNextStep}
         pricePerItem={pricePerItem}
-        onClearAll={handleClearAll}
-        canClear={canvasObjectCount > 0}
       />
 
       {/* Progress strip under the top bar — Build It (here) → Order It → Pick Up/Ship.
@@ -2708,26 +2710,39 @@ export default function DesignerCanvas({
             </div>
           )}
 
+          {/* Persistent on-canvas Clear All — MOBILE only, small + out of the way in
+              the corner, but always visible when there's something to clear (so
+              "start over" isn't buried in the menu). Desktop has its in-stage button. */}
+          {isMobile && canvasObjectCount > 0 && (
+            <button
+              type="button"
+              onClick={handleClearAll}
+              className="absolute right-2 top-2 z-10 rounded-full border border-gray-200 bg-white/90 px-3 py-1 text-xs text-[#dd3333] shadow-sm backdrop-blur"
+            >
+              Clear all
+            </button>
+          )}
+
           {/* Alignment toolbar — DESKTOP only now; on mobile it moves to the slim
               top strip below the header so it stops eating the shirt's space. */}
           {!isMobile && (
           <div className="shrink-0 flex items-center gap-1 mb-2 px-1 flex-wrap">
             <span className="text-xs text-gray-800 font-mono uppercase tracking-widest mr-1">Align:</span>
             {[
-              { label: '⬛◻◻', title: 'Align Left', fn: 'left' },
-              { label: '◻⬛◻', title: 'Align Center', fn: 'center' },
-              { label: '◻◻⬛', title: 'Align Right', fn: 'right' },
-              { label: '⬆', title: 'Align Top', fn: 'top' },
-              { label: '↕', title: 'Align Middle', fn: 'middle' },
-              { label: '⬇', title: 'Align Bottom', fn: 'bottom' },
-            ].map(({ label, title, fn }) => (
+              { Icon: AlignLeft, title: 'Align Left', fn: 'left' },
+              { Icon: AlignCenter, title: 'Align Center', fn: 'center' },
+              { Icon: AlignRight, title: 'Align Right', fn: 'right' },
+              { Icon: AlignStartHorizontal, title: 'Align Top', fn: 'top' },
+              { Icon: AlignCenterHorizontal, title: 'Align Middle', fn: 'middle' },
+              { Icon: AlignEndHorizontal, title: 'Align Bottom', fn: 'bottom' },
+            ].map(({ Icon, title, fn }) => (
               <button key={fn} title={title}
                 onPointerDown={e => {
                   e.preventDefault()
                   alignObject(fn)
                 }}
-                className="px-2 py-1 rounded text-xs font-mono bg-gray-100 border border-gray-200 text-gray-800 hover:border-[#dd3333] hover:text-gray-900 transition-all">
-                {label}
+                className="flex items-center justify-center px-2 py-1.5 rounded bg-gray-100 border border-gray-200 text-gray-700 hover:border-[#dd3333] hover:text-gray-900 transition-all">
+                <Icon size={16} strokeWidth={1.75} />
               </button>
             ))}
             <span className="w-px h-4 bg-gray-200 mx-1" />

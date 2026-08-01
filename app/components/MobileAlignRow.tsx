@@ -1,20 +1,20 @@
 'use client'
 import {
-  AlignHorizontalJustifyStart, AlignHorizontalJustifyCenter, AlignHorizontalJustifyEnd,
-  AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd,
+  AlignLeft, AlignCenter, AlignRight,
+  AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
 } from 'lucide-react'
 
-// MobileAlignRow — compact align icons + a pinned Delete, for the Art/Upload bands'
-// edit mode. Small icon buttons in a slim strip (ImprintNext-style) rather than the
-// big labeled boxes; the icons scroll if they must, and Delete is shrink-0 so it's
-// ALWAYS visible and never overlaps the align icons.
-const ITEMS: { Icon: typeof AlignHorizontalJustifyStart; title: string; fn: string }[] = [
-  { Icon: AlignHorizontalJustifyStart, title: 'Align left', fn: 'left' },
-  { Icon: AlignHorizontalJustifyCenter, title: 'Align center', fn: 'center' },
-  { Icon: AlignHorizontalJustifyEnd, title: 'Align right', fn: 'right' },
-  { Icon: AlignVerticalJustifyStart, title: 'Align top', fn: 'top' },
-  { Icon: AlignVerticalJustifyCenter, title: 'Align middle', fn: 'middle' },
-  { Icon: AlignVerticalJustifyEnd, title: 'Align bottom', fn: 'bottom' },
+// MobileAlignRow — compact align icons + a pinned Delete, for the tool bands' edit
+// mode. Uses the UNIVERSAL text-editor align bars for left/center/right and the
+// matching vertical bars for top/middle/bottom (shared with the desktop toolbar so
+// both layouts look the same). Delete is shrink-0 so it never overlaps the icons.
+const ITEMS: { Icon: typeof AlignLeft; title: string; fn: string }[] = [
+  { Icon: AlignLeft, title: 'Align left', fn: 'left' },
+  { Icon: AlignCenter, title: 'Align center', fn: 'center' },
+  { Icon: AlignRight, title: 'Align right', fn: 'right' },
+  { Icon: AlignStartHorizontal, title: 'Align top', fn: 'top' },
+  { Icon: AlignCenterHorizontal, title: 'Align middle', fn: 'middle' },
+  { Icon: AlignEndHorizontal, title: 'Align bottom', fn: 'bottom' },
 ]
 
 export default function MobileAlignRow({
