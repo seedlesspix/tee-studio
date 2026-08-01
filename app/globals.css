@@ -25,24 +25,17 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* Mobile designer document lock. The designer adds this class to <html>/<body>
-   (via JS, only on mobile) so iOS/WebKit can't pan or rubber-band the page — that
-   was letting the whole page drift sideways and bounce under the tool sheet.
-   position:fixed on body is the proven iOS scroll-lock; the canvas (Fabric) and
-   the sheet (a native overflow-y-auto region) keep full ownership of touch
-   gestures — it only stops the PAGE panning, not a scrollable child. Applied on the
-   designer at mobile widths and removed on unmount, so desktop and every other
-   page are completely untouched. */
-html.designer-touch-lock {
-  overflow: hidden;
-  overscroll-behavior: none;
-}
+/* Mobile designer: disable pull-to-refresh / overscroll rubber-band only. The
+   designer adds this class to <html>/<body> via JS (mobile only). It DELIBERATELY
+   does NOT lock scrolling (no position:fixed, no overflow:hidden) — that lock broke
+   the iOS keyboard, because a fixed body stops the browser from scrolling the
+   focused text box above the keyboard. Letting the document scroll normally hands
+   keyboard handling back to the browser (the reliable, native behaviour); the
+   canvas still owns its own gestures via touch-action:none on the stage, and the
+   page has no horizontal overflow so it can't drift sideways. overscroll-behavior
+   keeps pull-to-refresh disabled so an accidental pull can't wipe a design. */
+html.designer-touch-lock,
 body.designer-touch-lock {
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
   overscroll-behavior: none;
 }
 

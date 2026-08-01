@@ -240,53 +240,10 @@ export default function DesignerCanvas({
     if (isMobile && selectedObjectType) setBandOpen(true)
   }, [selectedObjectType, isMobile])
 
-  // Keyboard mode (Stage 5, ImprintNext). When the iOS keyboard opens on the text
-  // box we CLAMP the app column's height to the visual viewport, so its bottom edge
-  // sits exactly at the keyboard top: the band (showing only the textarea in this
-  // mode) docks above the keyboard and the existing stageScale ResizeObserver re-fits
-  // the shirt into the strip above (print area peeks). visualViewport is the only
-  // reliable iOS signal — the soft keyboard OVERLAYS content, it does NOT resize the
-  // layout viewport, so window 'resize' never fires. The textarea element is never
-  // remounted (keyboard mode is class/inline-style diffs only), so focus is preserved
-  // and there's no flicker loop. isMobile-gated → desktop attaches nothing.
-  const [keyboardOpen, setKeyboardOpen] = useState(false)
-  const [kbInset, setKbInset] = useState(0)
-  useEffect(() => {
-    if (!isMobile || typeof window === 'undefined' || !window.visualViewport) return
-    const vv = window.visualViewport
-    // Detect the keyboard by the DROP in visual-viewport height from its tallest
-    // seen value (keyboard-down / URL-bar-hidden). This is robust across iOS Safari
-    // AND Chrome — unlike `window.innerHeight - vv.height`, which fails on iOS Chrome
-    // where innerHeight shrinks together with the keyboard (inset would read ~0).
-    // kbInset = that drop = the keyboard height, used to dock the text box above it.
-    let baseline = vv.height
-    let raf = 0
-    let settle: ReturnType<typeof setTimeout> | undefined
-    const read = () => {
-      if (vv.height > baseline) baseline = vv.height
-      const kb = Math.max(0, baseline - vv.height)
-      const open = kb > 120 && document.activeElement === textInputRef.current
-      setKbInset(kb)
-      setKeyboardOpen(open)
-      if (open) setBandOpen(true)
-    }
-    const onChange = () => {
-      cancelAnimationFrame(raf)
-      raf = requestAnimationFrame(read)
-      if (settle) clearTimeout(settle)
-      settle = setTimeout(read, 280) // land on the FINAL settled height after the slide
-    }
-    vv.addEventListener('resize', onChange)
-    vv.addEventListener('scroll', onChange)
-    window.addEventListener('orientationchange', onChange)
-    return () => {
-      cancelAnimationFrame(raf)
-      if (settle) clearTimeout(settle)
-      vv.removeEventListener('resize', onChange)
-      vv.removeEventListener('scroll', onChange)
-      window.removeEventListener('orientationchange', onChange)
-    }
-  }, [isMobile])
+  // Keyboard: handled NATIVELY now. The mobile document scrolls normally (the lock
+  // no longer sets position:fixed), so when the text box focuses, iOS scrolls it above
+  // the keyboard on its own — no manual visualViewport docking (that fought the
+  // browser and kept failing). See the .designer-touch-lock note in globals.css.
 
   // Below the lg breakpoint (1024px — tablets are touch users too), CSS-scale the
   // fixed 680×850 stage to fit the canvas area. The COORDINATE space stays 680×850
@@ -2620,7 +2577,7 @@ export default function DesignerCanvas({
   // On mobile every tool gets a purpose-built compact band (horizontal rows), all
   // mobile-only so the desktop vertical SelectionPanel stays untouched.
   const mobileBandContent =
-    activeTab === 'text' ? <MobileTextBand text={textProps} dbColors={dbColors} deleteSelected={deleteSelected} alignObject={alignObject} keyboardMode={isMobile && keyboardOpen} />
+    activeTab === 'text' ? <MobileTextBand text={textProps} dbColors={dbColors} deleteSelected={deleteSelected} alignObject={alignObject} />
     : activeTab === 'upload' ? (
       <MobileUploadBand
         handleImageUpload={handleImageUpload}
@@ -2925,7 +2882,7 @@ export default function DesignerCanvas({
           of the column (never overlays the shirt). Mounted only on mobile, so it
           owns the single SelectionPanel. */}
       {isMobile && (
-        <MobileToolBand open={bandOpen} keyboardMode={isMobile && keyboardOpen} keyboardInset={kbInset} activeTab={activeTab} onSelectTab={bandSelectTab}>
+        <MobileToolBand open={bandOpen} activeTab={activeTab} onSelectTab={bandSelectTab}>
           {mobileBandContent}
         </MobileToolBand>
       )}
