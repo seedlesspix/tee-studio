@@ -46,7 +46,11 @@ export async function GET(req: NextRequest) {
   // 3. first live text object; reject Stage-1b non-goals with a clear message
   let parsed: { objects?: Array<Record<string, unknown>> }
   try { parsed = JSON.parse(canvasJson) } catch { return NextResponse.json({ error: 'bad canvas json' }, { status: 500 }) }
-  const t = (parsed.objects ?? []).find(x => ['i-text', 'textbox', 'text'].includes(String(x.type)))
+  // Fabric 7 serializes `type` in PascalCase ("IText"/"Textbox"/"Image") — NOT the
+  // kebab-case the restore code accepts. Match case-insensitively (verified against a
+  // live order: the stored type is "IText").
+  const TEXT_TYPES = ['itext', 'i-text', 'textbox', 'text']
+  const t = (parsed.objects ?? []).find(x => TEXT_TYPES.includes(String(x.type).toLowerCase()))
   if (!t) return NextResponse.json({ error: 'no text object on this side' }, { status: 422 })
   if (t._isCurvedText) return NextResponse.json({ error: 'curved text not supported yet (Stage 1b)' }, { status: 422 })
 
