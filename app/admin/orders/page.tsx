@@ -522,6 +522,30 @@ export default function OrdersAdmin() {
                           </div>
                         )}
                       </div>
+
+                      {/* Cut files (beta) — outlined, physically-sized SVG for the Roland
+                          (via Illustrator). First proof: Impact font, templated + uncurved
+                          text only; other cases return a short message. Cookie-authed GET,
+                          so a plain download link (no JS). */}
+                      {(row.canvas_png_front || row.canvas_png_back) && (
+                        <div className="mt-4 pt-3 border-t border-gray-200">
+                          <p className="text-xs font-mono text-gray-600 mb-2">CUT FILES (beta · Impact)</p>
+                          <div className="flex gap-2">
+                            {row.canvas_png_front && (
+                              <a href={`/api/admin/cut-file?order=${row.id}&side=front`}
+                                className="flex-1 py-1.5 rounded text-xs font-mono bg-black text-white hover:bg-[#dd3333] transition-all text-center">
+                                ⬇ Cut file — Front
+                              </a>
+                            )}
+                            {row.canvas_png_back && (
+                              <a href={`/api/admin/cut-file?order=${row.id}&side=back`}
+                                className="flex-1 py-1.5 rounded text-xs font-mono bg-black text-white hover:bg-[#dd3333] transition-all text-center">
+                                ⬇ Cut file — Back
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Customer uploaded files */}
