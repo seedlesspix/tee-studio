@@ -48,7 +48,7 @@ export default function ActionBar({
   // before) and every mobile element is `lg:hidden` (display:none on desktop).
   const [menuOpen, setMenuOpen] = useState(false)
   return (
-    <header className="relative flex items-center px-6 h-14 bg-white border-b border-gray-200 shrink-0">
+    <header className="sticky lg:relative top-0 lg:top-auto z-30 lg:z-auto flex items-center px-6 h-14 bg-white border-b border-gray-200 shrink-0">
       {/* Mobile ☰ (never on desktop) */}
       <button
         type="button"

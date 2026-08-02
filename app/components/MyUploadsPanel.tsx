@@ -19,9 +19,46 @@ type Props = {
   loading: boolean
   onPick: (item: UploadItem) => void
   onDelete: (id: string) => void
+  // Mobile band layout: one horizontal, touch-first row (tap tile = add, always-
+  // visible ✕ = remove) instead of the desktop hover grid. Default false → desktop
+  // byte-identical.
+  horizontal?: boolean
 }
 
-export default function MyUploadsPanel({ uploads, loading, onPick, onDelete }: Props) {
+export default function MyUploadsPanel({ uploads, loading, onPick, onDelete, horizontal = false }: Props) {
+  if (horizontal) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center gap-2 overflow-x-auto pb-1">
+        {loading ? (
+          <span className="px-2 text-xs text-gray-400">Loading…</span>
+        ) : uploads.length === 0 ? (
+          <span className="px-2 text-xs text-gray-400">No uploads yet — add one above.</span>
+        ) : (
+          uploads.map(item => (
+            <div key={item.id} className="relative h-16 w-16 shrink-0 rounded-lg border border-gray-200 bg-white">
+              <button
+                type="button"
+                onClick={() => onPick(item)}
+                title={`Add "${item.fileName}"`}
+                className="flex h-full w-full items-center justify-center p-1.5"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={item.url} alt={item.fileName} className="pointer-events-none max-h-full max-w-full object-contain" />
+              </button>
+              <button
+                type="button"
+                onClick={() => onDelete(item.id)}
+                title="Remove from My Uploads"
+                className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-gray-200 bg-white text-[11px] leading-none text-gray-500 shadow-sm"
+              >
+                ✕
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    )
+  }
   return (
     <div className="mt-6">
       <div className="flex items-center justify-between">

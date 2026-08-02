@@ -125,7 +125,7 @@ export default function MyDesignsDrawer({
                     type="button"
                     onClick={() => onDelete(d.savedId)}
                     title="Remove from My Designs"
-                    className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-white/90 border border-gray-200 text-gray-500 hover:text-white hover:bg-[#dd3333] hover:border-[#dd3333] flex items-center justify-center text-[11px] leading-none shadow-sm opacity-0 group-hover:opacity-100 transition-all"
+                    className="absolute top-1.5 right-1.5 w-6 h-6 lg:w-5 lg:h-5 rounded-full bg-white/90 border border-gray-200 text-gray-500 hover:text-white hover:bg-[#dd3333] hover:border-[#dd3333] flex items-center justify-center text-[11px] leading-none shadow-sm opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-all"
                   >
                     ✕
                   </button>

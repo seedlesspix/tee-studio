@@ -12,7 +12,15 @@ import ActionBar from './ActionBar'
 import Stepper from './Stepper'
 import Rail from './Rail'
 import SelectionPanel from './SelectionPanel'
+import MobileToolBand from './MobileToolBand'
+import MobileTextBand from './MobileTextBand'
+import MobileUploadBand from './MobileUploadBand'
+import MobileArtBand from './MobileArtBand'
 import { type UploadItem } from './MyUploadsPanel'
+import {
+  AlignLeft, AlignCenter, AlignRight,
+  AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
+} from 'lucide-react'
 import MyDesignsDrawer, { type SavedDesign } from './MyDesignsDrawer'
 import { useCustomerSession } from '../hooks/useCustomerSession'
 
@@ -191,22 +199,111 @@ export default function DesignerCanvas({
   const [canvasObjectCount, setCanvasObjectCount] = useState(0)
 
   // ── Mobile (BLOCKER-2, canvas-scaling pass) ──────────────────────────────────
+  const stageAreaRef = useRef<HTMLElement>(null)
+  const shellRef = useRef<HTMLDivElement>(null)
+  const [isMobile, setIsMobile] = useState(false)
+  // Live mirror of isMobile for callbacks captured once at canvas-init (the pre-existing
+  // applyControls closure) that can't see React state updates.
+  const isMobileRef = useRef(false)
+  const [stageScale, setStageScale] = useState(1)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023px)')
+    const update = () => { isMobileRef.current = mq.matches; setIsMobile(mq.matches) }
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [])
+
+  // iOS/WebKit only honours a fixed app viewport when the DOCUMENT itself is
+  // locked — overflow:hidden on a child div does NOT stop html/body from panning,
+  // which was letting the page drift horizontally and rubber-band under the
+  // sheet's drag (three symptoms, one cause: the page ate the touch gestures).
+  // position:fixed on body is the proven iOS lock. Applied via JS ONLY while the
+  // designer is mounted AND on mobile → reverted on unmount/desktop, so no other
+  // page and no desktop layout is affected (isMobile is false on desktop).
+  useEffect(() => {
+    if (!isMobile) return
+    const html = document.documentElement
+    const body = document.body
+    html.classList.add('designer-touch-lock')
+    body.classList.add('designer-touch-lock')
+    return () => {
+      html.classList.remove('designer-touch-lock')
+      body.classList.remove('designer-touch-lock')
+    }
+  }, [isMobile])
+
+  // Mobile tool band (rework, ImprintNext pattern): the tools live in an IN-FLOW
+  // fixed-height band at the bottom of the mobile column (MobileToolBand), NOT an
+  // overlay — so the shirt is never covered. On load the band is CLOSED (just the
+  // icon strip; the shirt gets full space and the on-shirt "Let's build it" card is
+  // the invitation). It OPENS when you tap a tool/CTA or select an object; switching
+  // tools while open doesn't resize the shirt. Desktop: isMobile false → never mounts.
+  const [bandOpen, setBandOpen] = useState(false)
+  useEffect(() => {
+    if (isMobile && selectedObjectType) setBandOpen(true)
+  }, [selectedObjectType, isMobile])
+
+  // Mobile keyboard: handled entirely by the BROWSER. No visualViewport JS, no height
+  // locking — those were the bug. The mobile shell uses a STABLE height
+  // (.designer-mobile-shell: -webkit-fill-available / 100vh — neither reacts to the
+  // iOS keyboard, unlike 100dvh) and the page is a normal scrolling document, so iOS
+  // scrolls the focused text box into view on its own. This is ImprintNext's approach,
+  // verified against the same iPhone/Chrome. See the .designer-mobile-shell + touch-
+  // lock notes in globals.css. Desktop is untouched (it keeps lg:h-screen).
+
+  // Companion to the sticky top bar: iOS scrolls the document to lift the focused text
+  // box above the keyboard, but doesn't reliably scroll back on dismiss — leaving the
+  // shirt (and, without the sticky bar, the price/Next Step) scrolled out of view. When
+  // focus leaves the text fields (keyboard closing), snap the page back to the top.
+  useEffect(() => {
+    if (!isMobile || typeof window === 'undefined') return
+    const onFocusOut = () => {
+      setTimeout(() => {
+        const ae = document.activeElement
+        const typing = ae instanceof HTMLElement && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')
+        if (!typing) window.scrollTo(0, 0)
+      }, 80)
+    }
+    document.addEventListener('focusout', onFocusOut)
+    return () => document.removeEventListener('focusout', onFocusOut)
+  }, [isMobile])
+
+  // Size the mobile shell to window.innerHeight (imperative, so no React lag). This is
+  // the FIX for the top bar vanishing: -webkit-fill-available reported 767px on iOS
+  // Chrome while the real window was 653px, so the column overflowed by 114px, became
+  // scrollable, and the bar scrolled off. innerHeight is the true layout viewport, is
+  // STABLE through the keyboard (verified: 653 with keyboard up AND down), and updates
+  // on URL-bar show/hide + rotation via 'resize'. With the shell == the window, the
+  // page fits (nothing to scroll) so the top bar can't leave.
+  useEffect(() => {
+    if (!isMobile || typeof window === 'undefined') return
+    const apply = () => { if (shellRef.current) shellRef.current.style.height = window.innerHeight + 'px' }
+    apply()
+    window.addEventListener('resize', apply)
+    window.addEventListener('orientationchange', apply)
+    return () => {
+      const el = shellRef.current
+      if (el) el.style.height = ''
+      window.removeEventListener('resize', apply)
+      window.removeEventListener('orientationchange', apply)
+    }
+  }, [isMobile])
+
+
+
   // Below the lg breakpoint (1024px — tablets are touch users too), CSS-scale the
   // fixed 680×850 stage to fit the canvas area. The COORDINATE space stays 680×850
   // (objects/bounds/saves unchanged); only the DISPLAY scales — Fabric's pointer
   // math and our bounds math both read getBoundingClientRect, which includes the
   // transform, so it's scale-invariant. On DESKTOP `isMobile` is false → stageScale
   // stays 1 → NO transform → layout byte-identical (proven by the parity harness).
-  const stageAreaRef = useRef<HTMLElement>(null)
-  const [isMobile, setIsMobile] = useState(false)
-  const [stageScale, setStageScale] = useState(1)
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 1023px)')
-    const update = () => setIsMobile(mq.matches)
-    update()
-    mq.addEventListener('change', update)
-    return () => mq.removeEventListener('change', update)
-  }, [])
+  //
+  // NOT pinned (Denise's call): the shirt fills the space it actually HAS — biggest
+  // on load (band closed, ~width-bound), then re-fits smaller when the band opens.
+  // Pinning to the band-open size made the load shirt tiny with a huge empty halo;
+  // the moderate re-fit is the better trade. The ResizeObserver re-fits on any
+  // section-height change (band open/close, contextual align strip).
   useEffect(() => {
     if (!isMobile) { setStageScale(1); return }
     const el = stageAreaRef.current
@@ -427,6 +524,117 @@ export default function DesignerCanvas({
   const lastActiveObjectRef = useRef<any>(null)
   const frontObjectsRef = useRef<any[]>([])
   const backObjectsRef = useRef<any[]>([])
+
+  // Mobile: a REDUCED control set (Instagram/Canva-style) instead of Fabric's 8 tiny
+  // handles. THREE controls sitting OUTSIDE the selection box corners so they never
+  // cover the object: delete (top-left), rotate (top-right), scale (bottom-right);
+  // dragging the object body still moves it. Handles are drawn in CANVAS coords and the
+  // mobile stage CSS-scales the 680×850 canvas DOWN by stageScale, so both the size AND
+  // the outward offset are computed INVERSELY (~23px on screen) — which is why the
+  // controls are rebuilt on every stage/object change (offset can't be static). Rotate/
+  // scale reuse Fabric's DEFAULT handlers (properly anchored) via
+  // createObjectDefaultControls(); delete reuses the app's deleteSelected. controls/
+  // cornerSize are UI chrome — NOT serialized (toObject) and NOT in the PNG/SVG export —
+  // so saves and parity hashes are unaffected. Desktop keeps Fabric's default 8 handles.
+  const deleteSelectedRef = useRef<() => void>(() => {})
+  useEffect(() => {
+    if (!isMobile) return
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    let cancelled = false
+    let cleanupAdded = () => {}
+    ;(async () => {
+      const { Control, controlsUtils } = await import('fabric')
+      if (cancelled) return
+      const d = controlsUtils.createObjectDefaultControls()
+      const s = stageScale || 1
+      const cornerSize = Math.round(23 / s)       // ~23px visual on screen
+      const touchCornerSize = Math.round(30 / s)  // a little bigger hit area
+      const borderScaleFactor = Math.max(2, Math.round(2 / s))
+      const off = cornerSize * 0.75               // push the disc OUTSIDE the box corner
+      // A control = white disc (soft shadow for contrast on any garment) + dark ring +
+      // an icon. Icon size/stroke follow the object's (scaled) cornerSize.
+      const discBg = (ctx: any, size: number) => {
+        ctx.shadowColor = 'rgba(0,0,0,0.35)'
+        ctx.shadowBlur = size * 0.12
+        ctx.beginPath()
+        ctx.arc(0, 0, size / 2, 0, Math.PI * 2)
+        ctx.fillStyle = '#ffffff'
+        ctx.fill()
+        ctx.shadowColor = 'transparent'
+        ctx.lineWidth = Math.max(1.5, size * 0.08)
+        ctx.strokeStyle = '#111827'
+        ctx.stroke()
+      }
+      const glyphRender = (glyph: string, glyphScale = 0.5) =>
+        (ctx: any, left: number, top: number, _o: any, obj: any) => {
+          const size = obj.cornerSize || 23
+          ctx.save(); ctx.translate(left, top); discBg(ctx, size)
+          ctx.fillStyle = '#111827'
+          ctx.font = `700 ${Math.round(size * glyphScale)}px sans-serif`
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+          ctx.fillText(glyph, 0, size * 0.04)
+          ctx.restore()
+        }
+      // Rotate: a DRAWN circular arrow (fills the disc — the ↻ glyph rendered too small).
+      const rotateRender = (ctx: any, left: number, top: number, _o: any, obj: any) => {
+        const size = obj.cornerSize || 23
+        ctx.save(); ctx.translate(left, top); discBg(ctx, size)
+        ctx.strokeStyle = '#111827'
+        ctx.lineWidth = Math.max(2, size * 0.11)
+        ctx.lineCap = 'round'
+        const R = size * 0.29
+        const end = Math.PI * 1.15
+        ctx.beginPath()
+        ctx.arc(0, 0, R, -Math.PI * 0.45, end)   // ~3/4 open circle
+        ctx.stroke()
+        const ex = Math.cos(end) * R, ey = Math.sin(end) * R   // arrowhead at the arc end
+        const back = end + Math.PI / 2 + Math.PI               // opposite the clockwise tangent
+        const h = size * 0.22
+        ctx.beginPath()
+        ctx.moveTo(ex, ey); ctx.lineTo(ex + Math.cos(back - 0.5) * h, ey + Math.sin(back - 0.5) * h)
+        ctx.moveTo(ex, ey); ctx.lineTo(ex + Math.cos(back + 0.5) * h, ey + Math.sin(back + 0.5) * h)
+        ctx.stroke()
+        ctx.restore()
+      }
+      const reuse = (base: any, x: number, y: number, ox: number, oy: number, render: any, cursor: string) =>
+        new Control({
+          x, y, offsetX: ox, offsetY: oy, cursorStyle: cursor,
+          actionHandler: base?.actionHandler,
+          cursorStyleHandler: base?.cursorStyleHandler,
+          actionName: base?.actionName,
+          render,
+        })
+      const controls = {
+        del: new Control({
+          x: -0.5, y: -0.5, offsetX: -off, offsetY: -off, cursorStyle: 'pointer',
+          mouseUpHandler: (_e: any, transform: any) => {
+            const t = transform?.target
+            if (t?.canvas) t.canvas.setActiveObject(t)
+            deleteSelectedRef.current()
+            return true
+          },
+          render: glyphRender('✕'),
+        }),
+        rot: reuse(d.mtr, 0.5, -0.5, off, -off, rotateRender, 'crosshair'),
+        scale: reuse(d.br, 0.5, 0.5, off, off, glyphRender('◢'), 'nwse-resize'),
+      }
+      const applyTo = (obj: any) => {
+        obj.controls = controls
+        obj.set({ cornerSize, touchCornerSize, transparentCorners: false, borderColor: '#111827', borderScaleFactor })
+        obj.setCoords?.()
+      }
+      canvas.getObjects().forEach(applyTo)
+      canvas.requestRenderAll()
+      // Also re-assert on every add (created / restored / re-added), since the pre-
+      // existing applyControls now no-ops on mobile — otherwise a re-added object would
+      // fall back to Fabric's default handles.
+      const onAdded = (e: any) => { if (e?.target) { applyTo(e.target); canvas.requestRenderAll() } }
+      canvas.on('object:added', onAdded)
+      cleanupAdded = () => canvas.off('object:added', onAdded)
+    })()
+    return () => { cancelled = true; cleanupAdded() }
+  }, [isMobile, stageScale, canvasObjectCount])
   // `url` is the DISPLAY rendition (what's on the canvas). `originalUrl` is the
   // file the customer actually uploaded — set only when they differ, i.e. when we
   // converted (AI/PSD/EPS/PDF). The print shop needs the original, not the PNG.
@@ -1020,6 +1228,13 @@ export default function DesignerCanvas({
         setSelectedTextPreview('')
         setSelectedObjectType(null)
         setTextInput('')
+        // Tapping empty shirt space (deselect) = "I'm done with tools" → collapse the
+        // mobile band so the shirt returns to full size. BUT only when the text box
+        // isn't focused: creating a text on the first keystroke fires selection:cleared
+        // (the old object is discarded before the new one selects) while the box IS
+        // focused — closing then would unmount the docked box mid-type. So gate on the
+        // textarea NOT being the active element. Harmless on desktop (no band).
+        if (document.activeElement !== textInputRef.current) setBandOpen(false)
       })
 
       // ONE editing surface: the box.
@@ -1144,6 +1359,11 @@ export default function DesignerCanvas({
         })
 
         const applyControls = (obj: any) => {
+          // MOBILE uses its own 3-disc control set (applied by the mobile effect, which
+          // also hooks object:added). Skip the desktop red-circle set here so the two
+          // systems don't fight (the desktop set was overriding the mobile discs on
+          // re-add/restore, showing the old red handles). Desktop is unchanged.
+          if (isMobileRef.current) return
           obj.controls = {
             rotateControl,
             deleteControl,
@@ -1581,6 +1801,28 @@ export default function DesignerCanvas({
       canvas.renderAll()
     }
     setActiveTab(tab)
+  }
+
+  // Mobile band tab tap: switch tool AND open the band; tapping the ALREADY-active
+  // tab closes it (back to just the icon strip, shirt at full size).
+  const bandSelectTab = (tab: 'text' | 'upload' | 'clipart') => {
+    if (bandOpen && activeTab === tab) { setBandOpen(false); return }
+    handleSelectTab(tab)
+    setBandOpen(true)
+  }
+
+  // Clear All — one shared handler for desktop (in-stage) and mobile (the ☰ menu),
+  // so both give the same clean slate: discard selection, empty the canvas, collapse
+  // the mobile band. The canvas going empty re-shows the "Let's build it" greeting on
+  // both layouts (canvasObjectCount → 0). setBandOpen is a no-op on desktop.
+  const handleClearAll = () => {
+    if (!confirm('Clear all design elements?')) return
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    canvas.discardActiveObject()
+    canvas.clear()
+    canvas.renderAll()
+    setBandOpen(false)
   }
 
   // Put a new text on the shirt from the box's first keystroke. Deliberately
@@ -2176,6 +2418,8 @@ export default function DesignerCanvas({
     const active = fabricCanvas.getActiveObject()
     if (active) { fabricCanvas.remove(active); fabricCanvas.renderAll() }
   }
+  // Keep the mobile delete-control's handler pointing at the live deleteSelected.
+  useEffect(() => { deleteSelectedRef.current = deleteSelected })
 
   // ── CanvasStage parity harness hook (DEV-ONLY, ?parity=1) ──────────────────
   // READ-ONLY instrumentation for the extraction gate. Exposes the canvas + the
@@ -2234,9 +2478,11 @@ export default function DesignerCanvas({
   // the back) it's CTAs only. Add Text focuses the box (the discoverability fix).
   const emptyState = canvasObjectCount === 0 ? {
     showGreeting: shirtView === 'front' && backObjectsRef.current.length === 0,
-    onAddText: () => { setActiveTab('text'); setTimeout(() => textInputRef.current?.focus(), 0) },
-    onUpload: () => setActiveTab('upload'),
-    onAddArt: () => setActiveTab('clipart'),
+    // A CTA selects the tool and OPENS the mobile band (no-op on desktop); Add Text
+    // also focuses the box once the band has mounted it.
+    onAddText: () => { setActiveTab('text'); setBandOpen(true); setTimeout(() => textInputRef.current?.focus(), 0) },
+    onUpload: () => { setActiveTab('upload'); setBandOpen(true) },
+    onAddArt: () => { setActiveTab('clipart'); setBandOpen(true) },
   } : null
   // Per-side surcharge. designer_pricing.sides is a SIDE IDENTITY (1 = Front,
   // 2 = Back), NOT a count — each side is charged independently. Sum the price
@@ -2479,12 +2725,57 @@ export default function DesignerCanvas({
     }
   }
 
+  // The tool panel body — defined ONCE and rendered in exactly one place at a
+  // time (desktop left aside OR mobile sheet), so its textInputRef binds to a
+  // single textarea (two live copies would fight over the ref).
+  const textProps = { textInput, textInputRef, handleTextInputChange, selectedObjectType, startNewText, dbFonts, fonts, selectedFont, setSelectedFont, selectedTextPreview, fontSize, setFontSize, letterSpacing, setLetterSpacing, textColor, setTextColor, textDirection, setTextDirection, curveAmount, setCurveAmount, textIsMultiline, textAlign, handleTextAlign, isBold, setIsBold, isItalic, setIsItalic, isUppercase, setIsUppercase }
+  const selectionPanel = (
+    <SelectionPanel
+      activeTab={activeTab}
+      dbColors={dbColors}
+      deleteSelected={deleteSelected}
+      text={textProps}
+      upload={{ handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload }}
+      clipart={{ printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor }}
+    />
+  )
+  // On mobile every tool gets a purpose-built compact band (horizontal rows), all
+  // mobile-only so the desktop vertical SelectionPanel stays untouched.
+  const mobileBandContent =
+    activeTab === 'text' ? <MobileTextBand text={textProps} dbColors={dbColors} deleteSelected={deleteSelected} alignObject={alignObject} />
+    : activeTab === 'upload' ? (
+      <MobileUploadBand
+        handleImageUpload={handleImageUpload}
+        libraryUploads={libraryUploads}
+        libraryLoading={libraryLoading}
+        pickLibraryUpload={pickLibraryUpload}
+        deleteLibraryUpload={deleteLibraryUpload}
+        selectedObjectType={selectedObjectType}
+        deleteSelected={deleteSelected}
+        alignObject={alignObject}
+      />
+    )
+    : activeTab === 'clipart' ? (
+      <MobileArtBand
+        printMethod={printMethod}
+        onSelect={handleClipartSelect}
+        selectedObjectType={selectedObjectType}
+        dbColors={dbColors}
+        recolorSvg={recolorSvg}
+        selectedSvgColor={selectedSvgColor}
+        setSelectedSvgColor={setSelectedSvgColor}
+        deleteSelected={deleteSelected}
+        alignObject={alignObject}
+      />
+    )
+    : selectionPanel
+
   // Root is a fixed, app-like viewport: no page scroll / pull-to-refresh on
   // mobile, so touch gestures reach the canvas + sheet instead of the browser.
   // Desktop keeps h-screen exactly (lg:h-screen) — parity-safe; the overflow /
   // overscroll locks are no-ops on desktop. dvh accounts for the mobile URL bar.
   return (
-    <div className="flex flex-col h-dvh lg:h-screen overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
+    <div ref={shellRef} className="designer-mobile-shell flex flex-col lg:h-screen lg:overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
 
       {/* Header — extracted to <ActionBar> (D0 restructure step 1a, move-not-
           rewrite). Phase 2: becomes the sealed "price + Save + Next" bottom bar
@@ -2508,30 +2799,35 @@ export default function DesignerCanvas({
         <Stepper current={1} />
       </div>
 
-      {/* Main layout */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* (The mobile top align strip was removed — it added a SECOND in-flow row on
+          select, shrinking the shirt twice. Align now lives inside each tool's band
+          edit controls; Clear All moved to the ☰ menu.) */}
 
-        {/* Left panel: fixed icon rail strip + the scrolling tool panel beside
-            it. The rail owns its own narrow column now (sealed side-strip look);
-            widened so SelectionPanel keeps its ~288px width instead of losing it
-            to the strip. */}
-        <aside className="w-[360px] bg-white border-r border-gray-200 hidden lg:flex overflow-hidden shrink-0">
-          <Rail activeTab={activeTab} onSelectTab={handleSelectTab} />
+      {/* Main layout. min-h-0 (mobile only) lets this flex row shrink below the shirt's
+          intrinsic size so the whole column FITS the screen when the tool band is open —
+          otherwise it overflows ~114px, the page becomes scrollable, and the top bar
+          scrolls off (the barTop-114 trace). Desktop reverts to auto (byte-identical). */}
+      <div className="flex flex-1 overflow-hidden min-h-0 lg:[min-height:auto]">
 
-          <div className="flex-1 min-w-0 overflow-y-auto pt-3">
-            <SelectionPanel
-              activeTab={activeTab}
-              dbColors={dbColors}
-              deleteSelected={deleteSelected}
-              text={{ textInput, textInputRef, handleTextInputChange, selectedObjectType, startNewText, dbFonts, fonts, selectedFont, setSelectedFont, selectedTextPreview, fontSize, setFontSize, letterSpacing, setLetterSpacing, textColor, setTextColor, textDirection, setTextDirection, curveAmount, setCurveAmount, textIsMultiline, textAlign, handleTextAlign, isBold, setIsBold, isItalic, setIsItalic, isUppercase, setIsUppercase }}
-              upload={{ handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload }}
-              clipart={{ printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor }}
-            />
-          </div>
-        </aside>
+        {/* Left tool panel — DESKTOP only (mobile uses the bottom sheet below).
+            Rendered conditionally (not CSS-hidden) so exactly one SelectionPanel
+            is mounted → one textInputRef, one textarea. Desktop uses `flex`
+            exactly as before → parity-safe. */}
+        {!isMobile && (
+          <aside className="w-[360px] bg-white border-r border-gray-200 flex overflow-hidden shrink-0">
+            <Rail activeTab={activeTab} onSelectTab={handleSelectTab} />
+            <div className="flex-1 min-w-0 overflow-y-auto pt-3">
+              {selectionPanel}
+            </div>
+          </aside>
+        )}
 
-        {/* Canvas center */}
-        <section ref={stageAreaRef} className="flex-1 flex flex-col items-center justify-center bg-gray-50 relative overflow-hidden touch-none">
+        {/* Canvas center. The tool band sits BELOW this in the mobile column (in
+            flow), so the shirt is never covered and can center normally on both
+            desktop and mobile — one identical string, byte-for-byte. */}
+        <section
+          ref={stageAreaRef}
+          className="flex-1 flex flex-col items-center justify-center bg-gray-50 relative overflow-hidden touch-none min-h-0 lg:[min-height:auto]">
 
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center text-gray-800 text-sm z-10">
@@ -2539,53 +2835,71 @@ export default function DesignerCanvas({
             </div>
           )}
 
-          {/* Persistent alignment toolbar */}
-          <div className="flex items-center gap-1 mb-2 px-1 flex-wrap">
+          {/* Persistent on-canvas Clear All — MOBILE only, small + out of the way in
+              the corner, but always visible when there's something to clear (so
+              "start over" isn't buried in the menu). Desktop has its in-stage button. */}
+          {isMobile && canvasObjectCount > 0 && (
+            <button
+              type="button"
+              onClick={handleClearAll}
+              className="absolute right-2 top-2 z-10 rounded-full border border-gray-200 bg-white/90 px-3 py-1 text-xs text-[#dd3333] shadow-sm backdrop-blur"
+            >
+              Clear all
+            </button>
+          )}
+
+          {/* Alignment toolbar — DESKTOP only now; on mobile it moves to the slim
+              top strip below the header so it stops eating the shirt's space. */}
+          {!isMobile && (
+          <div className="shrink-0 flex items-center gap-1 mb-2 px-1 flex-wrap">
             <span className="text-xs text-gray-800 font-mono uppercase tracking-widest mr-1">Align:</span>
             {[
-              { label: '⬛◻◻', title: 'Align Left', fn: 'left' },
-              { label: '◻⬛◻', title: 'Align Center', fn: 'center' },
-              { label: '◻◻⬛', title: 'Align Right', fn: 'right' },
-              { label: '⬆', title: 'Align Top', fn: 'top' },
-              { label: '↕', title: 'Align Middle', fn: 'middle' },
-              { label: '⬇', title: 'Align Bottom', fn: 'bottom' },
-            ].map(({ label, title, fn }) => (
+              { Icon: AlignLeft, title: 'Align Left', fn: 'left' },
+              { Icon: AlignCenter, title: 'Align Center', fn: 'center' },
+              { Icon: AlignRight, title: 'Align Right', fn: 'right' },
+              { Icon: AlignStartHorizontal, title: 'Align Top', fn: 'top' },
+              { Icon: AlignCenterHorizontal, title: 'Align Middle', fn: 'middle' },
+              { Icon: AlignEndHorizontal, title: 'Align Bottom', fn: 'bottom' },
+            ].map(({ Icon, title, fn }) => (
               <button key={fn} title={title}
                 onPointerDown={e => {
                   e.preventDefault()
                   alignObject(fn)
                 }}
-                className="px-2 py-1 rounded text-xs font-mono bg-gray-100 border border-gray-200 text-gray-800 hover:border-[#dd3333] hover:text-gray-900 transition-all">
-                {label}
+                className="flex items-center justify-center px-2 py-1.5 rounded bg-gray-100 border border-gray-200 text-gray-700 hover:border-[#dd3333] hover:text-gray-900 transition-all">
+                <Icon size={16} strokeWidth={1.75} />
               </button>
             ))}
             <span className="w-px h-4 bg-gray-200 mx-1" />
             <button
               title="Clear all objects from canvas"
-              onPointerDown={e => {
-                e.preventDefault()
-                if (!confirm('Clear all design elements?')) return
-                const canvas = fabricCanvasRef.current
-                if (!canvas) return
-                canvas.clear()
-                canvas.renderAll()
-              }}
+              onPointerDown={e => { e.preventDefault(); handleClearAll() }}
               className="px-2 py-1 rounded text-xs font-mono bg-gray-100 border border-gray-200 text-red-500 hover:border-red-700 hover:bg-red-900/20 transition-all">
               Clear All
             </button>
           </div>
+          )}
           {/* Scale-to-fit wrapper (mobile only). Outer = the SCALED layout box so
             the shirt doesn't overflow; inner keeps the true 680×850 and is CSS
             transform-scaled. On desktop stageScale===1 → outer is 680×850, inner
             has NO transform → identical to rendering <CanvasStage> alone (the flex
             section centers a 680×850 box either way). Parity proves it. */}
-        <div style={{ width: 680 * stageScale, height: 850 * stageScale }}>
-          <div style={{ width: 680, height: 850, transformOrigin: 'top left', transform: stageScale !== 1 ? `scale(${stageScale})` : undefined }}>
-            <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} onReady={handleCanvasReady} emptyState={emptyState} />
+        {/* Canvas-centering wrapper (fix): the align row above is shrink-0 and this
+            takes the REMAINING space (flex-1) and centers the canvas in it. So the
+            align controls are always visible (never clipped by the section's
+            overflow), while the canvas stays centered. Its own overflow-hidden keeps
+            an over-tall desktop canvas from spilling up over the align row. */}
+        <div className="flex w-full min-h-0 flex-1 items-center justify-center overflow-hidden">
+          <div style={{ width: 680 * stageScale, height: 850 * stageScale }}>
+            <div style={{ width: 680, height: 850, transformOrigin: 'top left', transform: stageScale !== 1 ? `scale(${stageScale})` : undefined }}>
+              <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} onReady={handleCanvasReady} emptyState={emptyState} />
+            </div>
           </div>
         </div>
 
-          {/* Front / Back toggle */}
+          {/* Front / Back toggle. The band is below the shirt now (not an overlay),
+              so the toggle sits at the bottom of the stage on both platforms —
+              one identical string, byte-for-byte. */}
           <div className="absolute bottom-5 flex gap-2">
             <button
               onClick={() => {
@@ -2731,6 +3045,15 @@ export default function DesignerCanvas({
               along with quantity + order total. */}
         </aside>
       </div>
+
+      {/* Mobile tool band — an IN-FLOW fixed-height band + Rail strip at the bottom
+          of the column (never overlays the shirt). Mounted only on mobile, so it
+          owns the single SelectionPanel. */}
+      {isMobile && (
+        <MobileToolBand open={bandOpen} activeTab={activeTab} onSelectTab={bandSelectTab}>
+          {mobileBandContent}
+        </MobileToolBand>
+      )}
 
       <MyDesignsDrawer
         open={designsOpen}

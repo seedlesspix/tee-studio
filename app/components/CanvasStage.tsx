@@ -118,11 +118,14 @@ export default function CanvasStage({
               </div>
             )}
             <div className="flex w-full flex-col gap-2">
+              {/* Three equal start options (red-vocab rule: red = action only, never
+                  a pre-selected look). All neutral peers; Add Text leads by order,
+                  not colour. */}
               <button
                 onClick={emptyState.onAddText}
-                className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[#dd3333] px-3 py-2 text-sm font-bold text-white transition-opacity hover:opacity-90"
+                className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"
               >
-                <Type size={16} strokeWidth={2} /> Add Text
+                <Type size={16} strokeWidth={1.75} /> Add Text
               </button>
               <button
                 onClick={emptyState.onUpload}
