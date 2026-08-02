@@ -265,30 +265,6 @@ export default function DesignerCanvas({
     return () => document.removeEventListener('focusout', onFocusOut)
   }, [isMobile])
 
-  // ---- DEBUG (top-bar trace — remove after diagnosing) -----------------------------
-  // Live readout so a screenshot AFTER add-text+dismiss shows the truth: sY=document
-  // scroll, vT=visual-viewport offset (iOS keyboard shift), vH=visual height, barTop=
-  // the ActionBar's actual on-screen top (negative = scrolled/shifted off the top;
-  // 'none' = unmounted). Fixed + translated by vT so it stays visible even mid-shift.
-  const barTraceRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!isMobile || typeof window === 'undefined') return
-    let raf = 0
-    const tick = () => {
-      const vv = window.visualViewport
-      const bar = document.querySelector('header')
-      const barTop = bar ? Math.round(bar.getBoundingClientRect().top) : NaN
-      const el = barTraceRef.current
-      if (el) {
-        el.textContent = `sY${Math.round(window.scrollY)} vT${vv ? Math.round(vv.offsetTop) : '-'} vH${vv ? Math.round(vv.height) : '-'} barTop${Number.isNaN(barTop) ? 'none' : barTop}`
-        el.style.transform = `translateY(${vv ? Math.round(vv.offsetTop) : 0}px)`
-      }
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [isMobile])
-  // ---- END DEBUG -------------------------------------------------------------------
 
   // Below the lg breakpoint (1024px — tablets are touch users too), CSS-scale the
   // fixed 680×850 stage to fit the canvas area. The COORDINATE space stays 680×850
@@ -523,82 +499,79 @@ export default function DesignerCanvas({
   const frontObjectsRef = useRef<any[]>([])
   const backObjectsRef = useRef<any[]>([])
 
-  // Mobile: a REDUCED, finger-sized control set (Instagram/Canva-style) instead of
-  // Fabric's 8 tiny handles. THREE purposeful controls — delete (top-left), rotate
-  // (top-right), scale (bottom-right); dragging the object body still moves it. Handles
-  // are drawn in CANVAS coords and the mobile stage CSS-scales the 680×850 canvas DOWN
-  // by stageScale, so we size them INVERSELY (~46px on screen) and re-apply on
-  // stage/object changes. Rotate/scale reuse Fabric's DEFAULT handlers (properly
-  // anchored) via createObjectDefaultControls(); delete reuses the app's deleteSelected.
-  // `controls`/cornerSize/etc. are UI chrome — NOT serialized (toObject) and NOT in the
-  // PNG/SVG export — so saves and parity hashes are unaffected. Desktop keeps Fabric's
-  // default 8 handles (isMobile gate).
+  // Mobile: a REDUCED control set (Instagram/Canva-style) instead of Fabric's 8 tiny
+  // handles. THREE controls sitting OUTSIDE the selection box corners so they never
+  // cover the object: delete (top-left), rotate (top-right), scale (bottom-right);
+  // dragging the object body still moves it. Handles are drawn in CANVAS coords and the
+  // mobile stage CSS-scales the 680×850 canvas DOWN by stageScale, so both the size AND
+  // the outward offset are computed INVERSELY (~23px on screen) — which is why the
+  // controls are rebuilt on every stage/object change (offset can't be static). Rotate/
+  // scale reuse Fabric's DEFAULT handlers (properly anchored) via
+  // createObjectDefaultControls(); delete reuses the app's deleteSelected. controls/
+  // cornerSize are UI chrome — NOT serialized (toObject) and NOT in the PNG/SVG export —
+  // so saves and parity hashes are unaffected. Desktop keeps Fabric's default 8 handles.
   const deleteSelectedRef = useRef<() => void>(() => {})
-  const mobileControlsRef = useRef<Record<string, any> | null>(null)
   useEffect(() => {
     if (!isMobile) return
     const canvas = fabricCanvasRef.current
     if (!canvas) return
     let cancelled = false
     ;(async () => {
-      if (!mobileControlsRef.current) {
-        const { Control, controlsUtils } = await import('fabric')
-        if (cancelled) return
-        const d = controlsUtils.createObjectDefaultControls()
-        // Draw a control as a white disc (soft shadow for contrast on any garment) with
-        // a dark ring + a bold glyph. Radius follows the object's (scaled) cornerSize.
-        const disc = (glyph: string) =>
-          (ctx: any, left: number, top: number, _styleOverride: any, obj: any) => {
-            const size = obj.cornerSize || 44
-            const r = size / 2
-            ctx.save()
-            ctx.translate(left, top)
-            ctx.shadowColor = 'rgba(0,0,0,0.35)'
-            ctx.shadowBlur = size * 0.12
-            ctx.beginPath()
-            ctx.arc(0, 0, r, 0, Math.PI * 2)
-            ctx.fillStyle = '#ffffff'
-            ctx.fill()
-            ctx.shadowColor = 'transparent'
-            ctx.lineWidth = Math.max(1.5, size * 0.08)
-            ctx.strokeStyle = '#111827'
-            ctx.stroke()
-            ctx.fillStyle = '#111827'
-            ctx.font = `700 ${Math.round(size * 0.5)}px sans-serif`
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'middle'
-            ctx.fillText(glyph, 0, size * 0.04)
-            ctx.restore()
-          }
-        const reuse = (base: any, x: number, y: number, glyph: string, cursor: string) =>
-          new Control({
-            x, y, offsetX: 0, offsetY: 0, cursorStyle: cursor,
-            actionHandler: base?.actionHandler,
-            cursorStyleHandler: base?.cursorStyleHandler,
-            actionName: base?.actionName,
-            render: disc(glyph),
-          })
-        mobileControlsRef.current = {
-          del: new Control({
-            x: -0.5, y: -0.5, offsetX: 0, offsetY: 0, cursorStyle: 'pointer',
-            mouseUpHandler: (_e: any, transform: any) => {
-              const t = transform?.target
-              if (t?.canvas) t.canvas.setActiveObject(t)
-              deleteSelectedRef.current()
-              return true
-            },
-            render: disc('✕'),
-          }),
-          rot: reuse(d.mtr, 0.5, -0.5, '↻', 'crosshair'),
-          scale: reuse(d.br, 0.5, 0.5, '◢', 'nwse-resize'),
-        }
-      }
-      const controls = mobileControlsRef.current
+      const { Control, controlsUtils } = await import('fabric')
+      if (cancelled) return
+      const d = controlsUtils.createObjectDefaultControls()
       const s = stageScale || 1
-      // ~23px visual on screen (half of the first pass, per Denise), ~28px hit area.
-      const cornerSize = Math.round(23 / s)
-      const touchCornerSize = Math.round(28 / s)
+      const cornerSize = Math.round(23 / s)       // ~23px visual on screen
+      const touchCornerSize = Math.round(30 / s)  // a little bigger hit area
       const borderScaleFactor = Math.max(2, Math.round(2 / s))
+      const off = cornerSize * 0.75               // push the disc OUTSIDE the box corner
+      // Draw a control as a white disc (soft shadow for contrast on any garment) with a
+      // dark ring + a bold glyph. Radius follows the object's (scaled) cornerSize.
+      const disc = (glyph: string) =>
+        (ctx: any, left: number, top: number, _styleOverride: any, obj: any) => {
+          const size = obj.cornerSize || 23
+          const r = size / 2
+          ctx.save()
+          ctx.translate(left, top)
+          ctx.shadowColor = 'rgba(0,0,0,0.35)'
+          ctx.shadowBlur = size * 0.12
+          ctx.beginPath()
+          ctx.arc(0, 0, r, 0, Math.PI * 2)
+          ctx.fillStyle = '#ffffff'
+          ctx.fill()
+          ctx.shadowColor = 'transparent'
+          ctx.lineWidth = Math.max(1.5, size * 0.08)
+          ctx.strokeStyle = '#111827'
+          ctx.stroke()
+          ctx.fillStyle = '#111827'
+          ctx.font = `700 ${Math.round(size * 0.5)}px sans-serif`
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.fillText(glyph, 0, size * 0.04)
+          ctx.restore()
+        }
+      const reuse = (base: any, x: number, y: number, ox: number, oy: number, glyph: string, cursor: string) =>
+        new Control({
+          x, y, offsetX: ox, offsetY: oy, cursorStyle: cursor,
+          actionHandler: base?.actionHandler,
+          cursorStyleHandler: base?.cursorStyleHandler,
+          actionName: base?.actionName,
+          render: disc(glyph),
+        })
+      const controls = {
+        del: new Control({
+          x: -0.5, y: -0.5, offsetX: -off, offsetY: -off, cursorStyle: 'pointer',
+          mouseUpHandler: (_e: any, transform: any) => {
+            const t = transform?.target
+            if (t?.canvas) t.canvas.setActiveObject(t)
+            deleteSelectedRef.current()
+            return true
+          },
+          render: disc('✕'),
+        }),
+        rot: reuse(d.mtr, 0.5, -0.5, off, -off, '↻', 'crosshair'),
+        scale: reuse(d.br, 0.5, 0.5, off, off, '◢', 'nwse-resize'),
+      }
       canvas.getObjects().forEach((obj: any) => {
         obj.controls = controls
         obj.set({ cornerSize, touchCornerSize, transparentCorners: false, borderColor: '#111827', borderScaleFactor })
@@ -2744,10 +2717,6 @@ export default function DesignerCanvas({
   // overscroll locks are no-ops on desktop. dvh accounts for the mobile URL bar.
   return (
     <div className="designer-mobile-shell flex flex-col lg:h-screen lg:overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
-      {/* DEBUG top-bar trace (remove after diagnosing) */}
-      {isMobile && (
-        <div ref={barTraceRef} className="fixed left-0 bottom-0 z-[9999] bg-yellow-300 px-1 py-0.5 font-mono text-[10px] leading-tight text-black pointer-events-none" />
-      )}
 
       {/* Header — extracted to <ActionBar> (D0 restructure step 1a, move-not-
           rewrite). Phase 2: becomes the sealed "price + Save + Next" bottom bar
@@ -2775,8 +2744,11 @@ export default function DesignerCanvas({
           select, shrinking the shirt twice. Align now lives inside each tool's band
           edit controls; Clear All moved to the ☰ menu.) */}
 
-      {/* Main layout */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* Main layout. min-h-0 (mobile only) lets this flex row shrink below the shirt's
+          intrinsic size so the whole column FITS the screen when the tool band is open —
+          otherwise it overflows ~114px, the page becomes scrollable, and the top bar
+          scrolls off (the barTop-114 trace). Desktop reverts to auto (byte-identical). */}
+      <div className="flex flex-1 overflow-hidden min-h-0 lg:[min-height:auto]">
 
         {/* Left tool panel — DESKTOP only (mobile uses the bottom sheet below).
             Rendered conditionally (not CSS-hidden) so exactly one SelectionPanel
@@ -2796,7 +2768,7 @@ export default function DesignerCanvas({
             desktop and mobile — one identical string, byte-for-byte. */}
         <section
           ref={stageAreaRef}
-          className="flex-1 flex flex-col items-center justify-center bg-gray-50 relative overflow-hidden touch-none">
+          className="flex-1 flex flex-col items-center justify-center bg-gray-50 relative overflow-hidden touch-none min-h-0 lg:[min-height:auto]">
 
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center text-gray-800 text-sm z-10">
