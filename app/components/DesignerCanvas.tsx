@@ -240,40 +240,13 @@ export default function DesignerCanvas({
     if (isMobile && selectedObjectType) setBandOpen(true)
   }, [selectedObjectType, isMobile])
 
-  // Mobile keyboard sizing — the fix, proven by an on-device trace (2026-07-31).
-  //
-  // The app is sized to the VISUAL viewport, and the height is set IMPERATIVELY
-  // (ref.style.height) right in the visualViewport handler — NOT via React state.
-  // The React-state route was the bug: when the keyboard rose, visualViewport.height
-  // dropped to ~325 immediately, but our setState→re-render setting the height lagged
-  // a few frames. For those frames the app was still ~653 tall inside a 325px window,
-  // so iOS shifted the visual viewport up to reveal the below-the-fold textarea —
-  // pushing the WHOLE app (even fixed elements) off-screen: a black flash until the
-  // render caught up. (The trace: innerHeight stayed 653 throughout — it does NOT
-  // track the iOS keyboard, so it's the wrong signal; visualViewport.height went
-  // 653→325 and the working end-state had rootH==325, scrollY==0. Pure transition
-  // race.) Setting the height synchronously, frame-by-frame as visualViewport shrinks,
-  // means the app is never taller than the visible area, so iOS never needs to shift,
-  // so there's no black — on open OR close. `.designer-touch-lock` also locks document
-  // scroll as a backstop. Mobile only; desktop keeps its h-dvh/lg:h-screen className
-  // untouched (this effect early-returns), so desktop is byte-identical.
-  const appRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!isMobile || typeof window === 'undefined' || !window.visualViewport) return
-    const vv = window.visualViewport
-    const el = appRef.current
-    const apply = () => { if (el) el.style.height = vv.height + 'px' }
-    apply()
-    vv.addEventListener('resize', apply)
-    vv.addEventListener('scroll', apply)
-    window.addEventListener('orientationchange', apply)
-    return () => {
-      if (el) el.style.height = ''
-      vv.removeEventListener('resize', apply)
-      vv.removeEventListener('scroll', apply)
-      window.removeEventListener('orientationchange', apply)
-    }
-  }, [isMobile])
+  // Mobile keyboard: handled entirely by the BROWSER. No visualViewport JS, no height
+  // locking — those were the bug. The mobile shell uses a STABLE height
+  // (.designer-mobile-shell: -webkit-fill-available / 100vh — neither reacts to the
+  // iOS keyboard, unlike 100dvh) and the page is a normal scrolling document, so iOS
+  // scrolls the focused text box into view on its own. This is ImprintNext's approach,
+  // verified against the same iPhone/Chrome. See the .designer-mobile-shell + touch-
+  // lock notes in globals.css. Desktop is untouched (it keeps lg:h-screen).
 
   // Below the lg breakpoint (1024px — tablets are touch users too), CSS-scale the
   // fixed 680×850 stage to fit the canvas area. The COORDINATE space stays 680×850
@@ -2640,7 +2613,7 @@ export default function DesignerCanvas({
   // Desktop keeps h-screen exactly (lg:h-screen) — parity-safe; the overflow /
   // overscroll locks are no-ops on desktop. dvh accounts for the mobile URL bar.
   return (
-    <div ref={appRef} className="flex flex-col h-dvh lg:h-screen overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
+    <div className="designer-mobile-shell flex flex-col lg:h-screen lg:overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
 
       {/* Header — extracted to <ActionBar> (D0 restructure step 1a, move-not-
           rewrite). Phase 2: becomes the sealed "price + Save + Next" bottom bar

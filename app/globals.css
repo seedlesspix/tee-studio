@@ -25,21 +25,31 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* Mobile designer scroll lock. The designer adds this class to <html>/<body> via JS
-   (mobile only). `overflow:hidden` prevents the DOCUMENT from scrolling, and
-   `overscroll-behavior:none` disables pull-to-refresh / rubber-band. This is a
-   BACKSTOP to the imperative visual-viewport sizing in DesignerCanvas: the app is
-   sized frame-by-frame to the visible area so the focused text box is always above
-   the keyboard WITHOUT the browser needing to scroll — locking scroll here just
-   guarantees a stray scroll can't push the app off-screen (the "black flash" bug).
-   NOTE: this is overflow-lock only, NOT position:fixed. A fixed body was tried and
-   rejected — combined with a lagging React height it caused the very off-screen
-   shift we're preventing. The canvas owns its own gestures via touch-action:none on
-   the stage; the page has no horizontal overflow so it can't drift sideways. */
+/* Mobile designer: the app is a NORMAL, browser-managed scrolling page — we do NOT
+   lock the viewport or resize it with JS. That was the whole cause of the keyboard
+   "black flash": locking + 100dvh (which SHRINKS under the iOS keyboard, and goes
+   stale on close) + a lagging JS resize meant iOS shifted the entire app off-screen
+   to reveal the focused input. Instead — like ImprintNext, proven on the same
+   iPhone/Chrome — the shell uses a STABLE height (.designer-mobile-shell below:
+   -webkit-fill-available, 100vh fallback; neither reacts to the keyboard) and lets
+   the browser scroll the focused text box into view natively. This class only
+   disables pull-to-refresh/overscroll (protects an in-progress design); it must NOT
+   set overflow:hidden or position:fixed — either one re-breaks the native keyboard
+   scroll (both were tried and rejected). */
 html.designer-touch-lock,
 body.designer-touch-lock {
-  overflow: hidden;
   overscroll-behavior: none;
+}
+
+/* Mobile designer shell height — STABLE through the iOS keyboard (unlike 100dvh).
+   Scoped below lg so desktop (lg:h-screen) stays byte-identical. min-height (not a
+   fixed height) so the page can grow and let the browser scroll when the keyboard
+   reduces the visible area. */
+@media (max-width: 1023px) {
+  .designer-mobile-shell {
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+  }
 }
 
 /* ============================================================
