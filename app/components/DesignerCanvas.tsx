@@ -265,6 +265,31 @@ export default function DesignerCanvas({
     return () => document.removeEventListener('focusout', onFocusOut)
   }, [isMobile])
 
+  // ---- DEBUG (top-bar trace — remove after diagnosing) -----------------------------
+  // Live readout so a screenshot AFTER add-text+dismiss shows the truth: sY=document
+  // scroll, vT=visual-viewport offset (iOS keyboard shift), vH=visual height, barTop=
+  // the ActionBar's actual on-screen top (negative = scrolled/shifted off the top;
+  // 'none' = unmounted). Fixed + translated by vT so it stays visible even mid-shift.
+  const barTraceRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!isMobile || typeof window === 'undefined') return
+    let raf = 0
+    const tick = () => {
+      const vv = window.visualViewport
+      const bar = document.querySelector('header')
+      const barTop = bar ? Math.round(bar.getBoundingClientRect().top) : NaN
+      const el = barTraceRef.current
+      if (el) {
+        el.textContent = `sY${Math.round(window.scrollY)} vT${vv ? Math.round(vv.offsetTop) : '-'} vH${vv ? Math.round(vv.height) : '-'} barTop${Number.isNaN(barTop) ? 'none' : barTop}`
+        el.style.transform = `translateY(${vv ? Math.round(vv.offsetTop) : 0}px)`
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [isMobile])
+  // ---- END DEBUG -------------------------------------------------------------------
+
   // Below the lg breakpoint (1024px — tablets are touch users too), CSS-scale the
   // fixed 680×850 stage to fit the canvas area. The COORDINATE space stays 680×850
   // (objects/bounds/saves unchanged); only the DISPLAY scales — Fabric's pointer
@@ -570,8 +595,9 @@ export default function DesignerCanvas({
       }
       const controls = mobileControlsRef.current
       const s = stageScale || 1
-      const cornerSize = Math.round(46 / s)
-      const touchCornerSize = Math.round(52 / s)
+      // ~23px visual on screen (half of the first pass, per Denise), ~28px hit area.
+      const cornerSize = Math.round(23 / s)
+      const touchCornerSize = Math.round(28 / s)
       const borderScaleFactor = Math.max(2, Math.round(2 / s))
       canvas.getObjects().forEach((obj: any) => {
         obj.controls = controls
@@ -2718,6 +2744,10 @@ export default function DesignerCanvas({
   // overscroll locks are no-ops on desktop. dvh accounts for the mobile URL bar.
   return (
     <div className="designer-mobile-shell flex flex-col lg:h-screen lg:overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
+      {/* DEBUG top-bar trace (remove after diagnosing) */}
+      {isMobile && (
+        <div ref={barTraceRef} className="fixed left-0 bottom-0 z-[9999] bg-yellow-300 px-1 py-0.5 font-mono text-[10px] leading-tight text-black pointer-events-none" />
+      )}
 
       {/* Header — extracted to <ActionBar> (D0 restructure step 1a, move-not-
           rewrite). Phase 2: becomes the sealed "price + Save + Next" bottom bar
