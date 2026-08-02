@@ -498,37 +498,89 @@ export default function DesignerCanvas({
   const frontObjectsRef = useRef<any[]>([])
   const backObjectsRef = useRef<any[]>([])
 
-  // Mobile: finger-sized selection handles. Fabric draws controls in CANVAS
-  // coordinates, and the mobile stage then CSS-scales the whole 680×850 canvas DOWN
-  // by stageScale — so default ~13px handles render at ~7px on a phone: too small to
-  // grab (Denise flagged this). Size them INVERSELY to stageScale so they land at a
-  // real finger size on screen (~40px visual, ~46px hit area), as filled circles for
-  // touch. Runs on stageScale/object-count changes so new and re-fit objects stay
-  // sized. Control props (cornerSize/style/color, border) are UI chrome — NOT part of
-  // toObject()/the PNG/SVG export, so this cannot affect saves or the parity hashes.
-  // Desktop is untouched (isMobile gate): handles stay Fabric-default there.
+  // Mobile: a REDUCED, finger-sized control set (Instagram/Canva-style) instead of
+  // Fabric's 8 tiny handles. THREE purposeful controls — delete (top-left), rotate
+  // (top-right), scale (bottom-right); dragging the object body still moves it. Handles
+  // are drawn in CANVAS coords and the mobile stage CSS-scales the 680×850 canvas DOWN
+  // by stageScale, so we size them INVERSELY (~46px on screen) and re-apply on
+  // stage/object changes. Rotate/scale reuse Fabric's DEFAULT handlers (properly
+  // anchored) via createObjectDefaultControls(); delete reuses the app's deleteSelected.
+  // `controls`/cornerSize/etc. are UI chrome — NOT serialized (toObject) and NOT in the
+  // PNG/SVG export — so saves and parity hashes are unaffected. Desktop keeps Fabric's
+  // default 8 handles (isMobile gate).
+  const deleteSelectedRef = useRef<() => void>(() => {})
+  const mobileControlsRef = useRef<Record<string, any> | null>(null)
   useEffect(() => {
     if (!isMobile) return
     const canvas = fabricCanvasRef.current
     if (!canvas) return
-    const s = stageScale || 1
-    const cornerSize = Math.round(40 / s)
-    const touchCornerSize = Math.round(46 / s)
-    const borderScaleFactor = Math.max(2, Math.round(2 / s))
-    canvas.getObjects().forEach((obj: any) => {
-      obj.set({
-        cornerSize,
-        touchCornerSize,
-        cornerStyle: 'circle',
-        transparentCorners: false,
-        cornerColor: '#ffffff',
-        cornerStrokeColor: '#111827',
-        borderColor: '#111827',
-        borderScaleFactor,
+    let cancelled = false
+    ;(async () => {
+      if (!mobileControlsRef.current) {
+        const { Control, controlsUtils } = await import('fabric')
+        if (cancelled) return
+        const d = controlsUtils.createObjectDefaultControls()
+        // Draw a control as a white disc (soft shadow for contrast on any garment) with
+        // a dark ring + a bold glyph. Radius follows the object's (scaled) cornerSize.
+        const disc = (glyph: string) =>
+          (ctx: any, left: number, top: number, _styleOverride: any, obj: any) => {
+            const size = obj.cornerSize || 44
+            const r = size / 2
+            ctx.save()
+            ctx.translate(left, top)
+            ctx.shadowColor = 'rgba(0,0,0,0.35)'
+            ctx.shadowBlur = size * 0.12
+            ctx.beginPath()
+            ctx.arc(0, 0, r, 0, Math.PI * 2)
+            ctx.fillStyle = '#ffffff'
+            ctx.fill()
+            ctx.shadowColor = 'transparent'
+            ctx.lineWidth = Math.max(1.5, size * 0.08)
+            ctx.strokeStyle = '#111827'
+            ctx.stroke()
+            ctx.fillStyle = '#111827'
+            ctx.font = `700 ${Math.round(size * 0.5)}px sans-serif`
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'middle'
+            ctx.fillText(glyph, 0, size * 0.04)
+            ctx.restore()
+          }
+        const reuse = (base: any, x: number, y: number, glyph: string, cursor: string) =>
+          new Control({
+            x, y, offsetX: 0, offsetY: 0, cursorStyle: cursor,
+            actionHandler: base?.actionHandler,
+            cursorStyleHandler: base?.cursorStyleHandler,
+            actionName: base?.actionName,
+            render: disc(glyph),
+          })
+        mobileControlsRef.current = {
+          del: new Control({
+            x: -0.5, y: -0.5, offsetX: 0, offsetY: 0, cursorStyle: 'pointer',
+            mouseUpHandler: (_e: any, transform: any) => {
+              const t = transform?.target
+              if (t?.canvas) t.canvas.setActiveObject(t)
+              deleteSelectedRef.current()
+              return true
+            },
+            render: disc('✕'),
+          }),
+          rot: reuse(d.mtr, 0.5, -0.5, '↻', 'crosshair'),
+          scale: reuse(d.br, 0.5, 0.5, '◢', 'nwse-resize'),
+        }
+      }
+      const controls = mobileControlsRef.current
+      const s = stageScale || 1
+      const cornerSize = Math.round(46 / s)
+      const touchCornerSize = Math.round(52 / s)
+      const borderScaleFactor = Math.max(2, Math.round(2 / s))
+      canvas.getObjects().forEach((obj: any) => {
+        obj.controls = controls
+        obj.set({ cornerSize, touchCornerSize, transparentCorners: false, borderColor: '#111827', borderScaleFactor })
+        obj.setCoords?.()
       })
-      obj.setCoords?.()
-    })
-    canvas.requestRenderAll()
+      canvas.requestRenderAll()
+    })()
+    return () => { cancelled = true }
   }, [isMobile, stageScale, canvasObjectCount])
   // `url` is the DISPLAY rendition (what's on the canvas). `originalUrl` is the
   // file the customer actually uploaded — set only when they differ, i.e. when we
@@ -2308,6 +2360,8 @@ export default function DesignerCanvas({
     const active = fabricCanvas.getActiveObject()
     if (active) { fabricCanvas.remove(active); fabricCanvas.renderAll() }
   }
+  // Keep the mobile delete-control's handler pointing at the live deleteSelected.
+  useEffect(() => { deleteSelectedRef.current = deleteSelected })
 
   // ── CanvasStage parity harness hook (DEV-ONLY, ?parity=1) ──────────────────
   // READ-ONLY instrumentation for the extraction gate. Exposes the canvas + the
