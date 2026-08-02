@@ -480,6 +480,39 @@ export default function DesignerCanvas({
   const lastActiveObjectRef = useRef<any>(null)
   const frontObjectsRef = useRef<any[]>([])
   const backObjectsRef = useRef<any[]>([])
+
+  // Mobile: finger-sized selection handles. Fabric draws controls in CANVAS
+  // coordinates, and the mobile stage then CSS-scales the whole 680×850 canvas DOWN
+  // by stageScale — so default ~13px handles render at ~7px on a phone: too small to
+  // grab (Denise flagged this). Size them INVERSELY to stageScale so they land at a
+  // real finger size on screen (~40px visual, ~46px hit area), as filled circles for
+  // touch. Runs on stageScale/object-count changes so new and re-fit objects stay
+  // sized. Control props (cornerSize/style/color, border) are UI chrome — NOT part of
+  // toObject()/the PNG/SVG export, so this cannot affect saves or the parity hashes.
+  // Desktop is untouched (isMobile gate): handles stay Fabric-default there.
+  useEffect(() => {
+    if (!isMobile) return
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    const s = stageScale || 1
+    const cornerSize = Math.round(40 / s)
+    const touchCornerSize = Math.round(46 / s)
+    const borderScaleFactor = Math.max(2, Math.round(2 / s))
+    canvas.getObjects().forEach((obj: any) => {
+      obj.set({
+        cornerSize,
+        touchCornerSize,
+        cornerStyle: 'circle',
+        transparentCorners: false,
+        cornerColor: '#ffffff',
+        cornerStrokeColor: '#111827',
+        borderColor: '#111827',
+        borderScaleFactor,
+      })
+      obj.setCoords?.()
+    })
+    canvas.requestRenderAll()
+  }, [isMobile, stageScale, canvasObjectCount])
   // `url` is the DISPLAY rendition (what's on the canvas). `originalUrl` is the
   // file the customer actually uploaded — set only when they differ, i.e. when we
   // converted (AI/PSD/EPS/PDF). The print shop needs the original, not the PNG.
