@@ -200,6 +200,7 @@ export default function DesignerCanvas({
 
   // ── Mobile (BLOCKER-2, canvas-scaling pass) ──────────────────────────────────
   const stageAreaRef = useRef<HTMLElement>(null)
+  const shellRef = useRef<HTMLDivElement>(null)
   const [isMobile, setIsMobile] = useState(false)
   const [stageScale, setStageScale] = useState(1)
   useEffect(() => {
@@ -263,6 +264,27 @@ export default function DesignerCanvas({
     }
     document.addEventListener('focusout', onFocusOut)
     return () => document.removeEventListener('focusout', onFocusOut)
+  }, [isMobile])
+
+  // Size the mobile shell to window.innerHeight (imperative, so no React lag). This is
+  // the FIX for the top bar vanishing: -webkit-fill-available reported 767px on iOS
+  // Chrome while the real window was 653px, so the column overflowed by 114px, became
+  // scrollable, and the bar scrolled off. innerHeight is the true layout viewport, is
+  // STABLE through the keyboard (verified: 653 with keyboard up AND down), and updates
+  // on URL-bar show/hide + rotation via 'resize'. With the shell == the window, the
+  // page fits (nothing to scroll) so the top bar can't leave.
+  useEffect(() => {
+    if (!isMobile || typeof window === 'undefined') return
+    const apply = () => { if (shellRef.current) shellRef.current.style.height = window.innerHeight + 'px' }
+    apply()
+    window.addEventListener('resize', apply)
+    window.addEventListener('orientationchange', apply)
+    return () => {
+      const el = shellRef.current
+      if (el) el.style.height = ''
+      window.removeEventListener('resize', apply)
+      window.removeEventListener('orientationchange', apply)
+    }
   }, [isMobile])
 
   // ---- DEBUG (top-bar trace v2 — remove after diagnosing) --------------------------
@@ -554,38 +576,58 @@ export default function DesignerCanvas({
       const touchCornerSize = Math.round(30 / s)  // a little bigger hit area
       const borderScaleFactor = Math.max(2, Math.round(2 / s))
       const off = cornerSize * 0.75               // push the disc OUTSIDE the box corner
-      // Draw a control as a white disc (soft shadow for contrast on any garment) with a
-      // dark ring + a bold glyph. Radius follows the object's (scaled) cornerSize.
-      const disc = (glyph: string, glyphScale = 0.5) =>
-        (ctx: any, left: number, top: number, _styleOverride: any, obj: any) => {
+      // A control = white disc (soft shadow for contrast on any garment) + dark ring +
+      // an icon. Icon size/stroke follow the object's (scaled) cornerSize.
+      const discBg = (ctx: any, size: number) => {
+        ctx.shadowColor = 'rgba(0,0,0,0.35)'
+        ctx.shadowBlur = size * 0.12
+        ctx.beginPath()
+        ctx.arc(0, 0, size / 2, 0, Math.PI * 2)
+        ctx.fillStyle = '#ffffff'
+        ctx.fill()
+        ctx.shadowColor = 'transparent'
+        ctx.lineWidth = Math.max(1.5, size * 0.08)
+        ctx.strokeStyle = '#111827'
+        ctx.stroke()
+      }
+      const glyphRender = (glyph: string, glyphScale = 0.5) =>
+        (ctx: any, left: number, top: number, _o: any, obj: any) => {
           const size = obj.cornerSize || 23
-          const r = size / 2
-          ctx.save()
-          ctx.translate(left, top)
-          ctx.shadowColor = 'rgba(0,0,0,0.35)'
-          ctx.shadowBlur = size * 0.12
-          ctx.beginPath()
-          ctx.arc(0, 0, r, 0, Math.PI * 2)
-          ctx.fillStyle = '#ffffff'
-          ctx.fill()
-          ctx.shadowColor = 'transparent'
-          ctx.lineWidth = Math.max(1.5, size * 0.08)
-          ctx.strokeStyle = '#111827'
-          ctx.stroke()
+          ctx.save(); ctx.translate(left, top); discBg(ctx, size)
           ctx.fillStyle = '#111827'
           ctx.font = `700 ${Math.round(size * glyphScale)}px sans-serif`
-          ctx.textAlign = 'center'
-          ctx.textBaseline = 'middle'
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
           ctx.fillText(glyph, 0, size * 0.04)
           ctx.restore()
         }
-      const reuse = (base: any, x: number, y: number, ox: number, oy: number, glyph: string, cursor: string, glyphScale = 0.5) =>
+      // Rotate: a DRAWN circular arrow (fills the disc — the ↻ glyph rendered too small).
+      const rotateRender = (ctx: any, left: number, top: number, _o: any, obj: any) => {
+        const size = obj.cornerSize || 23
+        ctx.save(); ctx.translate(left, top); discBg(ctx, size)
+        ctx.strokeStyle = '#111827'
+        ctx.lineWidth = Math.max(2, size * 0.11)
+        ctx.lineCap = 'round'
+        const R = size * 0.29
+        const end = Math.PI * 1.15
+        ctx.beginPath()
+        ctx.arc(0, 0, R, -Math.PI * 0.45, end)   // ~3/4 open circle
+        ctx.stroke()
+        const ex = Math.cos(end) * R, ey = Math.sin(end) * R   // arrowhead at the arc end
+        const back = end + Math.PI / 2 + Math.PI               // opposite the clockwise tangent
+        const h = size * 0.22
+        ctx.beginPath()
+        ctx.moveTo(ex, ey); ctx.lineTo(ex + Math.cos(back - 0.5) * h, ey + Math.sin(back - 0.5) * h)
+        ctx.moveTo(ex, ey); ctx.lineTo(ex + Math.cos(back + 0.5) * h, ey + Math.sin(back + 0.5) * h)
+        ctx.stroke()
+        ctx.restore()
+      }
+      const reuse = (base: any, x: number, y: number, ox: number, oy: number, render: any, cursor: string) =>
         new Control({
           x, y, offsetX: ox, offsetY: oy, cursorStyle: cursor,
           actionHandler: base?.actionHandler,
           cursorStyleHandler: base?.cursorStyleHandler,
           actionName: base?.actionName,
-          render: disc(glyph, glyphScale),
+          render,
         })
       const controls = {
         del: new Control({
@@ -596,10 +638,10 @@ export default function DesignerCanvas({
             deleteSelectedRef.current()
             return true
           },
-          render: disc('✕'),
+          render: glyphRender('✕'),
         }),
-        rot: reuse(d.mtr, 0.5, -0.5, off, -off, '↻', 'crosshair', 0.68),
-        scale: reuse(d.br, 0.5, 0.5, off, off, '◢', 'nwse-resize'),
+        rot: reuse(d.mtr, 0.5, -0.5, off, -off, rotateRender, 'crosshair'),
+        scale: reuse(d.br, 0.5, 0.5, off, off, glyphRender('◢'), 'nwse-resize'),
       }
       canvas.getObjects().forEach((obj: any) => {
         obj.controls = controls
@@ -2745,7 +2787,7 @@ export default function DesignerCanvas({
   // Desktop keeps h-screen exactly (lg:h-screen) — parity-safe; the overflow /
   // overscroll locks are no-ops on desktop. dvh accounts for the mobile URL bar.
   return (
-    <div className="designer-mobile-shell flex flex-col lg:h-screen lg:overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
+    <div ref={shellRef} className="designer-mobile-shell flex flex-col lg:h-screen lg:overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
       {/* DEBUG top-bar trace v2 (remove after diagnosing) */}
       {isMobile && (
         <div ref={barTraceRef} className="fixed left-0 bottom-0 z-[9999] bg-yellow-300 px-1 py-0.5 font-mono text-[9px] leading-tight text-black pointer-events-none" />

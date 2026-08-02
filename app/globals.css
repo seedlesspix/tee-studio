@@ -41,14 +41,15 @@ body.designer-touch-lock {
   overscroll-behavior: none;
 }
 
-/* Mobile designer shell height — STABLE through the iOS keyboard (unlike 100dvh).
-   Scoped below lg so desktop (lg:h-screen) stays byte-identical. min-height (not a
-   fixed height) so the page can grow and let the browser scroll when the keyboard
-   reduces the visible area. */
+/* Mobile designer shell height. `-webkit-fill-available` OVER-reported on iOS Chrome
+   (767px vs the real window 653px — the URL-bar-hidden height), making the column
+   114px too tall so it overflowed and the top bar scrolled off. So the height is now
+   set by JS to the proven, keyboard-stable `window.innerHeight` (see DesignerCanvas).
+   This is just the pre-JS fallback. Scoped below lg so desktop (lg:h-screen) stays
+   byte-identical. */
 @media (max-width: 1023px) {
   .designer-mobile-shell {
-    min-height: 100vh;
-    min-height: -webkit-fill-available;
+    height: 100dvh;
   }
 }
 
