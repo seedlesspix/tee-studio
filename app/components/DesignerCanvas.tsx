@@ -50,6 +50,16 @@ async function uploadToCloudinary(
   }
 }
 
+// Max upload size. Cloudinary's unsigned /image/upload rejects files over the plan's
+// image cap (free tier = 10 MB), which used to fail silently — worst for PDFs, where the
+// preview was kept but the original was dropped with no error. We now validate client-
+// side FIRST for a clear rejection + a "just email us" pressure valve.
+// ← ONE NUMBER TO CHANGE: bump to 20 when the account upgrades to the paid tier at launch.
+const MAX_UPLOAD_MB = 10
+// Customer-facing address for the "email us the big file" valve. Shown in the reject
+// message so an oversize file still reaches the shop.
+const SUPPORT_EMAIL = 'orders@tshirtdeli.com' // TODO(Denise): confirm the real address
+
 interface ShopifyVariant {
   id: string
   title: string
@@ -2019,6 +2029,22 @@ export default function DesignerCanvas({
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !fabricCanvas) return
+
+    // Reject oversize BEFORE any upload attempt. Cloudinary rejects files over the plan
+    // cap (MAX_UPLOAD_MB); that failure used to be silent (esp. PDFs — preview kept,
+    // original lost). A clear message + the email valve means the customer knows
+    // immediately and we never store an absent/damaged original.
+    if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      const mb = (file.size / (1024 * 1024)).toFixed(1)
+      alert(
+        `That file is ${mb} MB, but the largest we can upload here is ${MAX_UPLOAD_MB} MB.\n\n` +
+        `Please upload a smaller version — or email the original file to us at ${SUPPORT_EMAIL} ` +
+        `and we'll add it to your order.`,
+      )
+      e.target.value = ''
+      return
+    }
+
     markDirty()
 
     const ext = file.name.split('.').pop()?.toLowerCase() || ''
@@ -2063,7 +2089,7 @@ export default function DesignerCanvas({
           name: file.name, url: pngUrl, type: 'image/png', originalUrl, originalFormat: ext,
         }]
       } catch (err: any) {
-        alert(`Could not convert ${ext.toUpperCase()} file: ${err.message}`)
+        alert(`We couldn't process your ${ext.toUpperCase()} file: ${err.message}\n\nPlease try a different file, or email the original to us at ${SUPPORT_EMAIL} and we'll add it to your order.`)
       }
       e.target.value = ''
       return
@@ -2076,6 +2102,7 @@ export default function DesignerCanvas({
         const pdfjsLib = await import('pdfjs-dist')
         pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+        const pageCount = pdf.numPages
         const page = await pdf.getPage(1)
         const viewport = page.getViewport({ scale: 2 })
         const offCanvas = document.createElement('canvas')
@@ -2107,6 +2134,12 @@ export default function DesignerCanvas({
             originalUrl: original?.url, originalFormat: 'pdf',
           }]
         }
+        // Never silently drop the original or hide the page loss — tell the customer now.
+        const notices: string[] = []
+        if (pageCount > 1) notices.push(`Your PDF has ${pageCount} pages — only page 1 was added to the design. If you need a different page, please upload just that page.`)
+        if (uploaded && !original) notices.push(`We added your design, but couldn't save the original PDF at full quality for production. Please email the original to us at ${SUPPORT_EMAIL} and we'll attach it to your order.`)
+        if (!uploaded) notices.push(`We couldn't save your PDF upload — please try again, or email the file to us at ${SUPPORT_EMAIL}.`)
+        if (notices.length) alert(notices.join('\n\n'))
       } catch (err) {
         alert('Could not load PDF. Make sure it is a valid PDF file.')
       }
