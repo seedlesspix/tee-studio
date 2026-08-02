@@ -202,10 +202,13 @@ export default function DesignerCanvas({
   const stageAreaRef = useRef<HTMLElement>(null)
   const shellRef = useRef<HTMLDivElement>(null)
   const [isMobile, setIsMobile] = useState(false)
+  // Live mirror of isMobile for callbacks captured once at canvas-init (the pre-existing
+  // applyControls closure) that can't see React state updates.
+  const isMobileRef = useRef(false)
   const [stageScale, setStageScale] = useState(1)
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 1023px)')
-    const update = () => setIsMobile(mq.matches)
+    const update = () => { isMobileRef.current = mq.matches; setIsMobile(mq.matches) }
     update()
     mq.addEventListener('change', update)
     return () => mq.removeEventListener('change', update)
@@ -303,9 +306,9 @@ export default function DesignerCanvas({
       const shellH = shellRef.current ? Math.round(shellRef.current.getBoundingClientRect().height) : NaN
       const el = barTraceRef.current
       if (el) {
-        // BUILD-12 = the innerHeight-shell fix. shell should == win (653), NOT doc767.
+        // BUILD-13 = innerHeight shell + mobile-disc-conflict fix. shell should == win.
         el.textContent =
-          `BUILD-12 win${window.innerHeight} shell${Number.isNaN(shellH) ? '-' : shellH}` +
+          `BUILD-13 win${window.innerHeight} shell${Number.isNaN(shellH) ? '-' : shellH}` +
           ` doc${Math.round(document.documentElement.scrollHeight)} sY${Math.round(window.scrollY)}` +
           ` bar${Number.isNaN(barTop) ? 'none' : barTop}`
         el.style.transform = `translateY(${vv ? Math.round(vv.offsetTop) : 0}px)`
@@ -568,6 +571,7 @@ export default function DesignerCanvas({
     const canvas = fabricCanvasRef.current
     if (!canvas) return
     let cancelled = false
+    let cleanupAdded = () => {}
     ;(async () => {
       const { Control, controlsUtils } = await import('fabric')
       if (cancelled) return
@@ -644,14 +648,21 @@ export default function DesignerCanvas({
         rot: reuse(d.mtr, 0.5, -0.5, off, -off, rotateRender, 'crosshair'),
         scale: reuse(d.br, 0.5, 0.5, off, off, glyphRender('◢'), 'nwse-resize'),
       }
-      canvas.getObjects().forEach((obj: any) => {
+      const applyTo = (obj: any) => {
         obj.controls = controls
         obj.set({ cornerSize, touchCornerSize, transparentCorners: false, borderColor: '#111827', borderScaleFactor })
         obj.setCoords?.()
-      })
+      }
+      canvas.getObjects().forEach(applyTo)
       canvas.requestRenderAll()
+      // Also re-assert on every add (created / restored / re-added), since the pre-
+      // existing applyControls now no-ops on mobile — otherwise a re-added object would
+      // fall back to Fabric's default handles.
+      const onAdded = (e: any) => { if (e?.target) { applyTo(e.target); canvas.requestRenderAll() } }
+      canvas.on('object:added', onAdded)
+      cleanupAdded = () => canvas.off('object:added', onAdded)
     })()
-    return () => { cancelled = true }
+    return () => { cancelled = true; cleanupAdded() }
   }, [isMobile, stageScale, canvasObjectCount])
   // `url` is the DISPLAY rendition (what's on the canvas). `originalUrl` is the
   // file the customer actually uploaded — set only when they differ, i.e. when we
@@ -1377,6 +1388,11 @@ export default function DesignerCanvas({
         })
 
         const applyControls = (obj: any) => {
+          // MOBILE uses its own 3-disc control set (applied by the mobile effect, which
+          // also hooks object:added). Skip the desktop red-circle set here so the two
+          // systems don't fight (the desktop set was overriding the mobile discs on
+          // re-add/restore, showing the old red handles). Desktop is unchanged.
+          if (isMobileRef.current) return
           obj.controls = {
             rotateControl,
             deleteControl,
