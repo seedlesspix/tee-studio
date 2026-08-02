@@ -290,35 +290,6 @@ export default function DesignerCanvas({
     }
   }, [isMobile])
 
-  // ---- DEBUG (top-bar trace v2 — remove after diagnosing) --------------------------
-  // Richer readout. KEY comparison: doc vs win — if doc(scrollHeight) > win(innerHeight)
-  // the column STILL overflows (the min-h-0 fit didn't take) and the page is scrollable;
-  // if doc<=win but bar<0, something is scrolling/translating the bar without page
-  // overflow. sY=scroll, vT=keyboard shift, sec=stage-section height, bar=ActionBar top.
-  const barTraceRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!isMobile || typeof window === 'undefined') return
-    let raf = 0
-    const tick = () => {
-      const vv = window.visualViewport
-      const bar = document.querySelector('header')
-      const barTop = bar ? Math.round(bar.getBoundingClientRect().top) : NaN
-      const shellH = shellRef.current ? Math.round(shellRef.current.getBoundingClientRect().height) : NaN
-      const el = barTraceRef.current
-      if (el) {
-        // BUILD-14 = designer-page <main> mobile-fit fix. doc should now == win == 653.
-        el.textContent =
-          `BUILD-14 win${window.innerHeight} shell${Number.isNaN(shellH) ? '-' : shellH}` +
-          ` doc${Math.round(document.documentElement.scrollHeight)} sY${Math.round(window.scrollY)}` +
-          ` bar${Number.isNaN(barTop) ? 'none' : barTop}`
-        el.style.transform = `translateY(${vv ? Math.round(vv.offsetTop) : 0}px)`
-      }
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [isMobile])
-  // ---- END DEBUG -------------------------------------------------------------------
 
 
   // Below the lg breakpoint (1024px — tablets are touch users too), CSS-scale the
@@ -2805,10 +2776,6 @@ export default function DesignerCanvas({
   // overscroll locks are no-ops on desktop. dvh accounts for the mobile URL bar.
   return (
     <div ref={shellRef} className="designer-mobile-shell flex flex-col lg:h-screen lg:overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
-      {/* DEBUG top-bar trace v2 (remove after diagnosing) */}
-      {isMobile && (
-        <div ref={barTraceRef} className="fixed left-0 bottom-0 z-[9999] bg-yellow-300 px-1 py-0.5 font-mono text-[9px] leading-tight text-black pointer-events-none" />
-      )}
 
       {/* Header — extracted to <ActionBar> (D0 restructure step 1a, move-not-
           rewrite). Phase 2: becomes the sealed "price + Save + Next" bottom bar
