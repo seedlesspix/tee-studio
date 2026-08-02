@@ -300,13 +300,14 @@ export default function DesignerCanvas({
       const vv = window.visualViewport
       const bar = document.querySelector('header')
       const barTop = bar ? Math.round(bar.getBoundingClientRect().top) : NaN
-      const secH = stageAreaRef.current ? Math.round(stageAreaRef.current.getBoundingClientRect().height) : NaN
+      const shellH = shellRef.current ? Math.round(shellRef.current.getBoundingClientRect().height) : NaN
       const el = barTraceRef.current
       if (el) {
+        // BUILD-12 = the innerHeight-shell fix. shell should == win (653), NOT doc767.
         el.textContent =
-          `sY${Math.round(window.scrollY)} vT${vv ? Math.round(vv.offsetTop) : '-'} vH${vv ? Math.round(vv.height) : '-'}` +
-          ` win${window.innerHeight} doc${Math.round(document.documentElement.scrollHeight)}` +
-          ` sec${Number.isNaN(secH) ? '-' : secH} bar${Number.isNaN(barTop) ? 'none' : barTop}`
+          `BUILD-12 win${window.innerHeight} shell${Number.isNaN(shellH) ? '-' : shellH}` +
+          ` doc${Math.round(document.documentElement.scrollHeight)} sY${Math.round(window.scrollY)}` +
+          ` bar${Number.isNaN(barTop) ? 'none' : barTop}`
         el.style.transform = `translateY(${vv ? Math.round(vv.offsetTop) : 0}px)`
       }
       raf = requestAnimationFrame(tick)
