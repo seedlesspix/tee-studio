@@ -248,6 +248,23 @@ export default function DesignerCanvas({
   // verified against the same iPhone/Chrome. See the .designer-mobile-shell + touch-
   // lock notes in globals.css. Desktop is untouched (it keeps lg:h-screen).
 
+  // Companion to the sticky top bar: iOS scrolls the document to lift the focused text
+  // box above the keyboard, but doesn't reliably scroll back on dismiss — leaving the
+  // shirt (and, without the sticky bar, the price/Next Step) scrolled out of view. When
+  // focus leaves the text fields (keyboard closing), snap the page back to the top.
+  useEffect(() => {
+    if (!isMobile || typeof window === 'undefined') return
+    const onFocusOut = () => {
+      setTimeout(() => {
+        const ae = document.activeElement
+        const typing = ae instanceof HTMLElement && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')
+        if (!typing) window.scrollTo(0, 0)
+      }, 80)
+    }
+    document.addEventListener('focusout', onFocusOut)
+    return () => document.removeEventListener('focusout', onFocusOut)
+  }, [isMobile])
+
   // Below the lg breakpoint (1024px — tablets are touch users too), CSS-scale the
   // fixed 680×850 stage to fit the canvas area. The COORDINATE space stays 680×850
   // (objects/bounds/saves unchanged); only the DISPLAY scales — Fabric's pointer
