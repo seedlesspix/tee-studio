@@ -26,7 +26,7 @@ function DesignerContent() {
   }
 
   return (
-    <main className="h-screen w-screen overflow-hidden bg-[#0d0d0d]">
+    <main className="w-screen lg:h-screen lg:overflow-hidden bg-[#0d0d0d]">
       <DesignerCanvas
         productId={productId}
         variantId={variantId}

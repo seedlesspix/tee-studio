@@ -306,9 +306,9 @@ export default function DesignerCanvas({
       const shellH = shellRef.current ? Math.round(shellRef.current.getBoundingClientRect().height) : NaN
       const el = barTraceRef.current
       if (el) {
-        // BUILD-13 = innerHeight shell + mobile-disc-conflict fix. shell should == win.
+        // BUILD-14 = designer-page <main> mobile-fit fix. doc should now == win == 653.
         el.textContent =
-          `BUILD-13 win${window.innerHeight} shell${Number.isNaN(shellH) ? '-' : shellH}` +
+          `BUILD-14 win${window.innerHeight} shell${Number.isNaN(shellH) ? '-' : shellH}` +
           ` doc${Math.round(document.documentElement.scrollHeight)} sY${Math.round(window.scrollY)}` +
           ` bar${Number.isNaN(barTop) ? 'none' : barTop}`
         el.style.transform = `translateY(${vv ? Math.round(vv.offsetTop) : 0}px)`
