@@ -265,6 +265,35 @@ export default function DesignerCanvas({
     return () => document.removeEventListener('focusout', onFocusOut)
   }, [isMobile])
 
+  // ---- DEBUG (top-bar trace v2 — remove after diagnosing) --------------------------
+  // Richer readout. KEY comparison: doc vs win — if doc(scrollHeight) > win(innerHeight)
+  // the column STILL overflows (the min-h-0 fit didn't take) and the page is scrollable;
+  // if doc<=win but bar<0, something is scrolling/translating the bar without page
+  // overflow. sY=scroll, vT=keyboard shift, sec=stage-section height, bar=ActionBar top.
+  const barTraceRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!isMobile || typeof window === 'undefined') return
+    let raf = 0
+    const tick = () => {
+      const vv = window.visualViewport
+      const bar = document.querySelector('header')
+      const barTop = bar ? Math.round(bar.getBoundingClientRect().top) : NaN
+      const secH = stageAreaRef.current ? Math.round(stageAreaRef.current.getBoundingClientRect().height) : NaN
+      const el = barTraceRef.current
+      if (el) {
+        el.textContent =
+          `sY${Math.round(window.scrollY)} vT${vv ? Math.round(vv.offsetTop) : '-'} vH${vv ? Math.round(vv.height) : '-'}` +
+          ` win${window.innerHeight} doc${Math.round(document.documentElement.scrollHeight)}` +
+          ` sec${Number.isNaN(secH) ? '-' : secH} bar${Number.isNaN(barTop) ? 'none' : barTop}`
+        el.style.transform = `translateY(${vv ? Math.round(vv.offsetTop) : 0}px)`
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [isMobile])
+  // ---- END DEBUG -------------------------------------------------------------------
+
 
   // Below the lg breakpoint (1024px — tablets are touch users too), CSS-scale the
   // fixed 680×850 stage to fit the canvas area. The COORDINATE space stays 680×850
@@ -527,7 +556,7 @@ export default function DesignerCanvas({
       const off = cornerSize * 0.75               // push the disc OUTSIDE the box corner
       // Draw a control as a white disc (soft shadow for contrast on any garment) with a
       // dark ring + a bold glyph. Radius follows the object's (scaled) cornerSize.
-      const disc = (glyph: string) =>
+      const disc = (glyph: string, glyphScale = 0.5) =>
         (ctx: any, left: number, top: number, _styleOverride: any, obj: any) => {
           const size = obj.cornerSize || 23
           const r = size / 2
@@ -544,19 +573,19 @@ export default function DesignerCanvas({
           ctx.strokeStyle = '#111827'
           ctx.stroke()
           ctx.fillStyle = '#111827'
-          ctx.font = `700 ${Math.round(size * 0.5)}px sans-serif`
+          ctx.font = `700 ${Math.round(size * glyphScale)}px sans-serif`
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
           ctx.fillText(glyph, 0, size * 0.04)
           ctx.restore()
         }
-      const reuse = (base: any, x: number, y: number, ox: number, oy: number, glyph: string, cursor: string) =>
+      const reuse = (base: any, x: number, y: number, ox: number, oy: number, glyph: string, cursor: string, glyphScale = 0.5) =>
         new Control({
           x, y, offsetX: ox, offsetY: oy, cursorStyle: cursor,
           actionHandler: base?.actionHandler,
           cursorStyleHandler: base?.cursorStyleHandler,
           actionName: base?.actionName,
-          render: disc(glyph),
+          render: disc(glyph, glyphScale),
         })
       const controls = {
         del: new Control({
@@ -569,7 +598,7 @@ export default function DesignerCanvas({
           },
           render: disc('✕'),
         }),
-        rot: reuse(d.mtr, 0.5, -0.5, off, -off, '↻', 'crosshair'),
+        rot: reuse(d.mtr, 0.5, -0.5, off, -off, '↻', 'crosshair', 0.68),
         scale: reuse(d.br, 0.5, 0.5, off, off, '◢', 'nwse-resize'),
       }
       canvas.getObjects().forEach((obj: any) => {
@@ -2717,6 +2746,10 @@ export default function DesignerCanvas({
   // overscroll locks are no-ops on desktop. dvh accounts for the mobile URL bar.
   return (
     <div className="designer-mobile-shell flex flex-col lg:h-screen lg:overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
+      {/* DEBUG top-bar trace v2 (remove after diagnosing) */}
+      {isMobile && (
+        <div ref={barTraceRef} className="fixed left-0 bottom-0 z-[9999] bg-yellow-300 px-1 py-0.5 font-mono text-[9px] leading-tight text-black pointer-events-none" />
+      )}
 
       {/* Header — extracted to <ActionBar> (D0 restructure step 1a, move-not-
           rewrite). Phase 2: becomes the sealed "price + Save + Next" bottom bar
