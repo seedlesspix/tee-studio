@@ -14,7 +14,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import JSZip from 'jszip'
 import { createClient } from '../../../lib/supabase/server'
 import { serviceClient } from '../../../lib/customer-library'
-import { generateCutSvgForSide } from '../../../lib/server/generateCutFile'
+import { collectCutPaths } from '../../../lib/server/generateCutFile'
+import { assembleCutSvgUnioned } from '../../../lib/server/cutBoolean'
 import { generateLayoutSvgForSide } from '../../../lib/server/generateLayout'
 
 export const runtime = 'nodejs' // opentype.js + local-font fs read (see next.config trace-includes)
@@ -109,20 +110,24 @@ export async function GET(req: NextRequest) {
   const zip = new JSZip()
   const root = zip.folder(stem)!
 
-  // ---- Cut Files/ (one per designed side) ----
+  // ---- Cut Files/ (normal) + Cut Files (Mirrored)/ — BOTH orientations, zero prep at the
+  //      bench. Each cut file is union'd per color + math-cropped (no clip mask); the mirrored
+  //      copy is flipped for heat-transfer vinyl. Outline ONCE, assemble twice. ----
   const cutFolder = root.folder('Cut Files')!
+  const cutMirrorFolder = root.folder('Cut Files (Mirrored)')!
   const cutLines: string[] = []
   for (const side of ['front', 'back'] as const) {
     const canvasJson = side === 'front' ? o.canvas_json_front : o.canvas_json_back
     const snap = side === 'front' ? o.print_area_front : o.print_area_back
-    const r = await generateCutSvgForSide(canvasJson as string | null, snap)
-    if (r.ok) {
-      cutFolder.file(`${orderNo}-${side}.svg`, r.svg)
-      cutLines.push(`  ✓ Cut Files/${orderNo}-${side}.svg`)
-    } else if (r.reason === 'outline-failed' || r.reason === 'bad-json') {
-      cutLines.push(`  ⚠ COULD NOT GENERATE ${side}: ${r.message}${r.fonts ? ` [${r.fonts.join('; ')}]` : ''}`)
+    const c = await collectCutPaths(canvasJson as string | null, snap)
+    if (c.ok) {
+      cutFolder.file(`${orderNo}-${side}.svg`, assembleCutSvgUnioned(c.paths, c.phys, { mirror: false }))
+      cutMirrorFolder.file(`${orderNo}-${side}.svg`, assembleCutSvgUnioned(c.paths, c.phys, { mirror: true }))
+      cutLines.push(`  ✓ ${orderNo}-${side}.svg  (normal + mirrored)`)
+    } else if (c.reason === 'outline-failed' || c.reason === 'bad-json') {
+      cutLines.push(`  ⚠ COULD NOT GENERATE ${side}: ${c.message}${c.fonts ? ` [${c.fonts.join('; ')}]` : ''}`)
     } else {
-      cutLines.push(`  — ${side}: ${r.message}`)
+      cutLines.push(`  — ${side}: ${c.message}`)
     }
   }
 
@@ -226,7 +231,8 @@ export async function GET(req: NextRequest) {
     `  Front: ${summarizeSide(o.canvas_json_front as string | null)}`,
     `  Back:  ${summarizeSide(o.canvas_json_back as string | null)}`,
     ``,
-    `CUT FILES (vector to cut — text/curved/clipart only)`,
+    `CUT FILES (vector to cut — union'd per color, cropped, no mask; NORMAL + MIRRORED)`,
+    `  Cut Files/ = normal (adhesive, print-then-cut) · Cut Files (Mirrored)/ = HTV`,
     ...cutLines,
     ``,
     `LAYOUT (to-size assembly map — EVERY element incl. photos, at placed size/position)`,
@@ -242,10 +248,11 @@ export async function GET(req: NextRequest) {
     ...uploadLines,
     ``,
     `${'-'.repeat(50)}`,
-    `FOLDERS: Cut Files/ = vector to cut on the Roland · Layout/ = to-size map of`,
+    `FOLDERS: Cut Files/ = normal-cut vector (adhesive, print-then-cut) · Cut Files`,
+    `(Mirrored)/ = same, flipped for heat-transfer vinyl · Layout/ = to-size map of`,
     `where every element goes (incl. photos) · Previews/ = the mockup the customer`,
-    `approved · Originals/ = the file to print from · Uploads/ = web renditions`,
-    `(reference). Generated on download — nothing cached.`,
+    `approved · Originals/ = the file to print from · Uploads/ = web renditions.`,
+    `Cut files are union'd + cropped, cutter-ready (no clip mask). Generated on download.`,
   ]
   root.file('OrderInfo.txt', info.join('\n') + '\n')
 

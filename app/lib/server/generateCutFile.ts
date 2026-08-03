@@ -6,8 +6,11 @@
 import * as opentype from 'opentype.js'
 import { getFontBuffer, toArrayBuffer, baseFamily } from './fontBuffer'
 import { boxFromSnapshot, isSnapshot, type CanvasBox } from './cutFileGeometry'
-import { outlineText, curvedTextToCutPath, assembleCutSvg, type TextPlacement, type CutPath, type PhysBox } from './cutFileEngine'
+import { outlineText, curvedTextToCutPath, type TextPlacement, type CutPath, type PhysBox } from './cutFileEngine'
 import { clipartToCutPaths } from './clipartCutEngine'
+import { assembleCutSvgUnioned } from './cutBoolean'
+
+export type CutGenOptions = { fontOverride?: string | null; mirror?: boolean }
 
 export type CutSvgResult =
   | { ok: true; svg: string }
@@ -111,11 +114,16 @@ export async function outlineVectorObject(
   return { paths: [outlineText(font, place, canvasBox, phys)] }
 }
 
-export async function generateCutSvgForSide(
-  canvasJson: string | null | undefined,
-  snap: unknown,
-  opts: { fontOverride?: string | null } = {},
-): Promise<CutSvgResult> {
+export type CutPathsResult =
+  | { ok: true; paths: CutPath[]; phys: PhysBox }
+  | { ok: false; reason: 'no-design' | 'no-print-area' | 'no-vector' | 'bad-json' | 'outline-failed'; message: string; fonts?: string[] }
+
+// Outline a side's vector objects into raw cut paths (the expensive step: font parse + glyph
+// outlining). Kept separate from assembly so the whole-order bundle can outline ONCE and then
+// assemble both a normal and a mirrored cut file from the same paths.
+export async function collectCutPaths(
+  canvasJson: string | null | undefined, snap: unknown, opts: CutGenOptions = {},
+): Promise<CutPathsResult> {
   const prep = prepareSide(canvasJson, snap)
   if (!prep.ok) return prep
   const { objects, canvasBox, phys } = prep
@@ -137,5 +145,16 @@ export async function generateCutSvgForSide(
   if (failures.size) return { ok: false, reason: 'outline-failed', message: 'Some objects could not be outlined (nothing generated, to avoid a partial file)', fonts: [...failures] }
   if (paths.length === 0) return { ok: false, reason: 'no-vector', message: 'nothing to outline' }
 
-  return { ok: true, svg: assembleCutSvg(paths, phys) }
+  return { ok: true, paths, phys }
+}
+
+export async function generateCutSvgForSide(
+  canvasJson: string | null | undefined,
+  snap: unknown,
+  opts: CutGenOptions = {},
+): Promise<CutSvgResult> {
+  const c = await collectCutPaths(canvasJson, snap, opts)
+  if (!c.ok) return c
+  // Cutter-ready: union per color layer + math crop (no mask) + optional mirror.
+  return { ok: true, svg: assembleCutSvgUnioned(c.paths, c.phys, { mirror: opts.mirror }) }
 }

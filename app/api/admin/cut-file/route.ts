@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
   const orderId = u.searchParams.get('order') || ''
   const side = (u.searchParams.get('side') || 'front') as 'front' | 'back'
   const fontOverride = u.searchParams.get('font') // optional: force one font for testing
+  const mirror = u.searchParams.get('mirror') === '1' // optional: flip for heat-transfer vinyl
   if (!/^[0-9a-f-]{36}$/i.test(orderId)) return NextResponse.json({ error: 'bad order id' }, { status: 400 })
   if (side !== 'front' && side !== 'back') return NextResponse.json({ error: 'bad side' }, { status: 400 })
 
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest) {
 
   // 3. generate via the shared core (identical to the whole-order bundle route). Loud-fail
   //    is preserved: any un-outlinable object returns a typed failure, never a partial file.
-  const result = await generateCutSvgForSide(canvasJson, snap, { fontOverride })
+  const result = await generateCutSvgForSide(canvasJson, snap, { fontOverride, mirror })
   if (!result.ok) {
     return NextResponse.json({ error: result.message, ...(result.fonts ? { fonts: result.fonts } : {}) }, { status: 422 })
   }
@@ -50,7 +51,7 @@ export async function GET(req: NextRequest) {
     status: 200,
     headers: {
       'Content-Type': 'image/svg+xml; charset=utf-8',
-      'Content-Disposition': `attachment; filename="cut-${orderId.slice(0, 8)}-${side}.svg"`,
+      'Content-Disposition': `attachment; filename="cut-${orderId.slice(0, 8)}-${side}${mirror ? '-mirrored' : ''}.svg"`,
       'Cache-Control': 'no-store',
     },
   })
