@@ -63,13 +63,17 @@ export async function GET(req: NextRequest) {
   const paths: CutPath[] = []
   for (const t of objs) {
     const curved = isCurved(t)
+    const bold = curved ? !!t._curveBold : (t.fontWeight === 'bold' || t.fontWeight === 700)
+    const italic = curved ? !!t._curveItalic : (t.fontStyle === 'italic')
+    const weight = bold ? 700 : 400 // only multi-weight Google fonts honor it; else ignored
     const family = baseFamily(fontOverride ?? String((curved ? t._curveFontFamily : t.fontFamily) ?? 'Impact'))
-    let font = fontCache.get(family)
+    const cacheKey = `${family}-${weight}`
+    let font = fontCache.get(cacheKey)
     if (!font) {
       try {
-        const f = opentype.parse(toArrayBuffer(await getFontBuffer(family)))
+        const f = opentype.parse(toArrayBuffer(await getFontBuffer(family, weight)))
         if (!f.supported) throw new Error('unsupported by opentype')
-        font = f; fontCache.set(family, f)
+        font = f; fontCache.set(cacheKey, f)
       } catch (e) { failures.add(`${family} — ${(e as Error).message}`); continue }
     }
     if (curved) {
@@ -88,6 +92,7 @@ export async function GET(req: NextRequest) {
         fill: typeof t.fill === 'string' ? t.fill : '#000000',
         textAlign: (t.textAlign === 'left' || t.textAlign === 'right') ? t.textAlign : 'center',
         charSpacing: Number(t.charSpacing ?? 0),
+        italic,
       }
       paths.push(outlineText(font, place, canvasBox, phys))
     }

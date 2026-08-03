@@ -15,8 +15,17 @@ export type TextPlacement = {
   fill: string            // "#RRGGBB"
   textAlign: 'left' | 'center' | 'right'
   charSpacing: number     // 1/1000 em
+  italic: boolean         // faux-italic (skew) — fonts are single-weight/upright files
 }
 export type CutSvgOptions = { dpi?: number; decimalPlaces?: number }
+
+// Faux-italic shear (~12°): the designer applies italic as browser faux-styling on an
+// upright font file, so opentype outlines it upright — we slant it to match. Bold has no
+// clean faux (path-union is heavy); multi-weight Google fonts get real bold via the weight
+// param instead, and single-weight files stay their native weight.
+const ITALIC_SHEAR = 0.21
+// x' = x - k*(y - baseY): slants everything above the baseline to the right.
+const shearItalic = (baseY: number): number[] => [1, 0, -ITALIC_SHEAR, 1, ITALIC_SHEAR * baseY, 0]
 // One outlined object: its merged path data + the print color it cuts in.
 export type CutPath = { d: string; fill: string }
 
@@ -97,6 +106,7 @@ export function outlineText(
     for (let i = 0; i < gs.length; i++) {
       if (i > 0) penX += font.getKerningValue(gs[i - 1], gs[i]) * scale
       let cmds = (gs[i].getPath(penX, baseY, fontSizeU).commands as unknown) as Cmd[]
+      if (place.italic) cmds = transformCmds(cmds, shearItalic(baseY))
       if (place.angle) cmds = transformCmds(cmds, rotateAbout(place.angle, cxU, cyU))
       const d = cmdsToD(cmds, dp)
       if (d) parts.push(d)
@@ -171,7 +181,8 @@ export function curvedTextToCutPath(
     const ca = angle + w / radius / 2
     const Px = up ? radius * Math.sin(ca) : -radius * Math.sin(ca)
     const Py = up ? -radius * Math.cos(ca) : radius * Math.cos(ca)
-    const cmds = (g.getPath(0, 0, S).commands as unknown) as Cmd[]
+    let cmds = (g.getPath(0, 0, S).commands as unknown) as Cmd[]
+    if (curve.italic) cmds = transformCmds(cmds, shearItalic(0))
     arcCmds.push(transformCmds(cmds, glyphArcAffine(ca, w, midPx, Px, Py)))
     angle += w / radius
   }

@@ -1,15 +1,14 @@
-// Server-only font loader for the cut-file engine (opentype.js). NODE runtime only —
-// reads the local font files bundled into the lambda via next.config's
-// outputFileTracingIncludes. Stage 1b uses the LOCAL branch (Impact); Google-font
-// fetching is a later phase.
+// Server-only font loader for the cut-file engine (opentype.js). NODE runtime only.
+// Dispatches: LOCAL file (public/fonts, bundled via next.config outputFileTracingIncludes)
+// → else a registered GOOGLE font (fetched + cached, see googleFontBuffer). Covers all 58.
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { getGoogleFontBuffer, GOOGLE_FONTS } from './googleFontBuffer'
 
 // CSS family name (as used in globals.css @font-face / the designer's fontFamily) ->
-// file in public/fonts. Rockwell.ttc is DELIBERATELY absent — opentype.js throws on
-// TrueType Collections ("ttcf"); that needs a pre-split, a later phase.
-// 'Univers' maps to a known-malformed file (globals.css:266) — it will fail to parse
-// and the route returns a clear error rather than a bad cut.
+// file in public/fonts. 'Rockwell' is the .ttf extracted from Rockwell.ttc (opentype
+// can't parse .ttc collections directly). 'Univers' maps to a file that errors in the
+// browser CSS but parses fine with opentype.
 const LOCAL_FILES: Record<string, string> = {
   'American Typewriter': 'American Typewriter Copywriter.ttf',
   'Arial Bold': 'Arial Bold.ttf',
@@ -37,6 +36,7 @@ const LOCAL_FILES: Record<string, string> = {
   'Octin Sport': 'Octin-sports-Day School.ttf',
   'Diana': 'OPTIDiannaScript-BoldAgen.otf',
   'Princetown': 'Princetown.ttf',
+  'Rockwell': 'Rockwell.ttf',
   'Scratch': 'Scratch_.ttf',
   'Sign Painter': 'SignPainter HouseScript Regular.ttf',
   'Souvenir': 'Souvenir-Bold.ttf',
@@ -55,15 +55,21 @@ export function baseFamily(family: string): string {
   return family.split(',')[0].trim().replace(/^['"]|['"]$/g, '')
 }
 
-export async function getFontBuffer(family: string): Promise<Buffer> {
+// weight (400/700/900) only affects GOOGLE families that ship multiple weights (Montserrat,
+// Amatic SC, Yanone Kaffeesatz) — pass the object's fontWeight so bold gets the real cut.
+// Local files are single-weight; weight is ignored there.
+export async function getFontBuffer(family: string, weight = 400): Promise<Buffer> {
   const key = baseFamily(family)
-  const hit = mem.get(key)
-  if (hit) return hit
   const file = LOCAL_FILES[key]
-  if (!file) throw new Error(`No local outline source for font family "${key}"`)
-  const buf = await fs.readFile(path.join(fontsDir(), file))
-  mem.set(key, buf)
-  return buf
+  if (file) {
+    const hit = mem.get(key)
+    if (hit) return hit
+    const buf = await fs.readFile(path.join(fontsDir(), file))
+    mem.set(key, buf)
+    return buf
+  }
+  if (GOOGLE_FONTS[key]) return getGoogleFontBuffer(key, weight)
+  throw new Error(`No outline source for font family "${key}" (not local, not a known Google font)`)
 }
 
 // opentype.parse() wants an ArrayBuffer; pooled Node Buffers share a backing
