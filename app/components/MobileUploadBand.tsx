@@ -105,8 +105,14 @@ export default function MobileUploadBand({
           <span className="text-lg leading-none">⬆</span> Upload image
           <input type="file" accept={ACCEPT} onChange={handleImageUpload} className="hidden" />
         </label>
-        <span className="truncate text-[11px] text-gray-400">PNG · SVG · JPG · PDF · AI · EPS · PSD</span>
+        {/* Dedicated camera capture — accept=image/* + capture=environment is the reliable
+            way to open the rear camera on mobile, vs the mixed-accept picker's "Take Photo". */}
+        <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-700 transition-colors hover:border-[#dd3333] hover:text-[#dd3333]">
+          <span className="text-lg leading-none">📷</span> Take Photo
+          <input type="file" accept="image/*" capture="environment" onChange={handleImageUpload} className="hidden" />
+        </label>
       </div>
+      <span className="truncate text-[11px] text-gray-400">PNG · SVG · JPG · PDF · AI · EPS · PSD</span>
       <MyUploadsPanel
         uploads={libraryUploads}
         loading={libraryLoading}
