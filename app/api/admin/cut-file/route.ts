@@ -10,6 +10,7 @@ import { serviceClient } from '../../../lib/customer-library'
 import { getFontBuffer, toArrayBuffer, baseFamily } from '../../../lib/server/fontBuffer'
 import { boxFromSnapshot, isSnapshot } from '../../../lib/server/cutFileGeometry'
 import { outlineText, curvedTextToCutPath, assembleCutSvg, type TextPlacement, type CutPath } from '../../../lib/server/cutFileEngine'
+import { clipartToCutPaths } from '../../../lib/server/clipartCutEngine'
 
 export const runtime = 'nodejs' // trace-includes + fs don't exist on edge
 
@@ -52,8 +53,12 @@ export async function GET(req: NextRequest) {
   const TEXT_TYPES = ['itext', 'i-text', 'textbox', 'text']
   const isText = (x: Record<string, unknown>) => TEXT_TYPES.includes(String(x.type).toLowerCase()) && !x._isCurvedText
   const isCurved = (x: Record<string, unknown>) => x._isCurvedText === true // baked Image w/ curve stamps
-  const objs = (parsed.objects ?? []).filter(x => isText(x) || isCurved(x))
-  if (objs.length === 0) return NextResponse.json({ error: 'no text or curved text on this side' }, { status: 422 })
+  // SVG clipart: a FabricImage carrying _isSvg (the vector lives at .src, not in canvas_json).
+  // Raster-PNG clipart/photos are Images WITHOUT _isSvg — no vector to cut, so excluded here.
+  const isClipart = (x: Record<string, unknown>) =>
+    String(x.type).toLowerCase() === 'image' && x._isSvg === true && x._isCurvedText !== true
+  const objs = (parsed.objects ?? []).filter(x => isText(x) || isCurved(x) || isClipart(x))
+  if (objs.length === 0) return NextResponse.json({ error: 'no vector artwork (text, curved text, or SVG clipart) on this side' }, { status: 422 })
 
   // 4. outline EACH object in its OWN font; group by color into layers downstream.
   const canvasBox = boxFromSnapshot(snap)
@@ -62,6 +67,24 @@ export async function GET(req: NextRequest) {
   const failures = new Set<string>()
   const paths: CutPath[] = []
   for (const t of objs) {
+    // Clipart: no font — fetch + flatten the source SVG, place it, honor recolor. Fail loud
+    // (like fonts) if the SVG can't be fetched/parsed or yields no fillable path.
+    if (isClipart(t)) {
+      const name = String(t.src ?? '').split('/').pop() || 'clipart'
+      try {
+        const cps = await clipartToCutPaths({
+          src: String(t.src ?? ''),
+          left: Number(t.left), top: Number(t.top),
+          scaleX: Number(t.scaleX ?? 1), scaleY: Number(t.scaleY ?? 1),
+          angle: Number(t.angle ?? 0),
+          width: Number(t.width ?? 0), height: Number(t.height ?? 0),
+          currentColor: typeof t._currentColor === 'string' ? t._currentColor : undefined,
+        }, canvasBox, phys)
+        if (cps.length === 0) failures.add(`clipart ${name} — no fillable vector paths (stroke-only?)`)
+        else paths.push(...cps)
+      } catch (e) { failures.add(`clipart ${name} — ${(e as Error).message}`) }
+      continue
+    }
     const curved = isCurved(t)
     const bold = curved ? !!t._curveBold : (t.fontWeight === 'bold' || t.fontWeight === 700)
     const italic = curved ? !!t._curveItalic : (t.fontStyle === 'italic')
