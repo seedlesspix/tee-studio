@@ -26,8 +26,10 @@
     "opentype.js": "^2.0.0",
     "paper-jsdom": "^0.12.18",
     "pdfjs-dist": "^5.7.284",
+    "potrace": "^2.1.8",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "sharp": "^0.35.3",
     "svgpath": "^2.6.0",
     "svgson": "^5.3.1"
   },
