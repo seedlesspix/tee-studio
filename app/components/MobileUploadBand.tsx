@@ -27,7 +27,6 @@ export default function MobileUploadBand({
   colorPreview,
   applyColorRemoval,
   cancelColorRemoval,
-  autoTrim,
   startCrop,
   cropMode,
   applyCrop,
@@ -50,7 +49,6 @@ export default function MobileUploadBand({
   colorPreview: boolean
   applyColorRemoval: () => void
   cancelColorRemoval: () => void
-  autoTrim: () => void
   startCrop: () => void
   cropMode: boolean
   applyCrop: () => void
@@ -89,8 +87,6 @@ export default function MobileUploadBand({
                 }`}>
                 {eyedropperActive ? 'Tap the color…' : 'Remove a Color'}
               </button>
-              <button onClick={autoTrim} disabled={imageEditBusy}
-                className="rounded-lg border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50">Trim Edges</button>
               <button onClick={startCrop} disabled={imageEditBusy}
                 className="rounded-lg border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50">Crop…</button>
             </div>

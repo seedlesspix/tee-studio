@@ -24,7 +24,7 @@ import {
 } from 'lucide-react'
 import MyDesignsDrawer, { type SavedDesign } from './MyDesignsDrawer'
 import { useCustomerSession } from '../hooks/useCustomerSession'
-import { knockoutColorGlobal, knockoutWhiteFromEdges, elementToImageData, imageDataToPngDataUrl, sampleColorAt, contentBBox, cropToDataUrl } from '../lib/imageEdit'
+import { knockoutColorGlobal, knockoutWhiteFromEdges, elementToImageData, imageDataToPngDataUrl, sampleColorAt, cropToDataUrl } from '../lib/imageEdit'
 
 // Uploads a File/Blob/data-URI to Cloudinary (unsigned preset) and returns the
 // hosted image URL + metadata, or null if Cloudinary isn't configured or the
@@ -2373,36 +2373,24 @@ export default function DesignerCanvas({
     setColorPreview(false); colorPreviewRef.current = null
   }
 
-  // Auto-trim — one tap: crop away the padding around the artwork, then reposition so the artwork
-  // stays exactly where it was on the shirt.
-  const autoTrimSelected = async () => {
-    const img: any = fabricCanvas?.getActiveObject()
-    if (!img || String(img.type).toLowerCase() !== 'image') return
-    let imgData: ImageData | null = null
-    try { imgData = elementToImageData(img.getElement()) } catch { alert("We couldn't read this image (it may be blocked by the source server). Try re-uploading it."); return }
-    if (!imgData) return
-    const bb = contentBBox(imgData)
-    if (!bb) { alert('This image looks empty — nothing to trim.'); return }
-    if (bb.w >= imgData.width - 1 && bb.h >= imgData.height - 1) return // already tight
-    const W = img.width, H = img.height
-    const { util } = await import('fabric')
-    const center = util.transformPoint({ x: bb.x + bb.w / 2 - W / 2, y: bb.y + bb.h / 2 - H / 2 }, img.calcTransformMatrix())
-    await applyEditedImage(img, cropToDataUrl(img.getElement(), bb.x, bb.y, bb.w, bb.h), { left: center.x, top: center.y })
-  }
-
   // Manual crop — a draggable rectangle over the selected image; Apply keeps what's inside it.
   const startCrop = async () => {
     const img: any = fabricCanvas?.getActiveObject()
     if (!img || String(img.type).toLowerCase() !== 'image') return
     const { Rect } = await import('fabric')
-    const br = img.getBoundingRect()
+    // Snap the crop box to the image's bounds using the image's OWN scene coords (center-origin
+    // upload), so it lands exactly on the image regardless of any viewport/DPR transform — the bug
+    // getBoundingRect() caused. left/top origin => natural corner-resize (opposite corner stays put).
+    const w = img.width * (img.scaleX || 1), h = img.height * (img.scaleY || 1)
     const rect: any = new Rect({
-      left: br.left, top: br.top, width: br.width, height: br.height,
-      fill: 'rgba(0,0,0,0.25)', stroke: '#ffffff', strokeDashArray: [6, 4], strokeUniform: true,
-      cornerColor: '#ffffff', cornerStrokeColor: '#000000', transparentCorners: false,
-      lockRotation: true, objectCaching: false, excludeFromExport: true, // never persists to canvas_json
+      left: img.left - w / 2, top: img.top - h / 2, originX: 'left', originY: 'top',
+      width: w, height: h, angle: 0,
+      fill: 'rgba(0,0,0,0.12)', stroke: '#ffffff', strokeDashArray: [5, 4], strokeWidth: 1.5, strokeUniform: true,
+      cornerColor: '#ffffff', cornerStrokeColor: '#111111', cornerSize: 12, cornerStyle: 'rect',
+      transparentCorners: false, borderColor: '#ffffff', borderScaleFactor: 1.5,
+      lockRotation: true, hasBorders: true, objectCaching: false, excludeFromExport: true,
     })
-    rect.setControlsVisibility?.({ mtr: false })
+    rect.setControlsVisibility?.({ mtr: false }) // resize handles only, no rotation
     rect._isCropRect = true
     img.selectable = false; img.evented = false
     fabricCanvas.add(rect); fabricCanvas.setActiveObject(rect); fabricCanvas.renderAll()
@@ -2424,9 +2412,11 @@ export default function DesignerCanvas({
     const { util } = await import('fabric')
     const W = img.width, H = img.height
     const inv = util.invertTransform(img.calcTransformMatrix())
-    const rb = rect.getBoundingRect()
-    const p0 = util.transformPoint({ x: rb.left, y: rb.top }, inv)
-    const p1 = util.transformPoint({ x: rb.left + rb.width, y: rb.top + rb.height }, inv)
+    // Rect scene corners from its OWN coords (left/top origin, angle 0) — same space as the image
+    // matrix, so mapping to natural pixels is exact (the proven eyedropper mapping).
+    const rw = rect.width * (rect.scaleX || 1), rh = rect.height * (rect.scaleY || 1)
+    const p0 = util.transformPoint({ x: rect.left, y: rect.top }, inv)
+    const p1 = util.transformPoint({ x: rect.left + rw, y: rect.top + rh }, inv)
     const nx0 = Math.max(0, Math.min(p0.x, p1.x) + W / 2)
     const ny0 = Math.max(0, Math.min(p0.y, p1.y) + H / 2)
     const nx1 = Math.min(W, Math.max(p0.x, p1.x) + W / 2)
@@ -3007,7 +2997,7 @@ export default function DesignerCanvas({
       dbColors={dbColors}
       deleteSelected={deleteSelected}
       text={textProps}
-      upload={{ handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload, removeWhite: removeWhiteFromSelected, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy, colorPreview, applyColorRemoval, cancelColorRemoval, autoTrim: autoTrimSelected, startCrop, cropMode, applyCrop, cancelCrop: cleanupCrop }}
+      upload={{ handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload, removeWhite: removeWhiteFromSelected, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy, colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop: cleanupCrop }}
       clipart={{ printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor }}
     />
   )
@@ -3034,7 +3024,6 @@ export default function DesignerCanvas({
         colorPreview={colorPreview}
         applyColorRemoval={applyColorRemoval}
         cancelColorRemoval={cancelColorRemoval}
-        autoTrim={autoTrimSelected}
         startCrop={startCrop}
         cropMode={cropMode}
         applyCrop={applyCrop}

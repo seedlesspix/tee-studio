@@ -78,7 +78,6 @@ type SelectionPanelProps = {
     colorPreview: boolean
     applyColorRemoval: () => void
     cancelColorRemoval: () => void
-    autoTrim: () => void
     startCrop: () => void
     cropMode: boolean
     applyCrop: () => void
@@ -111,7 +110,7 @@ export default function SelectionPanel({
   } = text
   const { handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload,
     removeWhite, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy,
-    colorPreview, applyColorRemoval, cancelColorRemoval, autoTrim, startCrop, cropMode, applyCrop, cancelCrop } = upload
+    colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop } = upload
   const { printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor } = clipart
   // A selected CURVED text is a baked image: only font/size/color/bold/italic
   // re-bake (they're the curve effect's deps). Letter-spacing, uppercase (AA),
@@ -401,10 +400,6 @@ export default function SelectionPanel({
                             eyedropperActive ? 'border-gray-800 bg-gray-200 text-gray-900' : 'border-gray-300 text-gray-800 hover:border-[#dd3333] hover:text-[#dd3333]'
                           }`}>
                           {eyedropperActive ? 'Click the color on the shirt…' : 'Remove a Color'}
-                        </button>
-                        <button onClick={autoTrim} disabled={imageEditBusy}
-                          className="w-full border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-[#dd3333] hover:text-[#dd3333] transition-colors disabled:opacity-50">
-                          Trim Edges
                         </button>
                         <button onClick={startCrop} disabled={imageEditBusy}
                           className="w-full border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-[#dd3333] hover:text-[#dd3333] transition-colors disabled:opacity-50">

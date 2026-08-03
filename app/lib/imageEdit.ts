@@ -73,33 +73,6 @@ export function sampleColorAt(imgData: ImageData, x: number, y: number): RGB {
   return { r: imgData.data[i], g: imgData.data[i + 1], b: imgData.data[i + 2] }
 }
 
-// Auto-trim: the bounding box of the actual ARTWORK, so surrounding padding can be cropped away.
-// If the image has transparency, "content" = opaque pixels; otherwise "content" = pixels that
-// differ from the top-left corner color (the padding) by more than `tolerance`. null = all padding.
-export function contentBBox(imgData: ImageData, tolerance = 24): { x: number; y: number; w: number; h: number } | null {
-  const { data, width, height } = imgData
-  let hasTransparent = false
-  for (let i = 3; i < data.length; i += 4) { if (data[i] < 16) { hasTransparent = true; break } }
-  const bg = { r: data[0], g: data[1], b: data[2] }
-  const tol2 = tolerance * tolerance
-  const isContent = (i: number) => {
-    if (hasTransparent) return data[i + 3] > 16
-    const dr = data[i] - bg.r, dg = data[i + 1] - bg.g, db = data[i + 2] - bg.b
-    return dr * dr + dg * dg + db * db > tol2
-  }
-  let minX = width, minY = height, maxX = -1, maxY = -1
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      if (isContent((y * width + x) * 4)) {
-        if (x < minX) minX = x; if (x > maxX) maxX = x
-        if (y < minY) minY = y; if (y > maxY) maxY = y
-      }
-    }
-  }
-  if (maxX < minX) return null
-  return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 }
-}
-
 // Extract a natural-pixel sub-rectangle of the image element as a PNG data URL (used by both
 // auto-trim and manual crop). Coordinates are in the element's natural pixel space.
 export function cropToDataUrl(el: CanvasImageSource, nx: number, ny: number, nw: number, nh: number): string {

@@ -18,6 +18,7 @@ import { serviceClient } from '../../../lib/customer-library'
 import { collectCutPaths } from '../../../lib/server/generateCutFile'
 import { assembleCutSvgUnioned } from '../../../lib/server/cutBoolean'
 import { generateLayoutSvgForSide } from '../../../lib/server/generateLayout'
+import { autoTraceSvg } from '../../../lib/server/autoTrace'
 
 export const runtime = 'nodejs' // opentype.js + local-font fs read (see next.config trace-includes)
 
@@ -188,7 +189,9 @@ export async function GET(req: NextRequest) {
   const origFolder = uploads.length ? root.folder('Originals')! : null
   const origLines: string[] = []
   const uploadLines: string[] = []
+  const traceLines: string[] = []
   let webFolder: JSZip | null = null
+  let traceFolder: JSZip | null = null
   for (let i = 0; i < uploads.length; i++) {
     const f = uploads[i]
     const base = (f.name || `upload-${i + 1}`).replace(/[/\\]/g, '_')
@@ -210,6 +213,14 @@ export async function GET(req: NextRequest) {
             origFolder!.file(`${i + 1}-${stem}-inverted.png`, inv)
             origLines.push(`  ✓ Originals/${i + 1}-${stem}-inverted.png  (auto-inverted — white/light artwork, for tracing)`)
           }
+        }
+        // Auto-trace one-color artwork -> best-effort vinyl cut vector (potrace). Photos/multi-color
+        // art are gated out. Best-effort: verify in Illustrator; the raster in Originals/ is the source.
+        const traced = await autoTraceSvg(bytes)
+        if (traced) {
+          traceFolder ??= root.folder('Auto-Traced')!
+          traceFolder.file(`${i + 1}-${stem}-traced.svg`, traced)
+          traceLines.push(`  ✓ Auto-Traced/${i + 1}-${stem}-traced.svg  (best-effort — verify in Illustrator)`)
         }
       } else origLines.push(`  ⚠ Originals/${name} — could not fetch`)
     }
@@ -282,11 +293,15 @@ export async function GET(req: NextRequest) {
     `UPLOADS (web-converted, reference)`,
     ...uploadLines,
     ``,
+    `AUTO-TRACED (best-effort vinyl cut vector — one-color art only; VERIFY in Illustrator)`,
+    ...(traceLines.length ? traceLines : ['  (none — no one-color artwork to auto-trace)']),
+    ``,
     `${'-'.repeat(50)}`,
     `FOLDERS: Cut Files/ = normal-cut vector (adhesive, print-then-cut) · Cut Files`,
     `(Mirrored)/ = same, flipped for heat-transfer vinyl · Layout/ = to-size map of`,
     `where every element goes (incl. photos) · Previews/ = the mockup the customer`,
-    `approved · Originals/ = the file to print from · Uploads/ = web renditions.`,
+    `approved · Originals/ = the file to print from · Uploads/ = web renditions ·`,
+    `Auto-Traced/ = best-effort potrace of one-color uploads (verify before cutting).`,
     `Cut files are union'd + cropped, cutter-ready (no clip mask). Generated on download.`,
   ]
   root.file('OrderInfo.txt', info.join('\n') + '\n')
