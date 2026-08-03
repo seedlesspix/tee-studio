@@ -2377,62 +2377,41 @@ export default function DesignerCanvas({
   const startCrop = async () => {
     const img: any = fabricCanvas?.getActiveObject()
     if (!img || String(img.type).toLowerCase() !== 'image') return
-    const { Rect, Control } = await import('fabric')
+    const { Rect } = await import('fabric')
     // Snap the crop box to the image's bounds using the image's OWN scene coords (center-origin
-    // upload), so it lands exactly on the image regardless of any viewport/DPR transform. left/top
-    // origin => natural edge-resize (opposite edge stays put). Transparent fill so the kept region
-    // reads bright once the outside is dimmed.
+    // upload) — the placement that worked before. Transparent fill + visible dashed outline so the
+    // kept region reads bright once the outside is dimmed.
     const w = img.width * (img.scaleX || 1), h = img.height * (img.scaleY || 1)
+    const bx0 = img.left - w / 2, by0 = img.top - h / 2
     const rect: any = new Rect({
-      left: img.left - w / 2, top: img.top - h / 2, originX: 'left', originY: 'top',
-      width: w, height: h, angle: 0,
-      fill: 'transparent', stroke: '#ffffff', strokeDashArray: [5, 4], strokeWidth: 1.5, strokeUniform: true,
-      lockRotation: true, hasBorders: false, objectCaching: false, excludeFromExport: true,
+      left: bx0, top: by0, originX: 'left', originY: 'top', width: w, height: h, angle: 0,
+      fill: 'transparent', stroke: '#ffffff', strokeDashArray: [6, 4], strokeWidth: 2, strokeUniform: true,
+      cornerColor: '#ffffff', cornerStrokeColor: '#111111', cornerSize: 16, cornerStyle: 'rect',
+      transparentCorners: false, hasBorders: false, lockRotation: true, objectCaching: false, excludeFromExport: true,
     })
+    // EDGE handles only (drop corners + rotation) — Fabric's DEFAULT controls, no custom render, so
+    // the render can't be corrupted the way the bar-controls broke it. Grabbable 16px edge grips.
+    rect.setControlsVisibility?.({ tl: false, tr: false, bl: false, br: false, mtr: false })
     rect._isCropRect = true
 
-    // Classic photo-cropper EDGE handles (bars), reusing Fabric's proven edge action handlers so
-    // resize behavior stays correct. Corners + rotation dropped. Falls back to default edge controls
-    // if the controls API isn't shaped as expected.
-    const bar = (horiz: boolean) => function (ctx: any, left: number, top: number, _s: any, obj: any) {
-      const lng = 22, thin = 5, bw = horiz ? lng : thin, bh = horiz ? thin : lng, r = 2, x = -bw / 2, y = -bh / 2
-      ctx.save(); ctx.translate(left, top); ctx.rotate(((obj.angle || 0) * Math.PI) / 180)
-      ctx.fillStyle = '#ffffff'; ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 1
-      ctx.beginPath(); ctx.moveTo(x + r, y)
-      ctx.arcTo(x + bw, y, x + bw, y + bh, r); ctx.arcTo(x + bw, y + bh, x, y + bh, r)
-      ctx.arcTo(x, y + bh, x, y, r); ctx.arcTo(x, y, x + bw, y, r); ctx.closePath()
-      ctx.fill(); ctx.stroke(); ctx.restore()
-    }
-    const dc = rect.controls
-    if (dc?.ml && dc?.mr && dc?.mt && dc?.mb) {
-      const mk = (base: any, horiz: boolean) => new Control({
-        x: base.x, y: base.y, offsetX: base.offsetX, offsetY: base.offsetY,
-        cursorStyleHandler: base.cursorStyleHandler, actionHandler: base.actionHandler,
-        getActionName: base.getActionName, render: bar(horiz),
-      })
-      rect.controls = { ml: mk(dc.ml, false), mr: mk(dc.mr, false), mt: mk(dc.mt, true), mb: mk(dc.mb, true) }
-    } else {
-      rect.setControlsVisibility?.({ tl: false, tr: false, bl: false, br: false, mtr: false })
-    }
-
-    // Dim everything OUTSIDE the box (the universal "this is a crop" signal): four scrims that
-    // follow the box as it moves/resizes.
-    const mkScrim = () => new Rect({ fill: 'rgba(0,0,0,0.5)', selectable: false, evented: false, excludeFromExport: true, objectCaching: false })
+    // Dim everything OUTSIDE the box (the "this is a crop" signal): four scrims following the box.
+    const mkScrim = () => new Rect({ originX: 'left', originY: 'top', fill: 'rgba(0,0,0,0.5)', selectable: false, evented: false, excludeFromExport: true, objectCaching: false })
     const scrims = [mkScrim(), mkScrim(), mkScrim(), mkScrim()]
     const sync = () => {
-      const bx = rect.left, by = rect.top, bw2 = rect.width * (rect.scaleX || 1), bh2 = rect.height * (rect.scaleY || 1)
-      scrims[0].set({ left: 0, top: 0, width: CANVAS_W, height: Math.max(0, by) })                        // top
-      scrims[1].set({ left: 0, top: by + bh2, width: CANVAS_W, height: Math.max(0, CANVAS_H - (by + bh2)) }) // bottom
-      scrims[2].set({ left: 0, top: by, width: Math.max(0, bx), height: bh2 })                            // left
-      scrims[3].set({ left: bx + bw2, top: by, width: Math.max(0, CANVAS_W - (bx + bw2)), height: bh2 })  // right
+      const x = rect.left, y = rect.top, ww = rect.width * (rect.scaleX || 1), hh = rect.height * (rect.scaleY || 1)
+      scrims[0].set({ left: 0, top: 0, width: CANVAS_W, height: Math.max(0, y) })                       // top
+      scrims[1].set({ left: 0, top: y + hh, width: CANVAS_W, height: Math.max(0, CANVAS_H - (y + hh)) }) // bottom
+      scrims[2].set({ left: 0, top: y, width: Math.max(0, x), height: Math.max(0, hh) })                // left
+      scrims[3].set({ left: x + ww, top: y, width: Math.max(0, CANVAS_W - (x + ww)), height: Math.max(0, hh) }) // right
       scrims.forEach(s => s.setCoords?.())
-      fabricCanvas?.requestRenderAll?.()
     }
     sync()
+    if (typeof console !== 'undefined') console.log('[crop] box', { bx0, by0, w, h }, 'scrims', scrims.map((s: any) => ({ l: s.left, t: s.top, w: s.width, h: s.height })))
     img.selectable = false; img.evented = false
-    scrims.forEach(s => fabricCanvas.add(s)) // added below the rect (rect stays on top)
+    scrims.forEach(s => fabricCanvas.add(s)) // below the rect
     fabricCanvas.add(rect); fabricCanvas.setActiveObject(rect)
-    rect.on('moving', sync); rect.on('scaling', sync)
+    rect.on('moving', () => { sync(); fabricCanvas.requestRenderAll() })
+    rect.on('scaling', () => { sync(); fabricCanvas.requestRenderAll() })
     fabricCanvas.renderAll()
     cropRectRef.current = { rect, img, scrims, sync }
     setCropMode(true)
