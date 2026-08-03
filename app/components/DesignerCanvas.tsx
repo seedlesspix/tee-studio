@@ -645,6 +645,7 @@ export default function DesignerCanvas({
         scale: reuse(d.br, 0.5, 0.5, off, off, glyphRender('◢'), 'nwse-resize'),
       }
       const applyTo = (obj: any) => {
+        if (obj._isCropRect) return // the crop frame owns its own edge-only handles — never disc/delete it
         obj.controls = controls
         obj.set({ cornerSize, touchCornerSize, transparentCorners: false, borderColor: '#111827', borderScaleFactor })
         obj.setCoords?.()
@@ -1384,6 +1385,7 @@ export default function DesignerCanvas({
         })
 
         const applyControls = (obj: any) => {
+          if (obj._isCropRect) return // the crop frame keeps its own edge-only handles — no delete/rotate
           // MOBILE uses its own 3-disc control set (applied by the mobile effect, which
           // also hooks object:added). Skip the desktop red-circle set here so the two
           // systems don't fight (the desktop set was overriding the mobile discs on
@@ -2405,13 +2407,23 @@ export default function DesignerCanvas({
       scrims[3].set({ left: x + ww, top: y, width: Math.max(0, CANVAS_W - (x + ww)), height: Math.max(0, hh) }) // right
       scrims.forEach(s => s.setCoords?.())
     }
+    // CONSTRAIN the box to the image — it can never leave (nothing meaningful to crop outside it).
+    const clamp = () => {
+      let rw = rect.width * (rect.scaleX || 1), rh = rect.height * (rect.scaleY || 1)
+      if (rw > w) { rect.scaleX = w / rect.width; rw = w }         // never larger than the image
+      if (rh > h) { rect.scaleY = h / rect.height; rh = h }
+      if (rect.left < bx0) rect.left = bx0                          // keep inside the image bounds
+      if (rect.top < by0) rect.top = by0
+      if (rect.left + rw > bx0 + w) rect.left = bx0 + w - rw
+      if (rect.top + rh > by0 + h) rect.top = by0 + h - rh
+      rect.setCoords?.()
+    }
     sync()
-    if (typeof console !== 'undefined') console.log('[crop] box', { bx0, by0, w, h }, 'scrims', scrims.map((s: any) => ({ l: s.left, t: s.top, w: s.width, h: s.height })))
     img.selectable = false; img.evented = false
     scrims.forEach(s => fabricCanvas.add(s)) // below the rect
     fabricCanvas.add(rect); fabricCanvas.setActiveObject(rect)
-    rect.on('moving', () => { sync(); fabricCanvas.requestRenderAll() })
-    rect.on('scaling', () => { sync(); fabricCanvas.requestRenderAll() })
+    rect.on('moving', () => { clamp(); sync(); fabricCanvas.requestRenderAll() })
+    rect.on('scaling', () => { clamp(); sync(); fabricCanvas.requestRenderAll() })
     fabricCanvas.renderAll()
     cropRectRef.current = { rect, img, scrims, sync }
     setCropMode(true)
@@ -2445,10 +2457,14 @@ export default function DesignerCanvas({
     const nx1 = Math.min(W, Math.max(p0.x, p1.x) + W / 2)
     const ny1 = Math.min(H, Math.max(p0.y, p1.y) + H / 2)
     const nw = nx1 - nx0, nh = ny1 - ny0
-    cleanupCrop()
-    if (nw < 2 || nh < 2) return
-    const center = util.transformPoint({ x: nx0 + nw / 2 - W / 2, y: ny0 + nh / 2 - H / 2 }, img.calcTransformMatrix())
-    await applyEditedImage(img, cropToDataUrl(img.getElement(), nx0, ny0, nw, nh), { left: center.x, top: center.y })
+    cleanupCrop() // ALWAYS restore the image + remove the overlay first, so no path leaves a bad state
+    // Belt-and-suspenders: empty/degenerate intersection (or a no-op full-image crop) -> cancel
+    // cleanly, never edit, never corrupt. try/catch so a bad extraction can't poison the session.
+    if (!(nw >= 2 && nh >= 2) || (nw >= W - 1 && nh >= H - 1)) return
+    try {
+      const center = util.transformPoint({ x: nx0 + nw / 2 - W / 2, y: ny0 + nh / 2 - H / 2 }, img.calcTransformMatrix())
+      await applyEditedImage(img, cropToDataUrl(img.getElement(), nx0, ny0, nw, nh), { left: center.x, top: center.y })
+    } catch { /* image already restored by cleanupCrop — leave it be */ }
   }
 
   // Export canvas as PNG blob - composite with shirt image using proxy to avoid CORS
