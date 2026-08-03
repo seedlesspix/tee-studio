@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import MyDesignsDrawer, { type SavedDesign } from './MyDesignsDrawer'
 import { useCustomerSession } from '../hooks/useCustomerSession'
+import { knockoutColorGlobal, knockoutWhiteFromEdges, elementToImageData, imageDataToPngDataUrl, sampleColorAt } from '../lib/imageEdit'
 
 // Uploads a File/Blob/data-URI to Cloudinary (unsigned preset) and returns the
 // hosted image URL + metadata, or null if Cloudinary isn't configured or the
@@ -204,6 +205,11 @@ export default function DesignerCanvas({
   const [curveAmount, setCurveAmount] = useState(0)
   const [selectedTextPreview, setSelectedTextPreview] = useState<string>('')
   const [selectedObjectType, setSelectedObjectType] = useState<'text' | 'image' | 'svg' | null>(null)
+  // Upload-image editing (Phase 5): eyedropper mode for Remove-a-Color, its tolerance, and a
+  // busy flag so the tool buttons disable while a pixel op + re-upload runs.
+  const [eyedropperActive, setEyedropperActive] = useState(false)
+  const [removeColorTol, setRemoveColorTol] = useState(30)
+  const [imageEditBusy, setImageEditBusy] = useState(false)
   // Reactive count of objects on the CURRENT side's canvas — drives the blank-shirt
   // empty-state overlay (greeting + on-garment CTAs). Updated on object:added/removed.
   const [canvasObjectCount, setCanvasObjectCount] = useState(0)
@@ -649,7 +655,7 @@ export default function DesignerCanvas({
   // file the customer actually uploaded — set only when they differ, i.e. when we
   // converted (AI/PSD/EPS/PDF). The print shop needs the original, not the PNG.
   const uploadedFilesRef = useRef<
-    { name: string; url: string; type: string; originalUrl?: string; originalFormat?: string }[]
+    { name: string; url: string; type: string; originalUrl?: string; originalFormat?: string; edited?: boolean }[]
   >([])
   // Product's first/featured image — the shirt fallback when a color resolves no
   // matching mockup (so we never show a blank canvas; the gap is flagged in the
@@ -2201,6 +2207,78 @@ export default function DesignerCanvas({
     canvas.renderAll()
   }
 
+  // ── Upload-image editing: Remove White / Remove a Color (Phase 5) ──────────────
+  // Every tool ends here: swap the object to the edited (transparent) PNG, then re-upload it so
+  // a fetchable REVISED url persists to the production bundle + auto-tracer, recording
+  // url=revised / originalUrl=raw. Edits STACK — originalUrl always keeps the FIRST raw upload.
+  const applyEditedImage = async (img: any, editedDataUrl: string) => {
+    const oldSrc: string | undefined = img._uploadSrc
+    setImageEditBusy(true)
+    try {
+      await img.setSrc(editedDataUrl) // swaps the element, keeps left/top/scale/angle
+      img.setCoords?.()
+      fabricCanvas?.renderAll()
+      markDirty()
+      // A data URL can't be fetched server-side (bundle/tracer) — re-host the revised PNG.
+      const blob = await (await fetch(editedDataUrl)).blob()
+      const uploaded = await uploadToCloudinary(blob)
+      const revisedUrl = uploaded?.url || editedDataUrl
+      img._uploadSrc = revisedUrl
+      const list = uploadedFilesRef.current
+      const idx = list.findIndex(f => f.url === oldSrc)
+      if (idx >= 0) {
+        const prev = list[idx]
+        list[idx] = { ...prev, url: revisedUrl, originalUrl: prev.originalUrl || oldSrc, originalFormat: prev.originalFormat || 'png', edited: true }
+      } else {
+        list.push({ name: 'edited-image.png', url: revisedUrl, type: 'image/png', originalUrl: oldSrc, originalFormat: 'png', edited: true })
+      }
+      uploadedFilesRef.current = [...list]
+      if (uploaded) void persistUploadToLibrary({ url: revisedUrl, publicId: uploaded.publicId, fileName: 'edited-image.png', fileType: 'image/png', source: 'raster', width: uploaded.width, height: uploaded.height })
+    } catch {
+      alert("We couldn't edit this image — it may be blocked by the source server. Try re-uploading it, then edit.")
+    } finally {
+      setImageEditBusy(false)
+    }
+  }
+
+  // Remove White — one tap, edge-flood so white INSIDE the logo survives.
+  const removeWhiteFromSelected = async () => {
+    const img: any = fabricCanvas?.getActiveObject()
+    if (!img || String(img.type).toLowerCase() !== 'image') return
+    let imgData: ImageData | null = null
+    try { imgData = elementToImageData(img.getElement()) } catch { alert("We couldn't read this image (it may be blocked by the source server). Try re-uploading it."); return }
+    if (!imgData) return
+    knockoutWhiteFromEdges(imgData.data, imgData.width, imgData.height, 40)
+    await applyEditedImage(img, imageDataToPngDataUrl(imgData))
+  }
+
+  // Remove a Color — eyedropper: while active, the next canvas click samples the pixel under the
+  // cursor and knocks that color out (within tolerance). Registered only while active, so it
+  // never interferes with normal editing (and sidesteps the once-registered-handler closure trap).
+  useEffect(() => {
+    if (!fabricCanvas || !eyedropperActive) return
+    let cancelled = false
+    const onDown = async (opt: any) => {
+      const img: any = fabricCanvas.getActiveObject()
+      if (!img || String(img.type).toLowerCase() !== 'image') { setEyedropperActive(false); return }
+      let util: any
+      try { util = (await import('fabric')).util } catch { return }
+      if (cancelled) return
+      const pointer = fabricCanvas.getScenePoint(opt.e)
+      const local = util.transformPoint(pointer, util.invertTransform(img.calcTransformMatrix()))
+      const nx = local.x + img.width / 2, ny = local.y + img.height / 2 // -> natural pixel coords
+      let imgData: ImageData | null = null
+      try { imgData = elementToImageData(img.getElement()) } catch { alert("We couldn't read this image (it may be blocked by the source server). Try re-uploading it."); setEyedropperActive(false); return }
+      if (!imgData) { setEyedropperActive(false); return }
+      const rgb = sampleColorAt(imgData, nx, ny)
+      knockoutColorGlobal(imgData.data, rgb, removeColorTol)
+      await applyEditedImage(img, imageDataToPngDataUrl(imgData))
+      setEyedropperActive(false)
+    }
+    fabricCanvas.on('mouse:down', onDown)
+    return () => { cancelled = true; fabricCanvas.off('mouse:down', onDown) }
+  }, [fabricCanvas, eyedropperActive, removeColorTol])
+
   // Export canvas as PNG blob - composite with shirt image using proxy to avoid CORS
   const exportCanvasPNG = async (canvas: any, shirtSrc: string | null | undefined): Promise<Blob | null> => {
     return new Promise(async resolve => {
@@ -2369,11 +2447,13 @@ export default function DesignerCanvas({
 
       const uploadedFileUrls = await Promise.all(
         usedFiles.map(async (f, idx) => {
-          // originalUrl rides along so the admin/print shop can reach the vector
-          // rather than only the flattened rendition.
-          const extra = f.originalUrl
-            ? { originalUrl: f.originalUrl, originalFormat: f.originalFormat }
-            : {}
+          // originalUrl rides along so the admin/print shop can reach the vector (or the
+          // pristine pre-edit raw) rather than only the flattened rendition. `edited` flags a
+          // background/color-removed image so the bundle prints from the REVISED url, not the raw.
+          const extra = {
+            ...(f.originalUrl ? { originalUrl: f.originalUrl, originalFormat: f.originalFormat } : {}),
+            ...(f.edited ? { edited: true } : {}),
+          }
           if (!f.url.startsWith('data:')) return { name: f.name, url: f.url, type: f.type, ...extra }
           const blob = await fetch(f.url).then(r => r.blob())
           const url = await uploadToStorage(blob, `${orderId}/uploads/${idx}_${f.name}`, 'customer-uploads')
@@ -2768,7 +2848,7 @@ export default function DesignerCanvas({
       dbColors={dbColors}
       deleteSelected={deleteSelected}
       text={textProps}
-      upload={{ handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload }}
+      upload={{ handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload, removeWhite: removeWhiteFromSelected, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy }}
       clipart={{ printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor }}
     />
   )
@@ -2786,6 +2866,12 @@ export default function DesignerCanvas({
         selectedObjectType={selectedObjectType}
         deleteSelected={deleteSelected}
         alignObject={alignObject}
+        removeWhite={removeWhiteFromSelected}
+        eyedropperActive={eyedropperActive}
+        setEyedropperActive={setEyedropperActive}
+        removeColorTol={removeColorTol}
+        setRemoveColorTol={setRemoveColorTol}
+        imageEditBusy={imageEditBusy}
       />
     )
     : activeTab === 'clipart' ? (

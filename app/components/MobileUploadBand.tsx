@@ -18,6 +18,12 @@ export default function MobileUploadBand({
   selectedObjectType,
   deleteSelected,
   alignObject,
+  removeWhite,
+  eyedropperActive,
+  setEyedropperActive,
+  removeColorTol,
+  setRemoveColorTol,
+  imageEditBusy,
 }: {
   handleImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
   libraryUploads: UploadItem[]
@@ -27,10 +33,33 @@ export default function MobileUploadBand({
   selectedObjectType: string | null
   deleteSelected: () => void
   alignObject: (fn: string) => void
+  removeWhite: () => void
+  eyedropperActive: boolean
+  setEyedropperActive: React.Dispatch<React.SetStateAction<boolean>>
+  removeColorTol: number
+  setRemoveColorTol: React.Dispatch<React.SetStateAction<number>>
+  imageEditBusy: boolean
 }) {
   if (selectedObjectType === 'image') {
     return (
-      <div className="flex h-full flex-col justify-center px-3">
+      <div className="flex h-full flex-col justify-center gap-2 px-3">
+        <div className="flex items-center gap-2">
+          <button onClick={removeWhite} disabled={imageEditBusy}
+            className="flex-1 rounded-lg border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50">
+            Remove White
+          </button>
+          <button onClick={() => setEyedropperActive(v => !v)} disabled={imageEditBusy}
+            className={`flex-1 rounded-lg border py-2 text-sm disabled:opacity-50 ${
+              eyedropperActive ? 'border-gray-800 bg-gray-200 text-gray-900' : 'border-gray-300 text-gray-700'
+            }`}>
+            {eyedropperActive ? 'Tap the color…' : 'Remove a Color'}
+          </button>
+        </div>
+        {eyedropperActive && (
+          <input type="range" min={5} max={100} value={removeColorTol}
+            onChange={e => setRemoveColorTol(Number(e.target.value))}
+            className="w-full accent-[#dd3333]" aria-label="Color match tolerance" />
+        )}
         <MobileAlignRow alignObject={alignObject} onDelete={deleteSelected} />
       </div>
     )

@@ -23,7 +23,7 @@ export const runtime = 'nodejs' // opentype.js + local-font fs read (see next.co
 const allowed = () =>
   (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
 
-type UploadedFile = { name?: string; url?: string; type?: string; originalUrl?: string; originalFormat?: string }
+type UploadedFile = { name?: string; url?: string; type?: string; originalUrl?: string; originalFormat?: string; edited?: boolean }
 
 async function fetchBytes(url: string): Promise<Uint8Array | null> {
   try {
@@ -170,22 +170,25 @@ export async function GET(req: NextRequest) {
   for (let i = 0; i < uploads.length; i++) {
     const f = uploads[i]
     const base = (f.name || `upload-${i + 1}`).replace(/[/\\]/g, '_')
-    // Best print source: the raw original if this was a converted file, otherwise the placed
-    // file itself (a plain photo has no separate original — the upload IS the original).
-    const srcUrl = f.originalUrl || f.url
-    if (srcUrl) {
-      const bytes = await fetchBytes(srcUrl)
-      const name = `${i + 1}-${base}`
-      if (bytes) { origFolder!.file(name, bytes); origLines.push(`  ✓ Originals/${name}`) }
+    const stem = base.replace(/\.[^.]+$/, '')
+    const isEdited = f.edited === true
+    // Best print source: an EDITED upload prints from the REVISED (background/color-removed)
+    // image; a converted file prints from the raw vector; a plain photo prints from itself.
+    const printUrl = isEdited ? (f.url || f.originalUrl) : (f.originalUrl || f.url)
+    if (printUrl) {
+      const name = isEdited ? `${i + 1}-${stem}-edited.png` : `${i + 1}-${base}`
+      const bytes = await fetchBytes(printUrl)
+      if (bytes) { origFolder!.file(name, bytes); origLines.push(`  ✓ Originals/${name}${isEdited ? '  (background/color removed — cut/print from this)' : ''}`) }
       else origLines.push(`  ⚠ Originals/${name} — could not fetch`)
     }
-    // Reference web rendition — only when there's ALSO a separate original (so f.url is the
-    // redundant converted preview). Plain photos are already the best source in Originals/.
-    if (f.originalUrl && f.url) {
+    // Reference copy in Uploads/: an EDITED upload keeps the pristine pre-edit raw; a converted
+    // file keeps its web PNG rendition. Plain photos have no reference copy (they ARE the source).
+    const refUrl = isEdited ? (f.originalUrl && f.originalUrl !== f.url ? f.originalUrl : null)
+                            : (f.originalUrl && f.url ? f.url : null)
+    if (refUrl) {
       webFolder ??= root.folder('Uploads')!
-      const stemName = base.replace(/\.[^.]+$/, '')
-      const wname = `${i + 1}-${stemName}-web.png`
-      const bytes = await fetchBytes(f.url)
+      const wname = isEdited ? `${i + 1}-${stem}-before-edit.${f.originalFormat || 'png'}` : `${i + 1}-${stem}-web.png`
+      const bytes = await fetchBytes(refUrl)
       if (bytes) { webFolder.file(wname, bytes); uploadLines.push(`  ✓ Uploads/${wname}`) }
       else uploadLines.push(`  ⚠ Uploads/${wname} — could not fetch`)
     }
