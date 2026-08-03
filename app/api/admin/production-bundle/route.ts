@@ -15,6 +15,7 @@ import JSZip from 'jszip'
 import { createClient } from '../../../lib/supabase/server'
 import { serviceClient } from '../../../lib/customer-library'
 import { generateCutSvgForSide } from '../../../lib/server/generateCutFile'
+import { generateLayoutSvgForSide } from '../../../lib/server/generateLayout'
 
 export const runtime = 'nodejs' // opentype.js + local-font fs read (see next.config trace-includes)
 
@@ -125,6 +126,24 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // ---- Layout/ (placement sheet — EVERY element at true size/position, incl. rasters) ----
+  const layoutFolder = root.folder('Layout')!
+  const layoutLines: string[] = []
+  for (const side of ['front', 'back'] as const) {
+    const canvasJson = side === 'front' ? o.canvas_json_front : o.canvas_json_back
+    const snap = side === 'front' ? o.print_area_front : o.print_area_back
+    const r = await generateLayoutSvgForSide(canvasJson as string | null, snap)
+    if (r.ok) {
+      layoutFolder.file(`${orderNo}-${side}-layout.svg`, r.svg)
+      layoutLines.push(`  ✓ Layout/${orderNo}-${side}-layout.svg`)
+      for (const f of r.failures) layoutLines.push(`    ⚠ ${side}: ${f}`)
+    } else if (r.reason === 'bad-json' || r.reason === 'empty') {
+      layoutLines.push(`  ⚠ ${side} layout: ${r.message}`)
+    } else {
+      layoutLines.push(`  — ${side}: ${r.message}`)
+    }
+  }
+
   // ---- Previews/ (the shirt mockups the customer saw) ----
   const previewsFolder = root.folder('Previews')!
   const previewLines: string[] = []
@@ -207,8 +226,11 @@ export async function GET(req: NextRequest) {
     `  Front: ${summarizeSide(o.canvas_json_front as string | null)}`,
     `  Back:  ${summarizeSide(o.canvas_json_back as string | null)}`,
     ``,
-    `CUT FILES`,
+    `CUT FILES (vector to cut — text/curved/clipart only)`,
     ...cutLines,
+    ``,
+    `LAYOUT (to-size assembly map — EVERY element incl. photos, at placed size/position)`,
+    ...layoutLines,
     ``,
     `PREVIEWS`,
     ...previewLines,
@@ -220,9 +242,10 @@ export async function GET(req: NextRequest) {
     ...uploadLines,
     ``,
     `${'-'.repeat(50)}`,
-    `FOLDERS: Cut Files/ = vector for the Roland · Previews/ = the mockup the`,
-    `customer approved · Originals/ = the file to print from · Uploads/ = web`,
-    `renditions (reference). Generated on download — nothing cached.`,
+    `FOLDERS: Cut Files/ = vector to cut on the Roland · Layout/ = to-size map of`,
+    `where every element goes (incl. photos) · Previews/ = the mockup the customer`,
+    `approved · Originals/ = the file to print from · Uploads/ = web renditions`,
+    `(reference). Generated on download — nothing cached.`,
   ]
   root.file('OrderInfo.txt', info.join('\n') + '\n')
 

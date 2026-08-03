@@ -537,7 +537,7 @@ export default function OrdersAdmin() {
                             className="block w-full py-2 rounded text-xs font-mono bg-[#dd3333] text-white hover:bg-[#c02020] transition-all text-center">
                             ⬇ Download production bundle (.zip)
                           </a>
-                          <p className="text-[10px] text-gray-500 mt-1">OrderInfo · Cut Files · Previews · Originals · Uploads</p>
+                          <p className="text-[10px] text-gray-500 mt-1">OrderInfo · Cut Files · Layout · Previews · Originals · Uploads</p>
                         </div>
                       )}
 
