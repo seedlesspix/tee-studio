@@ -107,6 +107,101 @@ export function outlineText(
   return { d: parts.join(' '), fill: place.fill }
 }
 
+export type CurveParams = {
+  curveAmount: number   // _curveAmount (signed; sign = up/down)
+  fontSizePx: number    // _curveFontSize (canvas-px em)
+  bold: boolean
+  italic: boolean
+}
+export type ImagePlacement = {
+  left: number; top: number      // baked-image CENTER in 680×850 (originX/originY=center)
+  scaleX: number; scaleY: number // stored fit scale
+  angle: number                  // degrees clockwise
+}
+
+// bbox anchor + control points of a command
+function cmdPts(c: Cmd): Array<[number, number]> {
+  const p: Array<[number, number]> = []
+  if (c.x1 != null && c.y1 != null) p.push([c.x1, c.y1])
+  if (c.x2 != null && c.y2 != null) p.push([c.x2, c.y2])
+  if (c.x != null && c.y != null) p.push([c.x, c.y])
+  return p
+}
+// Recenter a glyph (getPath'd at 0,0) on its advance/em-middle pivot, rotate by charAngle
+// (clockwise y-down), drop it at arc point P. -> 2x3 affine (transformCmds convention).
+function glyphArcAffine(charAngle: number, advPx: number, midPx: number, Px: number, Py: number): number[] {
+  const co = Math.cos(charAngle), si = Math.sin(charAngle)
+  const tx = -advPx / 2, ty = midPx
+  return [co, si, -si, co, co * tx - si * ty + Px, si * tx + co * ty + Py]
+}
+
+// Curved text -> TRUE vector glyph paths from the stored bake params (_curve*), replaying
+// the designer's arc rasterizer math (radius = max(S*1.5, 800-|A|*7.5); per-char angle;
+// curve-down reverses order). Places the content-bbox center at the baked image's
+// left/top, applies its scaleX/scaleY + angle, then the same canvas->physical transform
+// as outlineText. Single-line only (curved text is). Returns merged path 'd'; caller
+// supplies fill = _curveFill.
+export function curvedTextToCutPath(
+  font: opentype.Font,
+  originalText: string,
+  curve: CurveParams,
+  place: ImagePlacement,
+  canvasBox: CanvasBox,
+  phys: PhysBox,
+  opts: CutSvgOptions = {},
+): string {
+  const dpi = opts.dpi ?? 300, dp = opts.decimalPlaces ?? 2
+  const line = originalText.replace(/\n/g, ' ')
+  const S = curve.fontSizePx
+  const scale = S / font.unitsPerEm
+
+  const A = curve.curveAmount, up = A > 0
+  const radius = Math.max(S * 1.5, 800 - Math.abs(A) * 7.5)
+  const glyphs = font.stringToGlyphs(line)
+  const widths = glyphs.map(g => (g.advanceWidth ?? 0) * scale)
+  const totalWidth = widths.reduce((s, w) => s + w, 0)
+  const totalAngle = totalWidth / radius
+  const seq = glyphs.map((g, i) => ({ g, w: widths[i] }))
+  const ordered = up ? seq : [...seq].reverse()
+  const midPx = ((font.ascender + font.descender) / 2) * scale
+
+  let angle = -totalAngle / 2
+  const arcCmds: Cmd[][] = []
+  for (const { g, w } of ordered) {
+    const ca = angle + w / radius / 2
+    const Px = up ? radius * Math.sin(ca) : -radius * Math.sin(ca)
+    const Py = up ? -radius * Math.cos(ca) : radius * Math.cos(ca)
+    const cmds = (g.getPath(0, 0, S).commands as unknown) as Cmd[]
+    arcCmds.push(transformCmds(cmds, glyphArcAffine(ca, w, midPx, Px, Py)))
+    angle += w / radius
+  }
+
+  // content-bbox center in arc-space (matches the raster's tight centered crop)
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (const cs of arcCmds) for (const c of cs) for (const [x, y] of cmdPts(c)) {
+    if (x < minX) minX = x; if (y < minY) minY = y
+    if (x > maxX) maxX = x; if (y > maxY) maxY = y
+  }
+  const Cx = (minX + maxX) / 2, Cy = (minY + maxY) / 2
+
+  // arc-space -> canvas 680×850: C at (left,top), scaled by scaleX/scaleY, rotated by angle
+  const ar = (place.angle * Math.PI) / 180, co = Math.cos(ar), si = Math.sin(ar)
+  const a = place.scaleX * co, b = place.scaleX * si, c = -place.scaleY * si, dd = place.scaleY * co
+  const M = [a, b, c, dd, place.left - (a * Cx + c * Cy), place.top - (b * Cx + dd * Cy)]
+
+  // canvas -> physical print units (identical to outlineText)
+  const uX = (phys.width_in * dpi) / canvasBox.width
+  const uY = (phys.height_in * dpi) / canvasBox.height
+  const U = [uX, 0, 0, uY, -canvasBox.left * uX, -canvasBox.top * uY]
+
+  const parts: string[] = []
+  for (const cs of arcCmds) {
+    const dstr = cmdsToD(transformCmds(transformCmds(cs, M), U), dp)
+    if (dstr) parts.push(dstr)
+  }
+  return parts.join(' ')
+}
+
 // Assemble a color-LAYERED, physically-sized, Illustrator-clean SVG. One named <g> layer
 // per unique fill color, each a single compound path (nonzero winding). Empty paths drop.
 export function assembleCutSvg(paths: CutPath[], phys: PhysBox, opts: CutSvgOptions = {}): string {

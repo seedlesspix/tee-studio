@@ -9,7 +9,7 @@ import { createClient } from '../../../lib/supabase/server'
 import { serviceClient } from '../../../lib/customer-library'
 import { getFontBuffer, toArrayBuffer, baseFamily } from '../../../lib/server/fontBuffer'
 import { boxFromSnapshot, isSnapshot } from '../../../lib/server/cutFileGeometry'
-import { outlineText, assembleCutSvg, type TextPlacement, type CutPath } from '../../../lib/server/cutFileEngine'
+import { outlineText, curvedTextToCutPath, assembleCutSvg, type TextPlacement, type CutPath } from '../../../lib/server/cutFileEngine'
 
 export const runtime = 'nodejs' // trace-includes + fs don't exist on edge
 
@@ -50,18 +50,20 @@ export async function GET(req: NextRequest) {
   let parsed: { objects?: Array<Record<string, unknown>> }
   try { parsed = JSON.parse(canvasJson) } catch { return NextResponse.json({ error: 'bad canvas json' }, { status: 500 }) }
   const TEXT_TYPES = ['itext', 'i-text', 'textbox', 'text']
-  const textObjs = (parsed.objects ?? []).filter(x =>
-    TEXT_TYPES.includes(String(x.type).toLowerCase()) && !x._isCurvedText)
-  if (textObjs.length === 0) return NextResponse.json({ error: 'no (uncurved) text on this side' }, { status: 422 })
+  const isText = (x: Record<string, unknown>) => TEXT_TYPES.includes(String(x.type).toLowerCase()) && !x._isCurvedText
+  const isCurved = (x: Record<string, unknown>) => x._isCurvedText === true // baked Image w/ curve stamps
+  const objs = (parsed.objects ?? []).filter(x => isText(x) || isCurved(x))
+  if (objs.length === 0) return NextResponse.json({ error: 'no text or curved text on this side' }, { status: 422 })
 
-  // 4. outline EACH text object in its OWN font; group by color into layers downstream.
+  // 4. outline EACH object in its OWN font; group by color into layers downstream.
   const canvasBox = boxFromSnapshot(snap)
   const phys = { width_in: snap.width_in, height_in: snap.height_in }
   const fontCache = new Map<string, opentype.Font>()
   const failures = new Set<string>()
   const paths: CutPath[] = []
-  for (const t of textObjs) {
-    const family = baseFamily(fontOverride ?? String(t.fontFamily ?? 'Impact'))
+  for (const t of objs) {
+    const curved = isCurved(t)
+    const family = baseFamily(fontOverride ?? String((curved ? t._curveFontFamily : t.fontFamily) ?? 'Impact'))
     let font = fontCache.get(family)
     if (!font) {
       try {
@@ -70,15 +72,25 @@ export async function GET(req: NextRequest) {
         font = f; fontCache.set(family, f)
       } catch (e) { failures.add(`${family} — ${(e as Error).message}`); continue }
     }
-    const place: TextPlacement = {
-      text: String(t.text ?? ''), fontSizePx: Number(t.fontSize ?? 40),
-      scaleX: Number(t.scaleX ?? 1), scaleY: Number(t.scaleY ?? 1),
-      left: Number(t.left), top: Number(t.top), angle: Number(t.angle ?? 0),
-      fill: typeof t.fill === 'string' ? t.fill : '#000000',
-      textAlign: (t.textAlign === 'left' || t.textAlign === 'right') ? t.textAlign : 'center',
-      charSpacing: Number(t.charSpacing ?? 0),
+    if (curved) {
+      const d = curvedTextToCutPath(
+        font, String(t._originalText ?? ''),
+        { curveAmount: Number(t._curveAmount ?? 0), fontSizePx: Number(t._curveFontSize ?? 36), bold: !!t._curveBold, italic: !!t._curveItalic },
+        { left: Number(t.left), top: Number(t.top), scaleX: Number(t.scaleX ?? 1), scaleY: Number(t.scaleY ?? 1), angle: Number(t.angle ?? 0) },
+        canvasBox, phys,
+      )
+      paths.push({ d, fill: typeof t._curveFill === 'string' ? t._curveFill : (typeof t.fill === 'string' ? t.fill : '#000000') })
+    } else {
+      const place: TextPlacement = {
+        text: String(t.text ?? ''), fontSizePx: Number(t.fontSize ?? 40),
+        scaleX: Number(t.scaleX ?? 1), scaleY: Number(t.scaleY ?? 1),
+        left: Number(t.left), top: Number(t.top), angle: Number(t.angle ?? 0),
+        fill: typeof t.fill === 'string' ? t.fill : '#000000',
+        textAlign: (t.textAlign === 'left' || t.textAlign === 'right') ? t.textAlign : 'center',
+        charSpacing: Number(t.charSpacing ?? 0),
+      }
+      paths.push(outlineText(font, place, canvasBox, phys))
     }
-    paths.push(outlineText(font, place, canvasBox, phys))
   }
 
   // Never silently drop a word we couldn't outline — fail loud with the font list so a
