@@ -2192,11 +2192,22 @@ export default function DesignerCanvas({
     e.target.value = ''
   }
 
+  // Desktop drag-and-drop onto the dropzone. Without preventDefault the browser opens the dropped
+  // file in a new tab (its default) instead of uploading. Reuse handleImageUpload via a synthetic
+  // event carrying the dropped files, so all format branches + the size check apply identically.
+  const handleImageDrop = async (e: React.DragEvent) => {
+    e.preventDefault()
+    const files = e.dataTransfer?.files
+    if (!files?.length) return
+    await handleImageUpload({ target: { files, value: '' } } as unknown as React.ChangeEvent<HTMLInputElement>)
+  }
+
   const placeImageOnCanvas = async (img: any, canvas: any) => {
     const canvasEl = canvasRef.current
     const overlay = document.querySelector('[data-print-area]') as HTMLElement
     let spawnX = 340
     let spawnY = 425
+    let maxW = CANVAS_W * 0.5, maxH = CANVAS_H * 0.5
     if (overlay && canvasEl) {
       const canvasRect = canvasEl.getBoundingClientRect()
       const overlayRect = overlay.getBoundingClientRect()
@@ -2204,14 +2215,30 @@ export default function DesignerCanvas({
       const scaleY = CANVAS_H / canvasRect.height
       spawnX = ((overlayRect.left - canvasRect.left) * scaleX) + (overlayRect.width * scaleX / 2)
       spawnY = ((overlayRect.top - canvasRect.top) * scaleY) + (overlayRect.height * scaleY / 2)
-      // Scale to fit print area width
-      const maxW = overlayRect.width * scaleX * 0.8
-      if (img.width > maxW) img.scaleToWidth(maxW)
-    } else {
-      img.scaleToWidth(200)
+      maxW = overlayRect.width * scaleX * 0.8
+      maxH = overlayRect.height * scaleY * 0.8
+    }
+    // Scale-to-fit the print area in BOTH dimensions (shrink only, never enlarge). Uses the best
+    // available intrinsic size — falling back to the underlying element's natural size — so a large
+    // SVG (whose Fabric width can be 0/unreliable at load) is still fit instead of dropped in huge.
+    const el = img._element || (img.getElement && img.getElement())
+    const iw = img.width || el?.naturalWidth || el?.width || 0
+    const ih = img.height || el?.naturalHeight || el?.height || 0
+    if (iw > 0 && ih > 0) {
+      const fit = Math.min(maxW / iw, maxH / ih, 1)
+      if (fit < 1) img.scale(fit)
     }
     img.set({ left: spawnX, top: spawnY, originX: 'center', originY: 'center' })
     canvas.add(img)
+    // Belt-and-suspenders: if it STILL renders larger than the box (odd SVG intrinsic sizing),
+    // measure the actual rendered size and shrink to fit — nothing is ever placed un-grabbable.
+    const sw = (img.getScaledWidth && img.getScaledWidth()) || 0
+    const sh = (img.getScaledHeight && img.getScaledHeight()) || 0
+    if (sw > maxW || sh > maxH) {
+      const fit = Math.min(maxW / (sw || maxW), maxH / (sh || maxH))
+      if (fit < 1 && isFinite(fit)) img.scale((img.scaleX || 1) * fit)
+    }
+    img.setCoords?.()
     canvas.setActiveObject(img)
     lastActiveObjectRef.current = img
     _activeObj = img
@@ -3036,7 +3063,7 @@ export default function DesignerCanvas({
       dbColors={dbColors}
       deleteSelected={deleteSelected}
       text={textProps}
-      upload={{ handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload, removeWhite: removeWhiteFromSelected, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy, colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop: cleanupCrop }}
+      upload={{ handleImageUpload, handleImageDrop, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload, removeWhite: removeWhiteFromSelected, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy, colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop: cleanupCrop }}
       clipart={{ printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor }}
     />
   )

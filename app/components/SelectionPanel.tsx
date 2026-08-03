@@ -1,5 +1,5 @@
 'use client'
-import { type Dispatch, type SetStateAction, type RefObject, type ChangeEventHandler } from 'react'
+import { type Dispatch, type SetStateAction, type RefObject, type ChangeEventHandler, type DragEventHandler } from 'react'
 import ClipartPanel from './ClipartPanel'
 import MyUploadsPanel, { type UploadItem } from './MyUploadsPanel'
 
@@ -65,6 +65,7 @@ type SelectionPanelProps = {
   }
   upload: {
     handleImageUpload: ChangeEventHandler<HTMLInputElement>
+    handleImageDrop: DragEventHandler
     libraryUploads: UploadItem[]
     libraryLoading: boolean
     pickLibraryUpload: (item: UploadItem) => void
@@ -108,7 +109,7 @@ export default function SelectionPanel({
     textAlign, handleTextAlign, isBold, setIsBold, isItalic, setIsItalic,
     isUppercase, setIsUppercase,
   } = text
-  const { handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload,
+  const { handleImageUpload, handleImageDrop, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload,
     removeWhite, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy,
     colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop } = upload
   const { printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor } = clipart
@@ -338,12 +339,14 @@ export default function SelectionPanel({
             {activeTab === 'upload' && (
               <div>
                 <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Upload Artwork</label>
-                <label className="mt-2 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-xl p-8 cursor-pointer hover:border-[#dd3333] hover:bg-[#dd3333]/5 transition-all">
+                <label
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={handleImageDrop}
+                  className="mt-2 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-xl p-8 cursor-pointer hover:border-[#dd3333] hover:bg-[#dd3333]/5 transition-all">
                   <span className="text-3xl mb-3">⬆</span>
                   <span className="text-sm text-gray-800 text-center">
                     Drop image here<br />
-                    <span className="text-xs opacity-60">PNG, SVG, JPG, JPEG, PDF</span>
-                    <span className="text-[10px] opacity-40 mt-0.5 block">AI · EPS · PSD supported via Cloudinary</span>
+                    <span className="text-xs opacity-60">JPG · PNG · SVG · AI · EPS · PSD · PDF</span>
                   </span>
                   <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,application/pdf,.pdf,.svg,.png,.jpg,.jpeg,.webp,.ai,.eps,.psd" onChange={handleImageUpload} className="hidden" />
                 </label>
