@@ -1,8 +1,7 @@
-// Cut-file engine (Node runtime only). Turns one placed text object into an
-// Illustrator-clean, physically-sized SVG of OUTLINED glyph paths — the shape a Roland
-// (via Illustrator) can cut directly. Coordinates are baked absolute in a 300-units/in
-// space; no <text>, no stroke, no transform. Vertical leading is a faithful cap-centered
-// approximation (exact Fabric leading is a Stage-2 registration refinement).
+// Cut-file engine (Node runtime only). Outlines each vector object to true glyph/shape
+// paths and assembles a color-LAYERED, physically-sized, Illustrator-clean SVG — one
+// named layer per print color (Denise's "one file per side, colors as layers"). No
+// <text>, no stroke, no transform; coordinates baked absolute in a 300-units/in space.
 import * as opentype from 'opentype.js'
 import type { CanvasBox } from './cutFileGeometry'
 
@@ -17,11 +16,12 @@ export type TextPlacement = {
   textAlign: 'left' | 'center' | 'right'
   charSpacing: number     // 1/1000 em
 }
-export type CutSvgOptions = { dpi?: number; decimalPlaces?: number; layerName?: string }
+export type CutSvgOptions = { dpi?: number; decimalPlaces?: number }
+// One outlined object: its merged path data + the print color it cuts in.
+export type CutPath = { d: string; fill: string }
 
 type Cmd = { type: string; x?: number; y?: number; x1?: number; y1?: number; x2?: number; y2?: number }
 
-// Apply a 2x3 affine [a,b,c,d,e,f] to path commands (control points included).
 function transformCmds(cmds: Cmd[], [a, b, c, d, e, f]: number[]): Cmd[] {
   const X = (x: number, y: number) => a * x + c * y + e
   const Y = (x: number, y: number) => b * x + d * y + f
@@ -37,7 +37,6 @@ function transformCmds(cmds: Cmd[], [a, b, c, d, e, f]: number[]): Cmd[] {
 function cmdsToD(cmds: Cmd[], dp: number): string {
   const p = new opentype.Path()
   ;(p as unknown as { commands: Cmd[] }).commands = cmds
-  // flipY:false — glyph getPath() coords are already in our y-down space; don't re-flip.
   return (p as unknown as { toPathData: (o: unknown) => string })
     .toPathData({ decimalPlaces: dp, flipY: false })
 }
@@ -50,20 +49,17 @@ function esc(s: string): string {
   return s.replace(/[<>&"]/g, m => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[m]!))
 }
 
-export function buildTextCutSvg(
-  font: opentype.Font, place: TextPlacement,
-  canvasBox: CanvasBox, phys: PhysBox, opts: CutSvgOptions = {},
-): string {
+// Outline ONE text object -> merged path 'd' (all its glyphs) + its fill. Coordinates
+// are absolute in the 300-DPI print-area space (dpi units per inch). Vertical leading is
+// a faithful cap-centered approximation (exact Fabric leading is a later refinement).
+export function outlineText(
+  font: opentype.Font, place: TextPlacement, canvasBox: CanvasBox, phys: PhysBox, opts: CutSvgOptions = {},
+): CutPath {
   const dpi = opts.dpi ?? 300, dp = opts.decimalPlaces ?? 2
 
-  // canvas-px -> SVG user units (dpi units per inch), per-axis for POSITION; glyph SHAPE
-  // uses one uniform factor (opentype fontSize is scalar). Equal when template DPI is
-  // isotropic (enforced at template setup).
   const uX = (phys.width_in * dpi) / canvasBox.width
   const uY = (phys.height_in * dpi) / canvasBox.height
   const uPerPx = uY
-  const viewW = Math.round(phys.width_in * dpi)
-  const viewH = Math.round(phys.height_in * dpi)
 
   const fontSizeU = place.fontSizePx * place.scaleY * uPerPx
   const scale = fontSizeU / font.unitsPerEm
@@ -71,19 +67,15 @@ export function buildTextCutSvg(
   const os2 = (font.tables as unknown as { os2?: { sCapHeight?: number } }).os2
   const capU = ((os2 && os2.sCapHeight) ? os2.sCapHeight : 0.7 * font.unitsPerEm) * scale
 
-  // object center in units (origin = print-box top-left)
   const cxU = (place.left - canvasBox.left) * uX
   const cyU = (place.top - canvasBox.top) * uY
 
   const lines = place.text.split('\n')
-  // Fabric 7.3.1 intrinsic block height (× scaleY): 1 line = fontSize*1.13; n lines =
-  // fontSize*1.13*(1+(n-1)*1.16). Centered on cy (originY=center).
   const blockH = place.fontSizePx * 1.13 * (1 + (lines.length - 1) * 1.16) * place.scaleY * uPerPx
-  const slotU = place.fontSizePx * 1.13 * place.scaleY * uPerPx        // one line's slot
-  const advU = place.fontSizePx * 1.13 * 1.16 * place.scaleY * uPerPx  // line-to-line advance
+  const slotU = place.fontSizePx * 1.13 * place.scaleY * uPerPx
+  const advU = place.fontSizePx * 1.13 * 1.16 * place.scaleY * uPerPx
   const blockTop = cyU - blockH / 2
 
-  // pass 1: per-line advance widths (kerning + charSpacing) -> block width for align
   const measured = lines.map(line => {
     const gs = font.stringToGlyphs(line); let w = 0
     for (let i = 0; i < gs.length; i++) {
@@ -101,7 +93,6 @@ export function buildTextCutSvg(
     let penX = place.textAlign === 'left' ? leftEdge
       : place.textAlign === 'right' ? leftEdge + (blockW - w)
       : cxU - w / 2
-    // baseline: cap band centered in this line's slot (faithful for all-caps)
     const baseY = blockTop + li * advU + (slotU + capU) / 2
     for (let i = 0; i < gs.length; i++) {
       if (i > 0) penX += font.getKerningValue(gs[i - 1], gs[i]) * scale
@@ -113,13 +104,32 @@ export function buildTextCutSvg(
     }
   })
 
-  const idSafe = (opts.layerName ?? place.fill).replace(/[^A-Za-z0-9]+/g, '_').replace(/^(\d)/, '_$1')
-  const name = opts.layerName ?? place.fill
+  return { d: parts.join(' '), fill: place.fill }
+}
+
+// Assemble a color-LAYERED, physically-sized, Illustrator-clean SVG. One named <g> layer
+// per unique fill color, each a single compound path (nonzero winding). Empty paths drop.
+export function assembleCutSvg(paths: CutPath[], phys: PhysBox, opts: CutSvgOptions = {}): string {
+  const dpi = opts.dpi ?? 300
+  const viewW = Math.round(phys.width_in * dpi)
+  const viewH = Math.round(phys.height_in * dpi)
+
+  const byColor = new Map<string, string[]>()
+  for (const p of paths) {
+    if (!p.d) continue
+    const arr = byColor.get(p.fill) ?? []
+    arr.push(p.d)
+    byColor.set(p.fill, arr)
+  }
+  const layers = [...byColor.entries()].map(([fill, ds], i) => {
+    const idSafe = fill.replace(/[^A-Za-z0-9]+/g, '_').replace(/^(\d)/, '_$1')
+    return `  <g id="Layer_${i}_${idSafe}" data-name="${esc(fill)}" clip-path="url(#printBox)">\n` +
+      `    <path fill="${fill}" fill-rule="nonzero" d="${ds.join(' ')}"/>\n  </g>`
+  }).join('\n')
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${phys.width_in}in" height="${phys.height_in}in" viewBox="0 0 ${viewW} ${viewH}" preserveAspectRatio="xMidYMid meet">
   <defs><clipPath id="printBox" clipPathUnits="userSpaceOnUse"><rect x="0" y="0" width="${viewW}" height="${viewH}"/></clipPath></defs>
-  <g id="${idSafe}" data-name="${esc(name)}" clip-path="url(#printBox)">
-    <path fill="${place.fill}" fill-rule="nonzero" d="${parts.join(' ')}"/>
-  </g>
+${layers}
 </svg>`
 }
