@@ -24,7 +24,7 @@ import {
 } from 'lucide-react'
 import MyDesignsDrawer, { type SavedDesign } from './MyDesignsDrawer'
 import { useCustomerSession } from '../hooks/useCustomerSession'
-import { knockoutColorGlobal, knockoutWhiteFromEdges, elementToImageData, imageDataToPngDataUrl, sampleColorAt } from '../lib/imageEdit'
+import { knockoutColorGlobal, knockoutWhiteFromEdges, elementToImageData, imageDataToPngDataUrl, sampleColorAt, contentBBox, cropToDataUrl } from '../lib/imageEdit'
 
 // Uploads a File/Blob/data-URI to Cloudinary (unsigned preset) and returns the
 // hosted image URL + metadata, or null if Cloudinary isn't configured or the
@@ -216,6 +216,9 @@ export default function DesignerCanvas({
   const [colorPreview, setColorPreview] = useState(false)
   const colorPreviewRef = useRef<{ obj: any; original: ImageData; originalSrc: string; pickedColor: { r: number; g: number; b: number } } | null>(null)
   const [editHistTick, setEditHistTick] = useState(0)
+  // Manual drag-crop: a Fabric Rect overlay + the image it's cropping.
+  const [cropMode, setCropMode] = useState(false)
+  const cropRectRef = useRef<{ rect: any; img: any } | null>(null)
   // Reactive count of objects on the CURRENT side's canvas — drives the blank-shirt
   // empty-state overlay (greeting + on-garment CTAs). Updated on object:added/removed.
   const [canvasObjectCount, setCanvasObjectCount] = useState(0)
@@ -2224,11 +2227,19 @@ export default function DesignerCanvas({
     return m ? m[1].toLowerCase() : 'png'
   }
 
-  // Apply an image-edit STATE (used by commit, undo, redo): swap the object to that src + restore
-  // its _uploadSrc and the uploaded_files entry. No re-upload — the state's url is already hosted.
-  const applyImageEditState = async (img: any, state: { src: string; uploadSrc?: string; entry?: any }) => {
+  // A single image-edit STATE (undo/redo restores these). Position is captured too, because CROP
+  // changes the object's size + position — undo must put it back exactly.
+  type EditState = { src: string; uploadSrc?: string; entry?: any; left?: number; top?: number; scaleX?: number; scaleY?: number; angle?: number }
+  const snapshotState = (img: any, src: string, uploadSrc?: string, entry?: any): EditState =>
+    ({ src, uploadSrc, entry, left: img.left, top: img.top, scaleX: img.scaleX, scaleY: img.scaleY, angle: img.angle })
+
+  // Apply an image-edit STATE (used by undo, redo): swap the object to that src + restore its
+  // _uploadSrc, uploaded_files entry, and position/scale. No re-upload — the url is already hosted.
+  const applyImageEditState = async (img: any, state: EditState) => {
     const curSrc = img._uploadSrc
-    await img.setSrc(state.src); img.setCoords?.(); fabricCanvas?.renderAll()
+    await img.setSrc(state.src)
+    img.set({ left: state.left, top: state.top, scaleX: state.scaleX, scaleY: state.scaleY, angle: state.angle })
+    img.setCoords?.(); fabricCanvas?.renderAll()
     img._uploadSrc = state.uploadSrc
     const list = uploadedFilesRef.current
     const idx = list.findIndex(f => f.url === curSrc)
@@ -2241,16 +2252,18 @@ export default function DesignerCanvas({
   // persists to the bundle + auto-tracer, record url=revised / originalUrl=raw, and push an UNDO
   // step. Edits STACK — originalUrl always keeps the FIRST raw upload. Edited images are NOT added
   // to the My Uploads library (that's for source uploads; an edit is a per-design derivative).
-  const applyEditedImage = async (img: any, editedDataUrl: string) => {
+  const applyEditedImage = async (img: any, editedDataUrl: string, pos?: { left: number; top: number }) => {
     const oldSrc: string | undefined = img._uploadSrc
     setImageEditBusy(true)
     try {
       const preEntry = uploadedFilesRef.current.find(f => f.url === oldSrc)
-      if (!img._editHist) { // seed history with the PRE-edit state the first time
-        img._editHist = [{ src: img.getSrc?.() ?? img._element?.src ?? oldSrc, uploadSrc: oldSrc, entry: preEntry ? { ...preEntry } : undefined }]
+      if (!img._editHist) { // seed history with the PRE-edit state (captured BEFORE anything changes)
+        img._editHist = [snapshotState(img, img.getSrc?.() ?? img._element?.src ?? oldSrc, oldSrc, preEntry ? { ...preEntry } : undefined)]
         img._editIdx = 0
       }
-      await img.setSrc(editedDataUrl); img.setCoords?.(); fabricCanvas?.renderAll(); markDirty()
+      await img.setSrc(editedDataUrl)
+      if (pos) img.set({ left: pos.left, top: pos.top }) // crop repositions so content stays put
+      img.setCoords?.(); fabricCanvas?.renderAll(); markDirty()
       const blob = await (await fetch(editedDataUrl)).blob()
       const uploaded = await uploadToCloudinary(blob)
       const revisedUrl = uploaded?.url || editedDataUrl
@@ -2268,7 +2281,7 @@ export default function DesignerCanvas({
       }
       uploadedFilesRef.current = [...list]
       img._editHist = img._editHist.slice(0, img._editIdx + 1) // drop any redo tail
-      img._editHist.push({ src: editedDataUrl, uploadSrc: revisedUrl, entry: { ...entry } })
+      img._editHist.push(snapshotState(img, editedDataUrl, revisedUrl, { ...entry }))
       img._editIdx = img._editHist.length - 1
       setEditHistTick(t => t + 1)
     } catch {
@@ -2358,6 +2371,71 @@ export default function DesignerCanvas({
     if (!ref) return
     if (ref.originalSrc) { await ref.obj.setSrc(ref.originalSrc); fabricCanvas?.renderAll() }
     setColorPreview(false); colorPreviewRef.current = null
+  }
+
+  // Auto-trim — one tap: crop away the padding around the artwork, then reposition so the artwork
+  // stays exactly where it was on the shirt.
+  const autoTrimSelected = async () => {
+    const img: any = fabricCanvas?.getActiveObject()
+    if (!img || String(img.type).toLowerCase() !== 'image') return
+    let imgData: ImageData | null = null
+    try { imgData = elementToImageData(img.getElement()) } catch { alert("We couldn't read this image (it may be blocked by the source server). Try re-uploading it."); return }
+    if (!imgData) return
+    const bb = contentBBox(imgData)
+    if (!bb) { alert('This image looks empty — nothing to trim.'); return }
+    if (bb.w >= imgData.width - 1 && bb.h >= imgData.height - 1) return // already tight
+    const W = img.width, H = img.height
+    const { util } = await import('fabric')
+    const center = util.transformPoint({ x: bb.x + bb.w / 2 - W / 2, y: bb.y + bb.h / 2 - H / 2 }, img.calcTransformMatrix())
+    await applyEditedImage(img, cropToDataUrl(img.getElement(), bb.x, bb.y, bb.w, bb.h), { left: center.x, top: center.y })
+  }
+
+  // Manual crop — a draggable rectangle over the selected image; Apply keeps what's inside it.
+  const startCrop = async () => {
+    const img: any = fabricCanvas?.getActiveObject()
+    if (!img || String(img.type).toLowerCase() !== 'image') return
+    const { Rect } = await import('fabric')
+    const br = img.getBoundingRect()
+    const rect: any = new Rect({
+      left: br.left, top: br.top, width: br.width, height: br.height,
+      fill: 'rgba(0,0,0,0.25)', stroke: '#ffffff', strokeDashArray: [6, 4], strokeUniform: true,
+      cornerColor: '#ffffff', cornerStrokeColor: '#000000', transparentCorners: false,
+      lockRotation: true, objectCaching: false, excludeFromExport: true, // never persists to canvas_json
+    })
+    rect.setControlsVisibility?.({ mtr: false })
+    rect._isCropRect = true
+    img.selectable = false; img.evented = false
+    fabricCanvas.add(rect); fabricCanvas.setActiveObject(rect); fabricCanvas.renderAll()
+    cropRectRef.current = { rect, img }
+    setCropMode(true)
+  }
+  const cleanupCrop = () => {
+    const cr = cropRectRef.current
+    if (!cr) return
+    try { fabricCanvas?.remove(cr.rect) } catch { /* already gone */ }
+    cr.img.selectable = true; cr.img.evented = true
+    fabricCanvas?.setActiveObject(cr.img); fabricCanvas?.renderAll()
+    cropRectRef.current = null; setCropMode(false)
+  }
+  const applyCrop = async () => {
+    const cr = cropRectRef.current
+    if (!cr) return
+    const { rect, img } = cr
+    const { util } = await import('fabric')
+    const W = img.width, H = img.height
+    const inv = util.invertTransform(img.calcTransformMatrix())
+    const rb = rect.getBoundingRect()
+    const p0 = util.transformPoint({ x: rb.left, y: rb.top }, inv)
+    const p1 = util.transformPoint({ x: rb.left + rb.width, y: rb.top + rb.height }, inv)
+    const nx0 = Math.max(0, Math.min(p0.x, p1.x) + W / 2)
+    const ny0 = Math.max(0, Math.min(p0.y, p1.y) + H / 2)
+    const nx1 = Math.min(W, Math.max(p0.x, p1.x) + W / 2)
+    const ny1 = Math.min(H, Math.max(p0.y, p1.y) + H / 2)
+    const nw = nx1 - nx0, nh = ny1 - ny0
+    cleanupCrop()
+    if (nw < 2 || nh < 2) return
+    const center = util.transformPoint({ x: nx0 + nw / 2 - W / 2, y: ny0 + nh / 2 - H / 2 }, img.calcTransformMatrix())
+    await applyEditedImage(img, cropToDataUrl(img.getElement(), nx0, ny0, nw, nh), { left: center.x, top: center.y })
   }
 
   // Export canvas as PNG blob - composite with shirt image using proxy to avoid CORS
@@ -2929,7 +3007,7 @@ export default function DesignerCanvas({
       dbColors={dbColors}
       deleteSelected={deleteSelected}
       text={textProps}
-      upload={{ handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload, removeWhite: removeWhiteFromSelected, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy, colorPreview, applyColorRemoval, cancelColorRemoval }}
+      upload={{ handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload, removeWhite: removeWhiteFromSelected, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy, colorPreview, applyColorRemoval, cancelColorRemoval, autoTrim: autoTrimSelected, startCrop, cropMode, applyCrop, cancelCrop: cleanupCrop }}
       clipart={{ printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor }}
     />
   )
@@ -2956,6 +3034,11 @@ export default function DesignerCanvas({
         colorPreview={colorPreview}
         applyColorRemoval={applyColorRemoval}
         cancelColorRemoval={cancelColorRemoval}
+        autoTrim={autoTrimSelected}
+        startCrop={startCrop}
+        cropMode={cropMode}
+        applyCrop={applyCrop}
+        cancelCrop={cleanupCrop}
       />
     )
     : activeTab === 'clipart' ? (

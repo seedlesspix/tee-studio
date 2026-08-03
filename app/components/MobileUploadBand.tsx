@@ -27,6 +27,11 @@ export default function MobileUploadBand({
   colorPreview,
   applyColorRemoval,
   cancelColorRemoval,
+  autoTrim,
+  startCrop,
+  cropMode,
+  applyCrop,
+  cancelCrop,
 }: {
   handleImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
   libraryUploads: UploadItem[]
@@ -45,11 +50,23 @@ export default function MobileUploadBand({
   colorPreview: boolean
   applyColorRemoval: () => void
   cancelColorRemoval: () => void
+  autoTrim: () => void
+  startCrop: () => void
+  cropMode: boolean
+  applyCrop: () => void
+  cancelCrop: () => void
 }) {
   if (selectedObjectType === 'image') {
     return (
-      <div className="flex h-full flex-col justify-center gap-2 px-3">
-        {colorPreview ? (
+      <div className="flex h-full flex-col justify-center gap-2 overflow-y-auto px-3">
+        {cropMode ? (
+          <div className="flex gap-2">
+            <button onClick={applyCrop} disabled={imageEditBusy}
+              className="flex-1 rounded-lg bg-[#dd3333] py-2 text-sm text-white disabled:opacity-50">Apply Crop</button>
+            <button onClick={cancelCrop} disabled={imageEditBusy}
+              className="flex-1 rounded-lg border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50">Cancel</button>
+          </div>
+        ) : colorPreview ? (
           <div className="flex flex-col gap-2">
             <input type="range" min={5} max={100} value={removeColorTol}
               onChange={e => setRemoveColorTol(Number(e.target.value))}
@@ -63,17 +80,19 @@ export default function MobileUploadBand({
           </div>
         ) : (
           <>
-            <div className="flex items-center gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <button onClick={removeWhite} disabled={imageEditBusy}
-                className="flex-1 rounded-lg border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50">
-                Remove White
-              </button>
+                className="rounded-lg border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50">Remove White</button>
               <button onClick={() => setEyedropperActive(v => !v)} disabled={imageEditBusy}
-                className={`flex-1 rounded-lg border py-2 text-sm disabled:opacity-50 ${
+                className={`rounded-lg border py-2 text-sm disabled:opacity-50 ${
                   eyedropperActive ? 'border-gray-800 bg-gray-200 text-gray-900' : 'border-gray-300 text-gray-700'
                 }`}>
                 {eyedropperActive ? 'Tap the color…' : 'Remove a Color'}
               </button>
+              <button onClick={autoTrim} disabled={imageEditBusy}
+                className="rounded-lg border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50">Trim Edges</button>
+              <button onClick={startCrop} disabled={imageEditBusy}
+                className="rounded-lg border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50">Crop…</button>
             </div>
             <MobileAlignRow alignObject={alignObject} onDelete={deleteSelected} />
           </>

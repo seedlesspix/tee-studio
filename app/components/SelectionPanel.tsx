@@ -78,6 +78,11 @@ type SelectionPanelProps = {
     colorPreview: boolean
     applyColorRemoval: () => void
     cancelColorRemoval: () => void
+    autoTrim: () => void
+    startCrop: () => void
+    cropMode: boolean
+    applyCrop: () => void
+    cancelCrop: () => void
   }
   clipart: {
     printMethod: string
@@ -106,7 +111,7 @@ export default function SelectionPanel({
   } = text
   const { handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload,
     removeWhite, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy,
-    colorPreview, applyColorRemoval, cancelColorRemoval } = upload
+    colorPreview, applyColorRemoval, cancelColorRemoval, autoTrim, startCrop, cropMode, applyCrop, cancelCrop } = upload
   const { printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor } = clipart
   // A selected CURVED text is a baked image: only font/size/color/bold/italic
   // re-bake (they're the curve effect's deps). Letter-spacing, uppercase (AA),
@@ -354,12 +359,19 @@ export default function SelectionPanel({
                 {selectedObjectType === 'image' && (
                   <div className="mt-3 flex flex-col gap-2">
                     <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Edit Image</label>
-                    <button onClick={removeWhite} disabled={imageEditBusy}
-                      className="w-full border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-[#dd3333] hover:text-[#dd3333] transition-colors disabled:opacity-50">
-                      Remove White
-                    </button>
-                    {colorPreview ? (
-                      /* Live preview: adjust the tolerance and watch the shirt update; commit with Apply. */
+                    {cropMode ? (
+                      /* Manual crop — the drag-box lives on the shirt; commit here. */
+                      <div className="border border-gray-300 rounded p-2 flex flex-col gap-2">
+                        <p className="text-[11px] text-gray-600 leading-snug">Drag the box on the shirt to frame what to keep, then Apply.</p>
+                        <div className="flex gap-2">
+                          <button onClick={applyCrop} disabled={imageEditBusy}
+                            className="flex-1 bg-[#dd3333] text-white py-2 rounded text-sm hover:bg-[#c02020] transition-colors disabled:opacity-50">Apply Crop</button>
+                          <button onClick={cancelCrop} disabled={imageEditBusy}
+                            className="flex-1 border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-gray-500 transition-colors disabled:opacity-50">Cancel</button>
+                        </div>
+                      </div>
+                    ) : colorPreview ? (
+                      /* Live color-removal preview — adjust tolerance, watch the shirt, commit with Apply. */
                       <div className="border border-gray-300 rounded p-2 flex flex-col gap-2">
                         <p className="text-[11px] text-gray-600 leading-snug">Adjust until only the color you want is gone, then Apply.</p>
                         <div>
@@ -379,18 +391,32 @@ export default function SelectionPanel({
                         </div>
                       </div>
                     ) : (
-                      <button onClick={() => setEyedropperActive(v => !v)} disabled={imageEditBusy}
-                        className={`w-full border py-2 rounded text-sm transition-colors disabled:opacity-50 ${
-                          eyedropperActive ? 'border-gray-800 bg-gray-200 text-gray-900' : 'border-gray-300 text-gray-800 hover:border-[#dd3333] hover:text-[#dd3333]'
-                        }`}>
-                        {eyedropperActive ? 'Click the color on the shirt…' : 'Remove a Color'}
-                      </button>
+                      <>
+                        <button onClick={removeWhite} disabled={imageEditBusy}
+                          className="w-full border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-[#dd3333] hover:text-[#dd3333] transition-colors disabled:opacity-50">
+                          Remove White
+                        </button>
+                        <button onClick={() => setEyedropperActive(v => !v)} disabled={imageEditBusy}
+                          className={`w-full border py-2 rounded text-sm transition-colors disabled:opacity-50 ${
+                            eyedropperActive ? 'border-gray-800 bg-gray-200 text-gray-900' : 'border-gray-300 text-gray-800 hover:border-[#dd3333] hover:text-[#dd3333]'
+                          }`}>
+                          {eyedropperActive ? 'Click the color on the shirt…' : 'Remove a Color'}
+                        </button>
+                        <button onClick={autoTrim} disabled={imageEditBusy}
+                          className="w-full border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-[#dd3333] hover:text-[#dd3333] transition-colors disabled:opacity-50">
+                          Trim Edges
+                        </button>
+                        <button onClick={startCrop} disabled={imageEditBusy}
+                          className="w-full border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-[#dd3333] hover:text-[#dd3333] transition-colors disabled:opacity-50">
+                          Crop…
+                        </button>
+                        <button onClick={deleteSelected}
+                          className="w-full border border-red-800 text-red-400 py-2 rounded text-sm hover:bg-red-900/20 transition-colors">
+                          Delete Selected
+                        </button>
+                      </>
                     )}
                     {imageEditBusy && <p className="text-[11px] text-gray-500">Processing…</p>}
-                    <button onClick={deleteSelected}
-                      className="w-full border border-red-800 text-red-400 py-2 rounded text-sm hover:bg-red-900/20 transition-colors">
-                      Delete Selected
-                    </button>
                   </div>
                 )}
               </div>
