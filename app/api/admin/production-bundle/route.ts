@@ -12,6 +12,7 @@
 // pulled from where it already lives, so the bundle is always reproducible (no storage/idempotency/GC).
 import { NextRequest, NextResponse } from 'next/server'
 import JSZip from 'jszip'
+import sharp from 'sharp'
 import { createClient } from '../../../lib/supabase/server'
 import { serviceClient } from '../../../lib/customer-library'
 import { collectCutPaths } from '../../../lib/server/generateCutFile'
@@ -31,6 +32,27 @@ async function fetchBytes(url: string): Promise<Uint8Array | null> {
     if (!res.ok) return null
     return new Uint8Array(await res.arrayBuffer())
   } catch { return null }
+}
+
+// White/near-white artwork can't be live-traced (a tracer needs dark-on-light). Detect it so the
+// bundle can auto-include an inverted copy — killing the shop's manual Photoshop-invert round-trip.
+async function isLightArtwork(bytes: Uint8Array): Promise<boolean> {
+  try {
+    const { data, info } = await sharp(Buffer.from(bytes)).resize(64, 64, { fit: 'inside' }).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+    let opaque = 0, light = 0
+    for (let i = 0; i < data.length; i += info.channels) {
+      if (data[i + 3] < 128) continue // ignore transparent pixels — judge the artwork itself
+      opaque++
+      if (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2] > 200) light++
+    }
+    return opaque > 0 && light / opaque > 0.6
+  } catch { return false }
+}
+
+// Invert RGB, keep alpha -> a tracer-friendly dark-on-transparent copy.
+async function invertPng(bytes: Uint8Array): Promise<Uint8Array | null> {
+  try { return new Uint8Array(await sharp(Buffer.from(bytes)).ensureAlpha().negate({ alpha: false }).png().toBuffer()) }
+  catch { return null }
 }
 
 const val = (v: unknown) => (v == null || v === '' ? '—' : String(v))
@@ -178,8 +200,18 @@ export async function GET(req: NextRequest) {
     if (printUrl) {
       const name = isEdited ? `${i + 1}-${stem}-edited.png` : `${i + 1}-${base}`
       const bytes = await fetchBytes(printUrl)
-      if (bytes) { origFolder!.file(name, bytes); origLines.push(`  ✓ Originals/${name}${isEdited ? '  (background/color removed — cut/print from this)' : ''}`) }
-      else origLines.push(`  ⚠ Originals/${name} — could not fetch`)
+      if (bytes) {
+        origFolder!.file(name, bytes)
+        origLines.push(`  ✓ Originals/${name}${isEdited ? '  (background/color removed — cut/print from this)' : ''}`)
+        // Auto-invert white/light artwork so the shop skips the manual Photoshop-invert before tracing.
+        if (await isLightArtwork(bytes)) {
+          const inv = await invertPng(bytes)
+          if (inv) {
+            origFolder!.file(`${i + 1}-${stem}-inverted.png`, inv)
+            origLines.push(`  ✓ Originals/${i + 1}-${stem}-inverted.png  (auto-inverted — white/light artwork, for tracing)`)
+          }
+        }
+      } else origLines.push(`  ⚠ Originals/${name} — could not fetch`)
     }
     // Reference copy in Uploads/: an EDITED upload keeps the pristine pre-edit raw; a converted
     // file keeps its web PNG rendition. Plain photos have no reference copy (they ARE the source).

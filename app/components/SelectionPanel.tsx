@@ -75,6 +75,9 @@ type SelectionPanelProps = {
     removeColorTol: number
     setRemoveColorTol: Dispatch<SetStateAction<number>>
     imageEditBusy: boolean
+    colorPreview: boolean
+    applyColorRemoval: () => void
+    cancelColorRemoval: () => void
   }
   clipart: {
     printMethod: string
@@ -102,7 +105,8 @@ export default function SelectionPanel({
     isUppercase, setIsUppercase,
   } = text
   const { handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload,
-    removeWhite, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy } = upload
+    removeWhite, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy,
+    colorPreview, applyColorRemoval, cancelColorRemoval } = upload
   const { printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor } = clipart
   // A selected CURVED text is a baked image: only font/size/color/bold/italic
   // re-bake (they're the curve effect's deps). Letter-spacing, uppercase (AA),
@@ -354,22 +358,34 @@ export default function SelectionPanel({
                       className="w-full border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-[#dd3333] hover:text-[#dd3333] transition-colors disabled:opacity-50">
                       Remove White
                     </button>
-                    <button onClick={() => setEyedropperActive(v => !v)} disabled={imageEditBusy}
-                      className={`w-full border py-2 rounded text-sm transition-colors disabled:opacity-50 ${
-                        eyedropperActive ? 'border-gray-800 bg-gray-200 text-gray-900' : 'border-gray-300 text-gray-800 hover:border-[#dd3333] hover:text-[#dd3333]'
-                      }`}>
-                      {eyedropperActive ? 'Click the color on the shirt…' : 'Remove a Color'}
-                    </button>
-                    <div>
-                      <div className="flex justify-between items-center">
-                        <label className="text-[11px] text-gray-600 font-mono">Color match</label>
-                        <span className="text-[11px] text-gray-600 font-mono">{removeColorTol}</span>
+                    {colorPreview ? (
+                      /* Live preview: adjust the tolerance and watch the shirt update; commit with Apply. */
+                      <div className="border border-gray-300 rounded p-2 flex flex-col gap-2">
+                        <p className="text-[11px] text-gray-600 leading-snug">Adjust until only the color you want is gone, then Apply.</p>
+                        <div>
+                          <div className="flex justify-between items-center">
+                            <label className="text-[11px] text-gray-600 font-mono">Color match</label>
+                            <span className="text-[11px] text-gray-600 font-mono">{removeColorTol}</span>
+                          </div>
+                          <input type="range" min={5} max={100} value={removeColorTol}
+                            onChange={e => setRemoveColorTol(Number(e.target.value))}
+                            className="w-full accent-[#dd3333]" />
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={applyColorRemoval} disabled={imageEditBusy}
+                            className="flex-1 bg-[#dd3333] text-white py-2 rounded text-sm hover:bg-[#c02020] transition-colors disabled:opacity-50">Apply</button>
+                          <button onClick={cancelColorRemoval} disabled={imageEditBusy}
+                            className="flex-1 border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-gray-500 transition-colors disabled:opacity-50">Cancel</button>
+                        </div>
                       </div>
-                      <input type="range" min={5} max={100} value={removeColorTol}
-                        onChange={e => setRemoveColorTol(Number(e.target.value))}
-                        className="w-full accent-[#dd3333]" />
-                      <p className="text-[10px] text-gray-500 leading-snug">Higher removes more shades of the picked color (helps with JPG edges).</p>
-                    </div>
+                    ) : (
+                      <button onClick={() => setEyedropperActive(v => !v)} disabled={imageEditBusy}
+                        className={`w-full border py-2 rounded text-sm transition-colors disabled:opacity-50 ${
+                          eyedropperActive ? 'border-gray-800 bg-gray-200 text-gray-900' : 'border-gray-300 text-gray-800 hover:border-[#dd3333] hover:text-[#dd3333]'
+                        }`}>
+                        {eyedropperActive ? 'Click the color on the shirt…' : 'Remove a Color'}
+                      </button>
+                    )}
                     {imageEditBusy && <p className="text-[11px] text-gray-500">Processing…</p>}
                     <button onClick={deleteSelected}
                       className="w-full border border-red-800 text-red-400 py-2 rounded text-sm hover:bg-red-900/20 transition-colors">

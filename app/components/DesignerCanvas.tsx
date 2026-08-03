@@ -20,6 +20,7 @@ import { type UploadItem } from './MyUploadsPanel'
 import {
   AlignLeft, AlignCenter, AlignRight,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
+  Undo2, Redo2,
 } from 'lucide-react'
 import MyDesignsDrawer, { type SavedDesign } from './MyDesignsDrawer'
 import { useCustomerSession } from '../hooks/useCustomerSession'
@@ -205,11 +206,16 @@ export default function DesignerCanvas({
   const [curveAmount, setCurveAmount] = useState(0)
   const [selectedTextPreview, setSelectedTextPreview] = useState<string>('')
   const [selectedObjectType, setSelectedObjectType] = useState<'text' | 'image' | 'svg' | null>(null)
-  // Upload-image editing (Phase 5): eyedropper mode for Remove-a-Color, its tolerance, and a
-  // busy flag so the tool buttons disable while a pixel op + re-upload runs.
+  // Upload-image editing (Phase 5): eyedropper mode for Remove-a-Color, its tolerance, a busy
+  // flag so the tool buttons disable while a pixel op + re-upload runs, a LIVE-PREVIEW state
+  // (pick a color -> preview while dragging tolerance -> Apply/Cancel), and a tick to re-evaluate
+  // the Undo/Redo enabled state (edit history lives on the Fabric object, not in React state).
   const [eyedropperActive, setEyedropperActive] = useState(false)
   const [removeColorTol, setRemoveColorTol] = useState(30)
   const [imageEditBusy, setImageEditBusy] = useState(false)
+  const [colorPreview, setColorPreview] = useState(false)
+  const colorPreviewRef = useRef<{ obj: any; original: ImageData; originalSrc: string; pickedColor: { r: number; g: number; b: number } } | null>(null)
+  const [editHistTick, setEditHistTick] = useState(0)
   // Reactive count of objects on the CURRENT side's canvas — drives the blank-shirt
   // empty-state overlay (greeting + on-garment CTAs). Updated on object:added/removed.
   const [canvasObjectCount, setCanvasObjectCount] = useState(0)
@@ -2208,37 +2214,81 @@ export default function DesignerCanvas({
   }
 
   // ── Upload-image editing: Remove White / Remove a Color (Phase 5) ──────────────
-  // Every tool ends here: swap the object to the edited (transparent) PNG, then re-upload it so
-  // a fetchable REVISED url persists to the production bundle + auto-tracer, recording
-  // url=revised / originalUrl=raw. Edits STACK — originalUrl always keeps the FIRST raw upload.
+  // Keep a re-hosted raw's TRUE format (fixes a JPG that got named .png in the bundle).
+  const guessExt = (type?: string, name?: string) => {
+    const t = (type || '').toLowerCase()
+    if (t.includes('jpeg') || t.includes('jpg')) return 'jpg'
+    if (t.includes('png')) return 'png'
+    if (t.includes('webp')) return 'webp'
+    const m = (name || '').match(/\.([a-z0-9]+)$/i)
+    return m ? m[1].toLowerCase() : 'png'
+  }
+
+  // Apply an image-edit STATE (used by commit, undo, redo): swap the object to that src + restore
+  // its _uploadSrc and the uploaded_files entry. No re-upload — the state's url is already hosted.
+  const applyImageEditState = async (img: any, state: { src: string; uploadSrc?: string; entry?: any }) => {
+    const curSrc = img._uploadSrc
+    await img.setSrc(state.src); img.setCoords?.(); fabricCanvas?.renderAll()
+    img._uploadSrc = state.uploadSrc
+    const list = uploadedFilesRef.current
+    const idx = list.findIndex(f => f.url === curSrc)
+    if (state.entry) { if (idx >= 0) list[idx] = { ...state.entry }; else list.push({ ...state.entry }) }
+    uploadedFilesRef.current = [...list]
+    markDirty(); setEditHistTick(t => t + 1)
+  }
+
+  // Commit an edit: swap to the edited (transparent) PNG, re-upload it so a FETCHABLE revised url
+  // persists to the bundle + auto-tracer, record url=revised / originalUrl=raw, and push an UNDO
+  // step. Edits STACK — originalUrl always keeps the FIRST raw upload. Edited images are NOT added
+  // to the My Uploads library (that's for source uploads; an edit is a per-design derivative).
   const applyEditedImage = async (img: any, editedDataUrl: string) => {
     const oldSrc: string | undefined = img._uploadSrc
     setImageEditBusy(true)
     try {
-      await img.setSrc(editedDataUrl) // swaps the element, keeps left/top/scale/angle
-      img.setCoords?.()
-      fabricCanvas?.renderAll()
-      markDirty()
-      // A data URL can't be fetched server-side (bundle/tracer) — re-host the revised PNG.
+      const preEntry = uploadedFilesRef.current.find(f => f.url === oldSrc)
+      if (!img._editHist) { // seed history with the PRE-edit state the first time
+        img._editHist = [{ src: img.getSrc?.() ?? img._element?.src ?? oldSrc, uploadSrc: oldSrc, entry: preEntry ? { ...preEntry } : undefined }]
+        img._editIdx = 0
+      }
+      await img.setSrc(editedDataUrl); img.setCoords?.(); fabricCanvas?.renderAll(); markDirty()
       const blob = await (await fetch(editedDataUrl)).blob()
       const uploaded = await uploadToCloudinary(blob)
       const revisedUrl = uploaded?.url || editedDataUrl
       img._uploadSrc = revisedUrl
       const list = uploadedFilesRef.current
       const idx = list.findIndex(f => f.url === oldSrc)
+      let entry: any
       if (idx >= 0) {
         const prev = list[idx]
-        list[idx] = { ...prev, url: revisedUrl, originalUrl: prev.originalUrl || oldSrc, originalFormat: prev.originalFormat || 'png', edited: true }
+        entry = { ...prev, url: revisedUrl, originalUrl: prev.originalUrl || oldSrc, originalFormat: prev.originalFormat || guessExt(prev.type, prev.name), edited: true }
+        list[idx] = entry
       } else {
-        list.push({ name: 'edited-image.png', url: revisedUrl, type: 'image/png', originalUrl: oldSrc, originalFormat: 'png', edited: true })
+        entry = { name: 'edited-image.png', url: revisedUrl, type: 'image/png', originalUrl: oldSrc, originalFormat: 'png', edited: true }
+        list.push(entry)
       }
       uploadedFilesRef.current = [...list]
-      if (uploaded) void persistUploadToLibrary({ url: revisedUrl, publicId: uploaded.publicId, fileName: 'edited-image.png', fileType: 'image/png', source: 'raster', width: uploaded.width, height: uploaded.height })
+      img._editHist = img._editHist.slice(0, img._editIdx + 1) // drop any redo tail
+      img._editHist.push({ src: editedDataUrl, uploadSrc: revisedUrl, entry: { ...entry } })
+      img._editIdx = img._editHist.length - 1
+      setEditHistTick(t => t + 1)
     } catch {
       alert("We couldn't edit this image — it may be blocked by the source server. Try re-uploading it, then edit.")
     } finally {
       setImageEditBusy(false)
     }
+  }
+
+  const undoImageEdit = async () => {
+    const img: any = fabricCanvas?.getActiveObject()
+    if (!img?._editHist || img._editIdx <= 0) return
+    img._editIdx -= 1
+    await applyImageEditState(img, img._editHist[img._editIdx])
+  }
+  const redoImageEdit = async () => {
+    const img: any = fabricCanvas?.getActiveObject()
+    if (!img?._editHist || img._editIdx >= img._editHist.length - 1) return
+    img._editIdx += 1
+    await applyImageEditState(img, img._editHist[img._editIdx])
   }
 
   // Remove White — one tap, edge-flood so white INSIDE the logo survives.
@@ -2252,11 +2302,22 @@ export default function DesignerCanvas({
     await applyEditedImage(img, imageDataToPngDataUrl(imgData))
   }
 
+  // Recompute the color-removal PREVIEW from the cached ORIGINAL pixels at the current tolerance.
+  const previewColorRemoval = (ref: NonNullable<typeof colorPreviewRef.current>, tol: number): string => {
+    const copy = new ImageData(new Uint8ClampedArray(ref.original.data), ref.original.width, ref.original.height)
+    knockoutColorGlobal(copy.data, ref.pickedColor, tol)
+    return imageDataToPngDataUrl(copy)
+  }
+
   // Remove a Color — eyedropper: while active, the next canvas click samples the pixel under the
-  // cursor and knocks that color out (within tolerance). Registered only while active, so it
-  // never interferes with normal editing (and sidesteps the once-registered-handler closure trap).
+  // cursor and enters LIVE PREVIEW (the tolerance slider re-previews; Apply/Cancel commits). The
+  // handler is registered only while active. The cursor becomes an eyedropper while armed.
   useEffect(() => {
     if (!fabricCanvas || !eyedropperActive) return
+    const prevCursor = fabricCanvas.defaultCursor, prevHover = fabricCanvas.hoverCursor
+    const eyeSvg = "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3'><path d='m2 22 1-1h3l9-9'/><path d='M3 21v-3l9-9'/><path d='m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z'/></svg>"
+    const eye = `url("data:image/svg+xml,${encodeURIComponent(eyeSvg)}") 1 22, crosshair`
+    fabricCanvas.defaultCursor = eye; fabricCanvas.hoverCursor = eye
     let cancelled = false
     const onDown = async (opt: any) => {
       const img: any = fabricCanvas.getActiveObject()
@@ -2267,17 +2328,37 @@ export default function DesignerCanvas({
       const pointer = fabricCanvas.getScenePoint(opt.e)
       const local = util.transformPoint(pointer, util.invertTransform(img.calcTransformMatrix()))
       const nx = local.x + img.width / 2, ny = local.y + img.height / 2 // -> natural pixel coords
-      let imgData: ImageData | null = null
-      try { imgData = elementToImageData(img.getElement()) } catch { alert("We couldn't read this image (it may be blocked by the source server). Try re-uploading it."); setEyedropperActive(false); return }
-      if (!imgData) { setEyedropperActive(false); return }
-      const rgb = sampleColorAt(imgData, nx, ny)
-      knockoutColorGlobal(imgData.data, rgb, removeColorTol)
-      await applyEditedImage(img, imageDataToPngDataUrl(imgData))
+      let original: ImageData | null = null
+      try { original = elementToImageData(img.getElement()) } catch { alert("We couldn't read this image (it may be blocked by the source server). Try re-uploading it."); setEyedropperActive(false); return }
+      if (!original) { setEyedropperActive(false); return }
+      colorPreviewRef.current = { obj: img, original, originalSrc: img.getSrc?.() ?? img._element?.src ?? '', pickedColor: sampleColorAt(original, nx, ny) }
       setEyedropperActive(false)
+      setColorPreview(true) // the preview effect below renders it (and re-renders on tolerance)
     }
     fabricCanvas.on('mouse:down', onDown)
-    return () => { cancelled = true; fabricCanvas.off('mouse:down', onDown) }
+    return () => { cancelled = true; fabricCanvas.off('mouse:down', onDown); fabricCanvas.defaultCursor = prevCursor; fabricCanvas.hoverCursor = prevHover }
   }, [fabricCanvas, eyedropperActive, removeColorTol])
+
+  // Live re-preview as the tolerance slider moves (only while previewing a color removal).
+  useEffect(() => {
+    if (!colorPreview || !colorPreviewRef.current) return
+    const ref = colorPreviewRef.current
+    ref.obj.setSrc(previewColorRemoval(ref, removeColorTol)).then(() => fabricCanvas?.renderAll())
+  }, [removeColorTol, colorPreview])
+
+  const applyColorRemoval = async () => {
+    const ref = colorPreviewRef.current
+    if (!ref) return
+    const url = previewColorRemoval(ref, removeColorTol)
+    setColorPreview(false); colorPreviewRef.current = null
+    await applyEditedImage(ref.obj, url)
+  }
+  const cancelColorRemoval = async () => {
+    const ref = colorPreviewRef.current
+    if (!ref) return
+    if (ref.originalSrc) { await ref.obj.setSrc(ref.originalSrc); fabricCanvas?.renderAll() }
+    setColorPreview(false); colorPreviewRef.current = null
+  }
 
   // Export canvas as PNG blob - composite with shirt image using proxy to avoid CORS
   const exportCanvasPNG = async (canvas: any, shirtSrc: string | null | undefined): Promise<Blob | null> => {
@@ -2848,7 +2929,7 @@ export default function DesignerCanvas({
       dbColors={dbColors}
       deleteSelected={deleteSelected}
       text={textProps}
-      upload={{ handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload, removeWhite: removeWhiteFromSelected, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy }}
+      upload={{ handleImageUpload, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload, removeWhite: removeWhiteFromSelected, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy, colorPreview, applyColorRemoval, cancelColorRemoval }}
       clipart={{ printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor }}
     />
   )
@@ -2872,6 +2953,9 @@ export default function DesignerCanvas({
         removeColorTol={removeColorTol}
         setRemoveColorTol={setRemoveColorTol}
         imageEditBusy={imageEditBusy}
+        colorPreview={colorPreview}
+        applyColorRemoval={applyColorRemoval}
+        cancelColorRemoval={cancelColorRemoval}
       />
     )
     : activeTab === 'clipart' ? (
@@ -2971,6 +3055,28 @@ export default function DesignerCanvas({
               top strip below the header so it stops eating the shirt's space. */}
           {!isMobile && (
           <div className="shrink-0 flex items-center gap-1 mb-2 px-1 flex-wrap">
+            {/* Undo/Redo for image editing (Phase 5) — enabled when the selected image has edit
+                history. editHistTick forces this to re-evaluate after each edit/undo/redo. */}
+            {(() => {
+              const im: any = editHistTick >= 0 ? fabricCanvas?.getActiveObject() : null
+              const canU = !!(im?._editHist && im._editIdx > 0)
+              const canR = !!(im?._editHist && im._editIdx < im._editHist.length - 1)
+              return (
+                <>
+                  <button title="Undo image edit" disabled={!canU || imageEditBusy}
+                    onPointerDown={e => { e.preventDefault(); undoImageEdit() }}
+                    className="flex items-center justify-center px-2 py-1.5 rounded bg-gray-100 border border-gray-200 text-gray-700 hover:border-[#dd3333] hover:text-gray-900 transition-all disabled:opacity-40 disabled:hover:border-gray-200">
+                    <Undo2 size={16} strokeWidth={1.75} />
+                  </button>
+                  <button title="Redo image edit" disabled={!canR || imageEditBusy}
+                    onPointerDown={e => { e.preventDefault(); redoImageEdit() }}
+                    className="flex items-center justify-center px-2 py-1.5 rounded bg-gray-100 border border-gray-200 text-gray-700 hover:border-[#dd3333] hover:text-gray-900 transition-all disabled:opacity-40 disabled:hover:border-gray-200">
+                    <Redo2 size={16} strokeWidth={1.75} />
+                  </button>
+                  <span className="w-px h-4 bg-gray-200 mx-1" />
+                </>
+              )
+            })()}
             <span className="text-xs text-gray-800 font-mono uppercase tracking-widest mr-1">Align:</span>
             {[
               { Icon: AlignLeft, title: 'Align Left', fn: 'left' },
