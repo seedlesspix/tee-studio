@@ -523,13 +523,31 @@ export default function OrdersAdmin() {
                         )}
                       </div>
 
-                      {/* Cut files (beta) — outlined, physically-sized SVG for the Roland
-                          (via Illustrator). First proof: Impact font, templated + uncurved
-                          text only; other cases return a short message. Cookie-authed GET,
-                          so a plain download link (no JS). */}
+                      {/* Production bundle (Stage 3) — ONE ZIP with everything the print shop
+                          needs for this order: the outlined cut file per side (true physical
+                          size, colors as named layers), the placed uploads + untouched
+                          originals, and a MANIFEST. Generated fresh on download (nothing
+                          stored, always reproducible). Cookie-authed GET → plain link, no JS.
+                          Red = primary action (get everything); the per-side links below are
+                          the secondary "one piece at a time" option. */}
+                      {(row.canvas_png_front || row.canvas_png_back || (row.uploaded_files && row.uploaded_files.length > 0)) && (
+                        <div className="mt-4 pt-3 border-t border-gray-200">
+                          <p className="text-xs font-mono text-gray-600 mb-2">PRODUCTION BUNDLE</p>
+                          <a href={`/api/admin/production-bundle?order=${row.id}`}
+                            className="block w-full py-2 rounded text-xs font-mono bg-[#dd3333] text-white hover:bg-[#c02020] transition-all text-center">
+                            ⬇ Download production bundle (.zip)
+                          </a>
+                          <p className="text-[10px] text-gray-500 mt-1">Cut file per side · placed uploads · originals · manifest</p>
+                        </div>
+                      )}
+
+                      {/* Individual cut file per side — outlined, physically-sized SVG for the
+                          Roland (via Illustrator). All 58 fonts + curved text + clipart supported
+                          (Stage 2). A side with no vector artwork returns a short message.
+                          Cookie-authed GET, so a plain download link (no JS). */}
                       {(row.canvas_png_front || row.canvas_png_back) && (
                         <div className="mt-4 pt-3 border-t border-gray-200">
-                          <p className="text-xs font-mono text-gray-600 mb-2">CUT FILES (beta · Impact)</p>
+                          <p className="text-xs font-mono text-gray-600 mb-2">CUT FILE — INDIVIDUAL SIDES</p>
                           <div className="flex gap-2">
                             {row.canvas_png_front && (
                               <a href={`/api/admin/cut-file?order=${row.id}&side=front`}
