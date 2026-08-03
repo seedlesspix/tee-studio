@@ -539,10 +539,16 @@ export default function OrdersAdmin() {
                           </a>
                           <p className="text-[10px] text-gray-500 mt-1">OrderInfo · Cut Files (normal + mirrored) · Layout · Previews · Originals</p>
                           {row.uploaded_files && row.uploaded_files.length > 0 && (
-                            <a href={`/api/admin/trace-spike?order=${row.id}`}
-                              className="block w-full mt-2 py-1.5 rounded text-[11px] font-mono bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 transition-all text-center">
-                              🔬 Auto-trace spike — potrace vs Vectorizer.AI (.zip)
-                            </a>
+                            <div className="mt-2 flex flex-col gap-1">
+                              <a href={`/api/admin/trace-spike?order=${row.id}`}
+                                className="block w-full py-1.5 rounded text-[11px] font-mono bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 transition-all text-center">
+                                🔬 Trace spike — free (Vectorizer watermarked)
+                              </a>
+                              <a href={`/api/admin/trace-spike?order=${row.id}&mode=production`}
+                                className="block w-full py-1.5 rounded text-[11px] font-mono bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 transition-all text-center">
+                                🔬 Trace spike — Vectorizer PRODUCTION (1 credit · clean, unwatermarked)
+                              </a>
+                            </div>
                           )}
                         </div>
                       )}
