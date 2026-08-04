@@ -27,23 +27,38 @@ async function toMask(bytes: Uint8Array): Promise<Buffer> {
   return sharp(buf).flatten({ background: '#ffffff' }).greyscale().threshold(128).png().toBuffer()
 }
 
-// Only trace one-color/simple art (a logo has a dominant color + background; a photo doesn't).
+// A one-color cuttable logo traces to tens–low-hundreds of anchors. A photo that slips the color
+// gate (e.g. a low-contrast/noisy shot whose 80px proxy looks flat but whose full-res noise traces
+// to a speckle mesh) yields TENS OF THOUSANDS. This backstop rejects that garbage regardless of the
+// proxy's blind spot — the raster still ships in Originals/ for manual work.
+const MAX_TRACE_COMMANDS = 5000
+
+function pathCommandCount(svg: string): number {
+  let n = 0
+  for (const m of svg.matchAll(/\sd="([^"]*)"/g)) n += (m[1].match(/[MLHVCSQTAZ]/gi) || []).length
+  return n
+}
+
+// Reject genuinely MULTI-COLOR art (a full-color photo, or a many-ink logo that needs per-color
+// separation, not one silhouette): count distinct coarse-quantized colors on an 80px proxy. A
+// one-color logo — bold OR thin/wordmark — quantizes to a handful (~1–8, anti-alias fringe aside);
+// a color photo or multi-ink mascot spreads to dozens.
+// NB: an earlier "top-2 dominance > 0.85" test was REMOVED — measured data showed it rejected thin
+// one-color logos (wordmarks land ~0.79) while PASSING smooth-noise photos (~0.96). The post-trace
+// anchor cap (below) is the reliable garbage filter; color-count is the reliable multi-color filter.
 async function isCuttable(bytes: Uint8Array): Promise<boolean> {
   const { data, info } = await sharp(Buffer.from(bytes)).resize(80, 80, { fit: 'inside' }).flatten({ background: '#fff' }).raw().toBuffer({ resolveWithObject: true })
-  const counts = new Map<string, number>()
-  for (let i = 0; i < data.length; i += info.channels) {
-    const k = (data[i] >> 5) + '_' + (data[i + 1] >> 5) + '_' + (data[i + 2] >> 5)
-    counts.set(k, (counts.get(k) || 0) + 1)
-  }
-  const total = data.length / info.channels
-  const top2 = [...counts.values()].sort((a, b) => b - a).slice(0, 2).reduce((a, b) => a + b, 0) / total
-  return top2 > 0.85 && counts.size < 24
+  const colors = new Set<string>()
+  for (let i = 0; i < data.length; i += info.channels) colors.add((data[i] >> 5) + '_' + (data[i + 1] >> 5) + '_' + (data[i + 2] >> 5))
+  return colors.size < 24
 }
 
 // Returns an outlined SVG for cuttable one-color art, or null (photo/multi-color/unreadable/vector).
 export async function autoTraceSvg(bytes: Uint8Array): Promise<string | null> {
   try {
     if (!(await isCuttable(bytes))) return null
-    return await potraceTrace(await toMask(bytes))
+    const svg = await potraceTrace(await toMask(bytes))
+    if (pathCommandCount(svg) > MAX_TRACE_COMMANDS) return null // backstop: a slipped photo = garbage mesh
+    return svg
   } catch { return null }
 }
