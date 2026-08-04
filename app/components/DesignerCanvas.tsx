@@ -2301,7 +2301,7 @@ export default function DesignerCanvas({
   // to the My Uploads library (that's for source uploads; an edit is a per-design derivative).
   // editedSrc may be a data URL (client pixel edit -> we re-host it) OR an already-hosted http URL
   // (e.g. the Remove Background cutout, re-hosted server-side -> use directly, no re-upload).
-  const applyEditedImage = async (img: any, editedSrc: string, pos?: { left: number; top: number }) => {
+  const applyEditedImage = async (img: any, editedSrc: string, pos?: { left: number; top: number }, opts?: { preserveSize?: boolean }) => {
     const oldSrc: string | undefined = img._uploadSrc
     setImageEditBusy(true)
     try {
@@ -2310,8 +2310,13 @@ export default function DesignerCanvas({
         img._editHist = [snapshotState(img, img.getSrc?.() ?? img._element?.src ?? oldSrc, oldSrc, preEntry ? { ...preEntry } : undefined)]
         img._editIdx = 0
       }
+      // Remove Background returns a cutout at a DIFFERENT pixel size than the original (remove.bg
+      // output res / Cloudinary re-host), so setSrc would resize it on the shirt. Preserve the
+      // on-shirt WIDTH (uniform scale, aspect kept). Crop deliberately keeps scale + repositions.
+      const prevScaledW = opts?.preserveSize ? (img.getScaledWidth?.() || 0) : 0
       const isData = editedSrc.startsWith('data:')
       await img.setSrc(editedSrc, isData ? undefined : { crossOrigin: 'anonymous' }) // CORS so later edits can read pixels
+      if (opts?.preserveSize && prevScaledW && img.width) { const s = prevScaledW / img.width; img.scaleX = s; img.scaleY = s }
       if (pos) img.set({ left: pos.left, top: pos.top }) // crop repositions so content stays put
       img.setCoords?.(); fabricCanvas?.renderAll(); markDirty()
       let revisedUrl: string
@@ -2393,13 +2398,13 @@ export default function DesignerCanvas({
       if (ct.includes('application/json')) {
         const data = await res.json().catch(() => ({} as { url?: string }))
         if (!data?.url) { alert('Background removal returned no image.'); return }
-        await applyEditedImage(img, data.url) // cutout already re-hosted on Cloudinary
+        await applyEditedImage(img, data.url, undefined, { preserveSize: true }) // cutout already re-hosted on Cloudinary; keep on-shirt size
       } else if (ct.includes('image')) {
         const blob = await res.blob()
         const resultUrl = await new Promise<string>((resolve, reject) => {
           const fr = new FileReader(); fr.onload = () => resolve(fr.result as string); fr.onerror = () => reject(new Error('read failed')); fr.readAsDataURL(blob)
         })
-        await applyEditedImage(img, resultUrl)
+        await applyEditedImage(img, resultUrl, undefined, { preserveSize: true })
       } else {
         const text = await res.text().catch(() => '')
         alert(`Background removal returned an unexpected response.${text ? ` — ${text.slice(0, 140)}` : ''}`)
