@@ -777,6 +777,7 @@ export default function DesignerCanvas({
   // writer itself is kept current via a ref (see the effect after snapshotDesignState).
   const autodraftTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const autodraftWriteRef = useRef<() => void>(() => {})
+  const isRestoringRef = useRef(false) // true while applyDesignState runs — suppresses the writer so a mid-restore (transiently empty) canvas can't wipe the snapshot
   const scheduleAutodraft = useCallback(() => {
     if (typeof window === 'undefined') return
     if (autodraftTimer.current) clearTimeout(autodraftTimer.current)
@@ -840,28 +841,36 @@ export default function DesignerCanvas({
   const applyDesignState = useCallback(async (state: any) => {
     const canvas = fabricCanvasRef.current
     if (!canvas || !state) return
-    const { util } = await import('fabric')
-    if (state.front) await canvas.loadFromJSON(state.front)
-    if (state.back?.objects?.length) backObjectsRef.current = (await util.enlivenObjects(state.back.objects)) as any[]
-    else backObjectsRef.current = []
-    frontObjectsRef.current = []
-    canvas.discardActiveObject()
-    canvas.renderAll()
-    if (state.selectedColor) {
-      setSelectedColor(state.selectedColor)
-      setShirtHex(COLOR_HEX_MAP[state.selectedColor] || '#888')
-      const imgs = getColorImages(state.selectedColor, colorImageMap)
-      const restoreSrc = imgs?.front || firstImageUrlRef.current
-      if (restoreSrc && shirtImgRef.current) shirtImgRef.current.src = restoreSrc
-      const match = product?.variants.edges.find(({ node }) =>
-        node.selectedOptions.some((o: any) => o.name === 'Color' && o.value === state.selectedColor),
-      )
-      if (match) setSelectedVariant(match.node)
+    // Suppress the auto-draft writer for the whole restore: loadFromJSON leaves the canvas briefly
+    // empty, and a queued write firing then would wipe the snapshot. Cancel any pending write too.
+    isRestoringRef.current = true
+    if (autodraftTimer.current) { clearTimeout(autodraftTimer.current); autodraftTimer.current = null }
+    try {
+      const { util } = await import('fabric')
+      if (state.front) await canvas.loadFromJSON(state.front)
+      if (state.back?.objects?.length) backObjectsRef.current = (await util.enlivenObjects(state.back.objects)) as any[]
+      else backObjectsRef.current = []
+      frontObjectsRef.current = []
+      canvas.discardActiveObject()
+      canvas.renderAll()
+      if (state.selectedColor) {
+        setSelectedColor(state.selectedColor)
+        setShirtHex(COLOR_HEX_MAP[state.selectedColor] || '#888')
+        const imgs = getColorImages(state.selectedColor, colorImageMap)
+        const restoreSrc = imgs?.front || firstImageUrlRef.current
+        if (restoreSrc && shirtImgRef.current) shirtImgRef.current.src = restoreSrc
+        const match = product?.variants.edges.find(({ node }) =>
+          node.selectedOptions.some((o: any) => o.name === 'Color' && o.value === state.selectedColor),
+        )
+        if (match) setSelectedVariant(match.node)
+      }
+      if (state.printMethod) setPrintMethod(state.printMethod)
+      if (state.quantities) setQuantities(state.quantities)
+      if (Array.isArray(state.uploadedFiles)) uploadedFilesRef.current = state.uploadedFiles
+      setShirtView('front')
+    } finally {
+      isRestoringRef.current = false
     }
-    if (state.printMethod) setPrintMethod(state.printMethod)
-    if (state.quantities) setQuantities(state.quantities)
-    if (Array.isArray(state.uploadedFiles)) uploadedFilesRef.current = state.uploadedFiles
-    setShirtView('front')
   }, [product, colorImageMap])
 
   // Restore a design snapshotted before a Shopify login round-trip. Runs once,
@@ -915,11 +924,37 @@ export default function DesignerCanvas({
     autodraftRestoredRef.current = true
     if (typeof window === 'undefined') return
     const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+    const isReload = nav?.type === 'reload'
     let env = null
     try { env = parseEnvelope(sessionStorage.getItem(AUTODRAFT_KEY)) } catch { /* storage disabled */ }
-    if (!shouldRestore(env, { isReload: nav?.type === 'reload', currentProductId: product.id || productId })) return
+    if (!shouldRestore(env, { isReload, currentProductId: product.id || productId })) {
+      // Fresh (non-reload) navigation into a blank designer: drop any leftover same-product snapshot
+      // so a later accidental reload can't resurrect an abandoned design onto THIS new session. As
+      // the customer designs, the writer re-persists this session's own work.
+      if (!isReload) clearAutodraft()
+      return
+    }
     applyDesignState((env as { state: unknown }).state)
-  }, [fabricCanvas, product, restoreId, designId, productId, applyDesignState])
+  }, [fabricCanvas, product, restoreId, designId, productId, applyDesignState, clearAutodraft])
+
+  // Flush the pending debounced snapshot before the page unloads/hides, so the last <=1s of work
+  // (including the FIRST edit of a fresh design, which has no prior snapshot to fall back to) survives
+  // a reload. pagehide covers reload/close/nav-away; visibilitychange->hidden is the mobile-reliable
+  // backup. The writer's own ready/restoring guard makes an early flush a safe no-op.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const flush = () => {
+      if (autodraftTimer.current) { clearTimeout(autodraftTimer.current); autodraftTimer.current = null }
+      autodraftWriteRef.current()
+    }
+    const onVis = () => { if (document.visibilityState === 'hidden') flush() }
+    window.addEventListener('pagehide', flush)
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [])
 
   useEffect(() => {
     const canvas = fabricCanvasRef.current
@@ -2964,14 +2999,20 @@ export default function DesignerCanvas({
   }
 
   // Keep the debounced auto-draft writer pointed at the LATEST state (runs every render, so the timer
-  // scheduleAutodraft sets always serializes current values). An emptied design clears the key.
+  // scheduleAutodraft sets always serializes current values).
   useEffect(() => {
     autodraftWriteRef.current = () => {
       if (typeof window === 'undefined') return
+      // CRITICAL: never touch storage until the canvas is READY and NOT mid-restore.
+      // snapshotDesignState() returns null for BOTH "canvas not ready yet" (fabric loads via async
+      // import — can resolve AFTER this debounce on slow mobile) and "genuinely empty". Treating the
+      // not-ready case as empty would removeItem and wipe the very snapshot we're about to restore.
+      if (!fabricCanvasRef.current || isRestoringRef.current) return
       try {
         const state = snapshotDesignState()
+        // ONLY WRITE, never remove: removal is explicit (Clear All / fresh-nav), so a transiently-
+        // empty or not-yet-loaded canvas can never wipe a snapshot we may still need to restore.
         if (state) sessionStorage.setItem(AUTODRAFT_KEY, JSON.stringify(buildEnvelope(state, Date.now())))
-        else sessionStorage.removeItem(AUTODRAFT_KEY)
       } catch { /* storage full/disabled — non-fatal */ }
     }
   })
