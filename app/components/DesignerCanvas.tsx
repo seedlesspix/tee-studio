@@ -2376,18 +2376,28 @@ export default function DesignerCanvas({
     setImageEditBusy(true)
     try {
       const res = await fetch('/api/remove-bg', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageBase64: dataUrl }) })
+      // Surface the REAL cause — never a silent generic. A 404 HTML page (stale deploy), the
+      // route's JSON category (auth/quota/network), or a non-image 200 all show through here.
       if (!res.ok) {
-        const j = await res.json().catch(() => ({} as { error?: string }))
-        alert(j?.error || "Couldn't remove the background — please try again.")
+        const text = await res.text().catch(() => '')
+        let msg = ''
+        try { msg = JSON.parse(text)?.error || '' } catch { /* not JSON */ }
+        alert(msg || `Background removal failed (HTTP ${res.status}).${text ? ` — ${text.slice(0, 140)}` : ''}`)
+        return
+      }
+      if (!(res.headers.get('content-type') || '').includes('image')) {
+        const text = await res.text().catch(() => '')
+        alert(`Background removal returned an unexpected response (not an image).${text ? ` — ${text.slice(0, 140)}` : ''}`)
         return
       }
       const blob = await res.blob()
       const resultUrl = await new Promise<string>((resolve, reject) => {
-        const fr = new FileReader(); fr.onload = () => resolve(fr.result as string); fr.onerror = reject; fr.readAsDataURL(blob)
+        const fr = new FileReader(); fr.onload = () => resolve(fr.result as string); fr.onerror = () => reject(new Error('read failed')); fr.readAsDataURL(blob)
       })
       await applyEditedImage(img, resultUrl)
-    } catch { alert("Couldn't remove the background — please try again.") }
-    finally { setImageEditBusy(false) }
+    } catch (e: any) {
+      alert(`Background removal error: ${e?.message || e}`)
+    } finally { setImageEditBusy(false) }
   }
 
   // Recompute the color-removal PREVIEW from the cached ORIGINAL pixels at the current tolerance.
