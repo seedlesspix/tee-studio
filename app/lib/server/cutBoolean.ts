@@ -6,7 +6,12 @@
 //      the cutter to choke on (the store's delete-the-clip step);
 //   3. optionally MIRROR for heat-transfer vinyl — baked into the coordinates, not a transform
 //      attribute (the store's flip step).
-// Holes and curves are preserved (paper.js). A fresh PaperScope per call keeps it concurrency-safe.
+// ⚠️ CURVE FIDELITY: paper's boolean ops (unite/intersect) RE-TRACE the path and re-fit shallow
+// curves into flat segments (a smooth "o" counter came out squared-off). So we gate them on ACTUAL
+// geometry — union ONLY when a color layer self-overlaps (edges cross), crop ONLY when it crosses
+// the print-box edge. Non-overlapping art fully inside the box runs NO boolean → curves stay exact
+// (identical to the layout glyph). Holes and curves are preserved. Fresh PaperScope per call =
+// concurrency-safe.
 import paper from 'paper-jsdom'
 import type { CutPath, PhysBox } from './cutFileEngine'
 
@@ -29,12 +34,17 @@ export function assembleCutSvgUnioned(
     const layers: string[] = []
     let i = 0
     for (const [fill, ds] of byColor) {
-      const raw = scope.PathItem.create(ds.join(' '))
-      const united = raw.unite(new scope.Path())          // merge overlaps, holes preserved via winding
-      const region = united.intersect(box)                // crop = mathematical print-box mask
+      const combined = scope.PathItem.create(ds.join(' '))
+      // Gate the lossy boolean ops on real geometry (see the fidelity note above).
+      const selfCrosses = (combined.getCrossings ? combined.getCrossings() : combined.getIntersections()).length > 0
+      const insideBox = box.bounds.contains(combined.bounds)
+      let region = combined
+      if (selfCrosses) { const empty = new scope.Path(); region = region.unite(empty); empty.remove() } // merge overlaps (holes preserved via winding)
+      if (!insideBox) region = region.intersect(box)      // crop = mathematical print-box mask (only when it overflows)
       if (opts.mirror) region.scale(-1, 1, new scope.Point(viewW / 2, viewH / 2)) // flip for HTV
       const d = region.pathData || ''
-      raw.remove(); united.remove(); region.remove()
+      if (region !== combined) combined.remove()
+      region.remove()
       if (d) {
         layers.push(
           `  <g id="Layer_${i}_${idSafe(fill)}" data-name="${esc(fill)}">\n` +
