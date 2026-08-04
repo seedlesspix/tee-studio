@@ -2352,6 +2352,34 @@ export default function DesignerCanvas({
     await applyEditedImage(img, imageDataToPngDataUrl(imgData))
   }
 
+  // Remove Background — AI auto removal via the server proxy (remove.bg). For photos/complex art
+  // where a color-knockout won't do. Persists the transparent result like every other edit.
+  const removeBackgroundFromSelected = async () => {
+    const img: any = fabricCanvas?.getActiveObject()
+    if (!img || String(img.type).toLowerCase() !== 'image') return
+    let dataUrl: string
+    try {
+      const d = elementToImageData(img.getElement())
+      if (!d) return
+      dataUrl = imageDataToPngDataUrl(d)
+    } catch { alert("We couldn't read this image (it may be blocked by the source server). Try re-uploading it."); return }
+    setImageEditBusy(true)
+    try {
+      const res = await fetch('/api/remove-bg', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageBase64: dataUrl }) })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({} as { error?: string }))
+        alert(j?.error || "Couldn't remove the background — please try again.")
+        return
+      }
+      const blob = await res.blob()
+      const resultUrl = await new Promise<string>((resolve, reject) => {
+        const fr = new FileReader(); fr.onload = () => resolve(fr.result as string); fr.onerror = reject; fr.readAsDataURL(blob)
+      })
+      await applyEditedImage(img, resultUrl)
+    } catch { alert("Couldn't remove the background — please try again.") }
+    finally { setImageEditBusy(false) }
+  }
+
   // Recompute the color-removal PREVIEW from the cached ORIGINAL pixels at the current tolerance.
   const previewColorRemoval = (ref: NonNullable<typeof colorPreviewRef.current>, tol: number): string => {
     const copy = new ImageData(new Uint8ClampedArray(ref.original.data), ref.original.width, ref.original.height)
@@ -3071,7 +3099,7 @@ export default function DesignerCanvas({
       dbColors={dbColors}
       deleteSelected={deleteSelected}
       text={textProps}
-      upload={{ handleImageUpload, handleImageDrop, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload, removeWhite: removeWhiteFromSelected, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy, colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop: cleanupCrop }}
+      upload={{ handleImageUpload, handleImageDrop, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload, removeWhite: removeWhiteFromSelected, removeBackground: removeBackgroundFromSelected, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy, colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop: cleanupCrop }}
       clipart={{ printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor }}
     />
   )
@@ -3090,6 +3118,7 @@ export default function DesignerCanvas({
         deleteSelected={deleteSelected}
         alignObject={alignObject}
         removeWhite={removeWhiteFromSelected}
+        removeBackground={removeBackgroundFromSelected}
         eyedropperActive={eyedropperActive}
         setEyedropperActive={setEyedropperActive}
         removeColorTol={removeColorTol}
@@ -3184,17 +3213,37 @@ export default function DesignerCanvas({
             </div>
           )}
 
-          {/* Persistent on-canvas Clear All — MOBILE only, small + out of the way in
-              the corner, but always visible when there's something to clear (so
-              "start over" isn't buried in the menu). Desktop has its in-stage button. */}
-          {isMobile && canvasObjectCount > 0 && (
-            <button
-              type="button"
-              onClick={handleClearAll}
-              className="absolute right-2 top-2 z-10 rounded-full border border-gray-200 bg-white/90 px-3 py-1 text-xs text-[#dd3333] shadow-sm backdrop-blur"
-            >
-              Clear all
-            </button>
+          {/* MOBILE top-right cluster — Undo/Redo (image edits) sit BY Clear all (Denise: that's
+              where they make sense on the phone). Undo/Redo appear only when the selected image
+              has edit history; Clear all whenever there's something to clear. Desktop has its own
+              in-stage row (align + undo/redo + Clear All). */}
+          {isMobile && (
+            <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+              {(() => {
+                const im: any = editHistTick >= 0 ? fabricCanvas?.getActiveObject() : null
+                const canU = !!(im?._editHist && im._editIdx > 0)
+                const canR = !!(im?._editHist && im._editIdx < im._editHist.length - 1)
+                if (!canU && !canR) return null
+                return (
+                  <>
+                    <button type="button" title="Undo" onClick={undoImageEdit} disabled={!canU || imageEditBusy}
+                      className="flex items-center justify-center rounded-full border border-gray-200 bg-white/90 p-2 text-gray-700 shadow-sm backdrop-blur disabled:opacity-40">
+                      <Undo2 size={15} strokeWidth={2} />
+                    </button>
+                    <button type="button" title="Redo" onClick={redoImageEdit} disabled={!canR || imageEditBusy}
+                      className="flex items-center justify-center rounded-full border border-gray-200 bg-white/90 p-2 text-gray-700 shadow-sm backdrop-blur disabled:opacity-40">
+                      <Redo2 size={15} strokeWidth={2} />
+                    </button>
+                  </>
+                )
+              })()}
+              {canvasObjectCount > 0 && (
+                <button type="button" onClick={handleClearAll}
+                  className="rounded-full border border-gray-200 bg-white/90 px-3 py-1.5 text-xs text-[#dd3333] shadow-sm backdrop-blur">
+                  Clear all
+                </button>
+              )}
+            </div>
           )}
 
           {/* Alignment toolbar — DESKTOP only now; on mobile it moves to the slim

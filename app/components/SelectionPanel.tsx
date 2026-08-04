@@ -71,6 +71,7 @@ type SelectionPanelProps = {
     pickLibraryUpload: (item: UploadItem) => void
     deleteLibraryUpload: (id: string) => void
     removeWhite: () => void
+    removeBackground: () => void
     eyedropperActive: boolean
     setEyedropperActive: Dispatch<SetStateAction<boolean>>
     removeColorTol: number
@@ -110,7 +111,7 @@ export default function SelectionPanel({
     isUppercase, setIsUppercase,
   } = text
   const { handleImageUpload, handleImageDrop, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload,
-    removeWhite, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy,
+    removeWhite, removeBackground, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy,
     colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop } = upload
   const { printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor } = clipart
   // A selected CURVED text is a baked image: only font/size/color/bold/italic
@@ -394,6 +395,10 @@ export default function SelectionPanel({
                       </div>
                     ) : (
                       <>
+                        <button onClick={removeBackground} disabled={imageEditBusy}
+                          className="w-full border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-[#dd3333] hover:text-[#dd3333] transition-colors disabled:opacity-50">
+                          Remove Background
+                        </button>
                         <button onClick={removeWhite} disabled={imageEditBusy}
                           className="w-full border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-[#dd3333] hover:text-[#dd3333] transition-colors disabled:opacity-50">
                           Remove White

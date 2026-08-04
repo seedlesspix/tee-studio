@@ -19,6 +19,7 @@ export default function MobileUploadBand({
   deleteSelected,
   alignObject,
   removeWhite,
+  removeBackground,
   eyedropperActive,
   setEyedropperActive,
   removeColorTol,
@@ -41,6 +42,7 @@ export default function MobileUploadBand({
   deleteSelected: () => void
   alignObject: (fn: string) => void
   removeWhite: () => void
+  removeBackground: () => void
   eyedropperActive: boolean
   setEyedropperActive: React.Dispatch<React.SetStateAction<boolean>>
   removeColorTol: number
@@ -79,6 +81,8 @@ export default function MobileUploadBand({
         ) : (
           <>
             <div className="grid grid-cols-2 gap-2">
+              <button onClick={removeBackground} disabled={imageEditBusy}
+                className="rounded-lg border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50">Remove Background</button>
               <button onClick={removeWhite} disabled={imageEditBusy}
                 className="rounded-lg border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50">Remove White</button>
               <button onClick={() => setEyedropperActive(v => !v)} disabled={imageEditBusy}
