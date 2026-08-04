@@ -34,11 +34,14 @@ export function assembleCutSvgUnioned(
     const layers: string[] = []
     let i = 0
     for (const [fill, ds] of byColor) {
-      const combined = scope.PathItem.create(ds.join(' '))
+      // `any`: paper's TS types require getCrossings(arg) but the runtime supports the no-arg
+      // SELF-crossings form, and unite/intersect return the PathItem base (not the Path|CompoundPath
+      // that create() is typed as), which trips reassignment. The runtime is verified.
+      const combined: any = scope.PathItem.create(ds.join(' '))
       // Gate the lossy boolean ops on real geometry (see the fidelity note above).
       const selfCrosses = (combined.getCrossings ? combined.getCrossings() : combined.getIntersections()).length > 0
       const insideBox = box.bounds.contains(combined.bounds)
-      let region = combined
+      let region: any = combined
       if (selfCrosses) { const empty = new scope.Path(); region = region.unite(empty); empty.remove() } // merge overlaps (holes preserved via winding)
       if (!insideBox) region = region.intersect(box)      // crop = mathematical print-box mask (only when it overflows)
       if (opts.mirror) region.scale(-1, 1, new scope.Point(viewW / 2, viewH / 2)) // flip for HTV
