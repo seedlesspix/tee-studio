@@ -13,7 +13,7 @@ import { assembleCutSvgUnioned } from './cutBoolean'
 export type CutGenOptions = { fontOverride?: string | null; mirror?: boolean }
 
 export type CutSvgResult =
-  | { ok: true; svg: string }
+  | { ok: true; svg: string; warning?: string }
   | {
       // no-design / no-print-area / no-vector are LEGITIMATE "nothing to cut here" states
       // (a photo-only side, or a legacy non-templated order) — not errors to alarm on.
@@ -92,30 +92,47 @@ export async function outlineVectorObject(
     } catch (e) { return { failure: `${family} — ${(e as Error).message}` } }
   }
 
-  if (curved) {
-    const d = curvedTextToCutPath(
-      font, String(t._originalText ?? ''),
-      { curveAmount: Number(t._curveAmount ?? 0), fontSizePx: Number(t._curveFontSize ?? 36), bold: !!t._curveBold, italic: !!t._curveItalic },
-      { left: Number(t.left), top: Number(t.top), scaleX: Number(t.scaleX ?? 1), scaleY: Number(t.scaleY ?? 1), angle: Number(t.angle ?? 0) },
-      canvasBox, phys,
-    )
-    return { paths: [{ d, fill: typeof t._curveFill === 'string' ? t._curveFill : (typeof t.fill === 'string' ? t.fill : '#000000') }] }
-  }
+  // Outlining itself can THROW even after a clean parse — opentype.js applies GSUB during
+  // stringToGlyphs and bails on lookups it doesn't support (e.g. Calistoga: substFormat 2). Wrap
+  // it so ONE bad font becomes a typed loud-fail (listed, nothing generated), not a 500 crash.
+  try {
+    if (curved) {
+      const d = curvedTextToCutPath(
+        font, String(t._originalText ?? ''),
+        { curveAmount: Number(t._curveAmount ?? 0), fontSizePx: Number(t._curveFontSize ?? 36), bold: !!t._curveBold, italic: !!t._curveItalic },
+        { left: Number(t.left), top: Number(t.top), scaleX: Number(t.scaleX ?? 1), scaleY: Number(t.scaleY ?? 1), angle: Number(t.angle ?? 0) },
+        canvasBox, phys,
+      )
+      return { paths: [{ d, fill: typeof t._curveFill === 'string' ? t._curveFill : (typeof t.fill === 'string' ? t.fill : '#000000') }] }
+    }
 
-  const place: TextPlacement = {
-    text: String(t.text ?? ''), fontSizePx: Number(t.fontSize ?? 40),
-    scaleX: Number(t.scaleX ?? 1), scaleY: Number(t.scaleY ?? 1),
-    left: Number(t.left), top: Number(t.top), angle: Number(t.angle ?? 0),
-    fill: typeof t.fill === 'string' ? t.fill : '#000000',
-    textAlign: (t.textAlign === 'left' || t.textAlign === 'right') ? t.textAlign : 'center',
-    charSpacing: Number(t.charSpacing ?? 0),
-    italic,
-  }
-  return { paths: [outlineText(font, place, canvasBox, phys)] }
+    const place: TextPlacement = {
+      text: String(t.text ?? ''), fontSizePx: Number(t.fontSize ?? 40),
+      scaleX: Number(t.scaleX ?? 1), scaleY: Number(t.scaleY ?? 1),
+      left: Number(t.left), top: Number(t.top), angle: Number(t.angle ?? 0),
+      fill: typeof t.fill === 'string' ? t.fill : '#000000',
+      textAlign: (t.textAlign === 'left' || t.textAlign === 'right') ? t.textAlign : 'center',
+      charSpacing: Number(t.charSpacing ?? 0),
+      italic,
+    }
+    return { paths: [outlineText(font, place, canvasBox, phys)] }
+  } catch (e) { return { failure: `${family} — could not outline (${(e as Error).message})` } }
+}
+
+// Template-anisotropy guard. The engine scales glyphs by the VERTICAL unit (uY) but positions
+// horizontally by uX; when a template's physical inch-aspect ≠ its print-area pixel-aspect these
+// diverge, so text spacing/centering distorts. Not an engine bug — a template-DATA bug (bad inches).
+// Returns a warning to surface (so it gets fixed), or null. dpi cancels in the ratio.
+export function anisotropyWarning(canvasBox: CanvasBox, phys: PhysBox, tol = 0.02): string | null {
+  if (!(canvasBox.width > 0 && canvasBox.height > 0 && phys.width_in > 0 && phys.height_in > 0)) return null
+  const ratio = (phys.width_in / canvasBox.width) / (phys.height_in / canvasBox.height) // uX/uY
+  if (Math.abs(ratio - 1) <= tol) return null
+  const inAspect = phys.width_in / phys.height_in, pxAspect = canvasBox.width / canvasBox.height
+  return `anisotropic template — physical ${phys.width_in}×${phys.height_in}in (aspect ${inAspect.toFixed(2)}) ≠ print-area pixel aspect ${pxAspect.toFixed(2)}; text may distort ~${Math.round(Math.abs(ratio - 1) * 100)}%. Fix the template inches to match the print-area shape.`
 }
 
 export type CutPathsResult =
-  | { ok: true; paths: CutPath[]; phys: PhysBox }
+  | { ok: true; paths: CutPath[]; phys: PhysBox; warning?: string }
   | { ok: false; reason: 'no-design' | 'no-print-area' | 'no-vector' | 'bad-json' | 'outline-failed'; message: string; fonts?: string[] }
 
 // Outline a side's vector objects into raw cut paths (the expensive step: font parse + glyph
@@ -145,7 +162,7 @@ export async function collectCutPaths(
   if (failures.size) return { ok: false, reason: 'outline-failed', message: 'Some objects could not be outlined (nothing generated, to avoid a partial file)', fonts: [...failures] }
   if (paths.length === 0) return { ok: false, reason: 'no-vector', message: 'nothing to outline' }
 
-  return { ok: true, paths, phys }
+  return { ok: true, paths, phys, warning: anisotropyWarning(canvasBox, phys) ?? undefined }
 }
 
 export async function generateCutSvgForSide(
@@ -156,5 +173,5 @@ export async function generateCutSvgForSide(
   const c = await collectCutPaths(canvasJson, snap, opts)
   if (!c.ok) return c
   // Cutter-ready: union per color layer + math crop (no mask) + optional mirror.
-  return { ok: true, svg: assembleCutSvgUnioned(c.paths, c.phys, { mirror: opts.mirror }) }
+  return { ok: true, svg: assembleCutSvgUnioned(c.paths, c.phys, { mirror: opts.mirror }), warning: c.warning }
 }

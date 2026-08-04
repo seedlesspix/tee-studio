@@ -147,6 +147,7 @@ export async function GET(req: NextRequest) {
       cutFolder.file(`${orderNo}-${side}.svg`, assembleCutSvgUnioned(c.paths, c.phys, { mirror: false }))
       cutMirrorFolder.file(`${orderNo}-${side}.svg`, assembleCutSvgUnioned(c.paths, c.phys, { mirror: true }))
       cutLines.push(`  ✓ ${orderNo}-${side}.svg  (normal + mirrored)`)
+      if (c.warning) cutLines.push(`    ⚠ ${side}: ${c.warning}`) // template-anisotropy guard
     } else if (c.reason === 'outline-failed' || c.reason === 'bad-json') {
       cutLines.push(`  ⚠ COULD NOT GENERATE ${side}: ${c.message}${c.fonts ? ` [${c.fonts.join('; ')}]` : ''}`)
     } else {
