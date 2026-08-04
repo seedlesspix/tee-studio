@@ -6,32 +6,42 @@
 import sharp from 'sharp'
 import { trace } from 'potrace'
 
+// CRISP CORNERS come from two things (tuned against Illustrator sign-off, Denise 2026-08-04, after
+// the first cut rounded letterforms): (1) trace a HIGH-RES boundary — see toMask's supersample; a
+// low-res mask gives potrace stair-stepped edges it then rounds; (2) a LOW alphaMax keeps corners
+// sharp while gentle angles still smooth into curves (default 1.0 rounded logo corners). optTolerance
+// 0.1 (vs 0.2) keeps the fitted curve faithful. turdSize scaled up for the larger canvas.
 function potraceTrace(mask: Buffer): Promise<string> {
   return new Promise((resolve, reject) => {
-    trace(mask, { turdSize: 2, optCurve: true, alphaMax: 1, threshold: 128 }, (err: Error | null, svg: string) => (err ? reject(err) : resolve(svg)))
+    trace(mask, { turdSize: 8, optCurve: true, alphaMax: 0.4, optTolerance: 0.1, threshold: 128 }, (err: Error | null, svg: string) => (err ? reject(err) : resolve(svg)))
   })
 }
 
+const TRACE_SUPERSAMPLE = 2400 // long-edge target; grow-only (never shrinks already-large art)
+
 // Bi-level black-on-white mask for potrace. Transparent-bg art (white-on-transparent logos after
 // Remove White) traces its ALPHA (shape = opaque, ink color irrelevant); opaque art traces luminance.
+// The mask is supersampled while still CONTINUOUS-tone, THEN thresholded, so the black/white boundary
+// is sampled finely and corners stay crisp (thresholding first, at source res, is what softened them).
 async function toMask(bytes: Uint8Array): Promise<Buffer> {
   const buf = Buffer.from(bytes)
   const meta = await sharp(buf).metadata()
+  const up = (s: sharp.Sharp) => s.resize(TRACE_SUPERSAMPLE, TRACE_SUPERSAMPLE, { fit: 'inside', withoutReduction: true, kernel: 'lanczos3' })
   if (meta.hasAlpha) {
     const { data } = await sharp(buf).ensureAlpha().extractChannel(3).raw().toBuffer({ resolveWithObject: true })
     let transparent = 0
     const step = Math.max(1, Math.floor(data.length / 8192))
     for (let i = 0; i < data.length; i += step) if (data[i] < 128) transparent++
-    if (transparent > 0) return sharp(buf).ensureAlpha().extractChannel(3).negate().threshold(128).png().toBuffer()
+    if (transparent > 0) return up(sharp(buf).ensureAlpha().extractChannel(3).negate()).threshold(128).png().toBuffer()
   }
-  return sharp(buf).flatten({ background: '#ffffff' }).greyscale().threshold(128).png().toBuffer()
+  return up(sharp(buf).flatten({ background: '#ffffff' }).greyscale()).threshold(128).png().toBuffer()
 }
 
 // A one-color cuttable logo traces to tens–low-hundreds of anchors. A photo that slips the color
 // gate (e.g. a low-contrast/noisy shot whose 80px proxy looks flat but whose full-res noise traces
 // to a speckle mesh) yields TENS OF THOUSANDS. This backstop rejects that garbage regardless of the
 // proxy's blind spot — the raster still ships in Originals/ for manual work.
-const MAX_TRACE_COMMANDS = 5000
+const MAX_TRACE_COMMANDS = 8000 // supersampling inflates counts; torture-test legit art ~3.3k, photo garbage ~165k
 
 function pathCommandCount(svg: string): number {
   let n = 0
