@@ -44,6 +44,18 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(ma
 let keyCounter = 0
 const nextKey = () => `new-${keyCounter++}`
 
+// Anisotropy guard AT THE SOURCE: the physical inch-aspect must match the print-area PIXEL aspect,
+// or the cut engine distorts text (glyphs scale vertically but position horizontally). Catch bad
+// inches here, when they're typed, not later on an order. Returns the distortion % + the height (in)
+// that WOULD match the box (keeping the entered width), or null when aligned.
+const ANISO_TOL = 0.02
+function aspectMismatch(a: { width_px: number; height_px: number; width_in: number; height_in: number }): { pct: number; fixHeightIn: number } | null {
+  if (!(a.width_px > 0 && a.height_px > 0 && a.width_in > 0 && a.height_in > 0)) return null
+  const ratio = (a.width_in / a.height_in) / (a.width_px / a.height_px)
+  if (Math.abs(ratio - 1) <= ANISO_TOL) return null
+  return { pct: Math.round(Math.abs(ratio - 1) * 100), fixHeightIn: Math.round((a.width_in * a.height_px / a.width_px) * 100) / 100 }
+}
+
 export default function PrintAreaEditor({
   templateId, shopifyProductId, supportedMethods, methodLabel, onMessage,
 }: Props) {
@@ -328,6 +340,7 @@ export default function PrintAreaEditor({
                   a._key === selectedKey ? 'border-[#dd3333] bg-red-50 text-black' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
                 }`}>
                 {a.name} · {methodLabel(a.print_method)} · {a.width_in}×{a.height_in}in
+                {aspectMismatch(a) && <span className="text-amber-600" title="Inches don't match the box shape — text may distort"> ⚠</span>}
               </button>
             ))}
           </div>
@@ -375,6 +388,21 @@ export default function PrintAreaEditor({
                       className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm font-mono mt-1 outline-none focus:border-[#dd3333]" />
                   </div>
                 ))}
+
+                {(() => {
+                  const m = aspectMismatch(selected)
+                  return m ? (
+                    <div className="col-span-2 flex items-center gap-2 rounded border border-amber-300 bg-amber-50 px-2 py-1.5">
+                      <span className="text-[11px] leading-snug text-amber-800">
+                        ⚠ These inches don’t match the box shape — text will stretch ~{m.pct}%. For this box, height should be ≈ <strong>{m.fixHeightIn} in</strong>.
+                      </span>
+                      <button type="button" onClick={() => patch(selected._key, { height_in: m.fixHeightIn })}
+                        className="ml-auto shrink-0 rounded bg-amber-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-amber-700">
+                        Match to box
+                      </button>
+                    </div>
+                  ) : null
+                })()}
 
                 <div className="col-span-2">
                   <label className="text-[10px] text-gray-600 font-mono uppercase">Preset label (optional)</label>

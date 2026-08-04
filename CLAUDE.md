@@ -1085,6 +1085,31 @@ Mechanics — reuse Phase 3's proven machinery wholesale:
 - **Joins the "Admin Reporting" backlog** (order statistics / best-selling
   products/colors/sizes) — one reporting effort, one dashboard, not two.
 
+### Embroidery — post-launch feature thread (Denise, 2026-08-04)
+
+**Untouched territory — the THIRD production mode** (vinyl-cut / print-then-cut /
+**embroidery**), fundamentally different from the Phase-5 cut/print pipeline:
+embroidery machines need **stitch files (DST/PES), NOT SVGs**, and **digitizing
+(art → stitch paths) is its own craft**. The SVG cut-file engine does not serve it.
+
+**Business reality (Denise, load-bearing for scoping):** embroidery is done
+**in-house**; **currently just hats**, plan to expand (sweatshirts, etc.); pricing =
+a **flat price to add embroidery to an item** (flat add-on surcharge — this IS the
+"surcharge model" the `designer_pricing` note describes: lower base + set `price_add`;
+embroidery is currently dormant with cost baked into the product price).
+
+**Two separable pieces:** (1) **PREVIEW** — an embroidery-look filter on applied
+art/text in the designer (thread/stitch texture) so customers see "this will be
+stitched", plus an embroidery **option + pricing** on eligible products. (2) **FILES**
+— realistically the bundle delivers the **clean vectors (digitizer input)** + maybe
+**thread-color mapping**, NOT machine stitch files, **unless auto-digitizing tools
+prove viable (research question)**. (The 20 `embroidery` fonts already in
+`designer_fonts` — incl Arial/Calistoga, which the cut-outliner can't handle — are
+fine here: preview/digitizer, never the cut engine.) Open discovery Qs when picked
+up: exact machine/format (DST vs PES), who digitizes + turnaround, thread palette,
+which products get the option, flat-price amounts. Multi-day project; needs a
+discovery conversation. Full context in the `project_embroidery` memory.
+
 ## Deployment Notes
 
 - Hosted on Vercel (inferred)
