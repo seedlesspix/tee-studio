@@ -58,6 +58,10 @@ async function uploadToCloudinary(
 // side FIRST for a clear rejection + a "just email us" pressure valve.
 // ← ONE NUMBER TO CHANGE: bump to 20 when the account upgrades to the paid tier at launch.
 const MAX_UPLOAD_MB = 10
+// Upload-box guidance (customer-facing). EDITABLE STRING — destined for the labels-as-data /
+// language editor (not built yet); until it exists, tune the wording here. The size interpolates
+// MAX_UPLOAD_MB so it ALWAYS matches the real limit (shows 10 MB now, 20 MB after the launch bump).
+const UPLOAD_GUIDANCE = `Vector or high-resolution artwork (300 DPI or more) will look best. Max size ${MAX_UPLOAD_MB} MB.`
 // Customer-facing address for the "email us the big file" valve. Shown in the reject
 // message so an oversize file still reaches the shop.
 const SUPPORT_EMAIL = 'orders@tshirtdeli.com' // TODO(Denise): confirm the real address
@@ -2075,8 +2079,9 @@ export default function DesignerCanvas({
     }
     const cloudinaryFormats = ['ai', 'psd']
 
-    // AI, PSD — upload to Cloudinary which converts them to PNG
+    // AI, PSD — upload to Cloudinary which converts them to PNG (a real wait -> show the spinner)
     if (cloudinaryFormats.includes(ext)) {
+      setImageEditBusy(true)
       try {
         const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
         const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
@@ -2115,13 +2120,16 @@ export default function DesignerCanvas({
         }]
       } catch (err: any) {
         alert(`We couldn't process your ${ext.toUpperCase()} file: ${err.message}\n\nPlease try a different file, or email the original to us at ${SUPPORT_EMAIL} and we'll add it to your order.`)
+      } finally {
+        setImageEditBusy(false)
       }
       e.target.value = ''
       return
     }
 
-    // PDF - rasterize first page using PDF.js
+    // PDF - rasterize first page using PDF.js (a wait -> spinner)
     if (ext === 'pdf') {
+      setImageEditBusy(true)
       try {
         const arrayBuffer = await file.arrayBuffer()
         const pdfjsLib = await import('pdfjs-dist')
@@ -2167,6 +2175,8 @@ export default function DesignerCanvas({
         if (notices.length) alert(notices.join('\n\n'))
       } catch (err) {
         alert('Could not load PDF. Make sure it is a valid PDF file.')
+      } finally {
+        setImageEditBusy(false)
       }
       e.target.value = ''
       return
@@ -3099,7 +3109,7 @@ export default function DesignerCanvas({
       dbColors={dbColors}
       deleteSelected={deleteSelected}
       text={textProps}
-      upload={{ handleImageUpload, handleImageDrop, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload, removeWhite: removeWhiteFromSelected, removeBackground: removeBackgroundFromSelected, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy, colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop: cleanupCrop }}
+      upload={{ handleImageUpload, handleImageDrop, uploadGuidance: UPLOAD_GUIDANCE, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload, removeWhite: removeWhiteFromSelected, removeBackground: removeBackgroundFromSelected, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy, colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop: cleanupCrop }}
       clipart={{ printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor }}
     />
   )
@@ -3110,6 +3120,7 @@ export default function DesignerCanvas({
     : activeTab === 'upload' ? (
       <MobileUploadBand
         handleImageUpload={handleImageUpload}
+        uploadGuidance={UPLOAD_GUIDANCE}
         libraryUploads={libraryUploads}
         libraryLoading={libraryLoading}
         pickLibraryUpload={pickLibraryUpload}
@@ -3310,10 +3321,21 @@ export default function DesignerCanvas({
             overflow), while the canvas stays centered. Its own overflow-hidden keeps
             an over-tall desktop canvas from spilling up over the align row. */}
         <div className="flex w-full min-h-0 flex-1 items-center justify-center overflow-hidden">
-          <div style={{ width: 680 * stageScale, height: 850 * stageScale }}>
+          <div style={{ width: 680 * stageScale, height: 850 * stageScale, position: 'relative' }}>
             <div style={{ width: 680, height: 850, transformOrigin: 'top left', transform: stageScale !== 1 ? `scale(${stageScale})` : undefined }}>
               <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} onReady={handleCanvasReady} emptyState={emptyState} />
             </div>
+            {/* "Thinking" overlay for async ops (Remove Background API round-trip, edits + their
+                re-upload, converted-file uploads). Silence reads as broken; the spinner reads as
+                working. Driven by imageEditBusy. */}
+            {imageEditBusy && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/45 backdrop-blur-[1px]">
+                <div className="flex flex-col items-center gap-2 rounded-xl bg-white/90 px-5 py-4 shadow-lg">
+                  <div className="h-7 w-7 animate-spin rounded-full border-2 border-gray-300 border-t-[#dd3333]" />
+                  <span className="text-xs font-mono text-gray-600">Working…</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

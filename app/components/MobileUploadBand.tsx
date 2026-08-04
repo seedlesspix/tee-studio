@@ -11,6 +11,7 @@ const ACCEPT = 'image/png,image/jpeg,image/svg+xml,image/webp,application/pdf,.p
 
 export default function MobileUploadBand({
   handleImageUpload,
+  uploadGuidance,
   libraryUploads,
   libraryLoading,
   pickLibraryUpload,
@@ -34,6 +35,7 @@ export default function MobileUploadBand({
   cancelCrop,
 }: {
   handleImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
+  uploadGuidance: string
   libraryUploads: UploadItem[]
   libraryLoading: boolean
   pickLibraryUpload: (item: UploadItem) => void
@@ -111,6 +113,7 @@ export default function MobileUploadBand({
         </label>
         <span className="truncate text-[11px] text-gray-400">JPG · PNG · SVG · AI · PSD · PDF</span>
       </div>
+      <p className="shrink-0 text-[11px] leading-snug text-gray-400">{uploadGuidance}</p>
       <MyUploadsPanel
         uploads={libraryUploads}
         loading={libraryLoading}

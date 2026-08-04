@@ -66,6 +66,7 @@ type SelectionPanelProps = {
   upload: {
     handleImageUpload: ChangeEventHandler<HTMLInputElement>
     handleImageDrop: DragEventHandler
+    uploadGuidance: string
     libraryUploads: UploadItem[]
     libraryLoading: boolean
     pickLibraryUpload: (item: UploadItem) => void
@@ -110,7 +111,7 @@ export default function SelectionPanel({
     textAlign, handleTextAlign, isBold, setIsBold, isItalic, setIsItalic,
     isUppercase, setIsUppercase,
   } = text
-  const { handleImageUpload, handleImageDrop, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload,
+  const { handleImageUpload, handleImageDrop, uploadGuidance, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload,
     removeWhite, removeBackground, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy,
     colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop } = upload
   const { printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor } = clipart
@@ -351,6 +352,7 @@ export default function SelectionPanel({
                   </span>
                   <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,application/pdf,.pdf,.svg,.png,.jpg,.jpeg,.webp,.ai,.psd" onChange={handleImageUpload} className="hidden" />
                 </label>
+                <p className="mt-1.5 text-[11px] text-gray-500 leading-snug">{uploadGuidance}</p>
                 <MyUploadsPanel
                   uploads={libraryUploads}
                   loading={libraryLoading}
