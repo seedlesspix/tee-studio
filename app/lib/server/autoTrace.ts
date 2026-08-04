@@ -26,7 +26,7 @@ const TRACE_SUPERSAMPLE = 2400 // long-edge target; grow-only (never shrinks alr
 async function toMask(bytes: Uint8Array): Promise<Buffer> {
   const buf = Buffer.from(bytes)
   const meta = await sharp(buf).metadata()
-  const up = (s: sharp.Sharp) => s.resize(TRACE_SUPERSAMPLE, TRACE_SUPERSAMPLE, { fit: 'inside', withoutReduction: true, kernel: 'lanczos3' })
+  const up = (s: ReturnType<typeof sharp>) => s.resize(TRACE_SUPERSAMPLE, TRACE_SUPERSAMPLE, { fit: 'inside', withoutReduction: true, kernel: 'lanczos3' })
   if (meta.hasAlpha) {
     const { data } = await sharp(buf).ensureAlpha().extractChannel(3).raw().toBuffer({ resolveWithObject: true })
     let transparent = 0
