@@ -7,14 +7,42 @@
 // ⚠️ PRE-LAUNCH: this endpoint spends paid remove.bg credits and is UNAUTHENTICATED (the designer
 //    has no customer login). Add a rate limit / light gate before launch so it can't be spammed.
 import { NextRequest, NextResponse } from 'next/server'
+import { rateLimit, clientIp, originAllowed } from '../../lib/server/rateLimit'
 
 export const runtime = 'nodejs'
+
+// Abuse limits (env-overridable, no redeploy-code needed). This endpoint is unauthenticated and
+// spends a paid remove.bg credit per call, so it's gated: same-site origin + per-IP throttle +
+// a per-instance hourly credit circuit-breaker. See rateLimit.ts for the (best-effort) scope.
+const num = (v: string | undefined, d: number) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : d }
+const PER_IP_MIN = num(process.env.REMOVE_BG_RL_PER_MIN, 8)
+const PER_IP_HOUR = num(process.env.REMOVE_BG_RL_PER_HOUR, 40)
+const GLOBAL_HOUR = num(process.env.REMOVE_BG_RL_GLOBAL_HOUR, 300)
 
 export async function POST(req: NextRequest) {
   const key = process.env.REMOVE_BG_API_KEY
   if (!key) {
     console.error('[remove-bg] REMOVE_BG_API_KEY is not set in this deployment')
     return NextResponse.json({ error: "Remove Background isn't set up yet (no API key — add REMOVE_BG_API_KEY and redeploy)." }, { status: 503 })
+  }
+
+  // Gate before spending anything: reject off-site origins, then per-IP + global rate limits.
+  if (!originAllowed(req.headers)) return NextResponse.json({ error: 'Forbidden.' }, { status: 403 })
+  const ip = clientIp(req.headers)
+  const limits: Array<[string, number, number]> = [
+    [`rbg:min:${ip}`, PER_IP_MIN, 60_000],       // per-IP short burst
+    [`rbg:hr:${ip}`, PER_IP_HOUR, 3_600_000],    // per-IP hourly
+    ['rbg:global:hr', GLOBAL_HOUR, 3_600_000],   // per-instance credit circuit-breaker (IP-spoof-proof)
+  ]
+  for (const [rlKey, limit, windowMs] of limits) {
+    const rl = rateLimit(rlKey, limit, windowMs)
+    if (!rl.ok) {
+      console.error('[remove-bg] rate limited', rlKey, 'retryAfter', rl.retryAfterSec)
+      return NextResponse.json(
+        { error: 'Too many background-removal requests right now — please wait a bit and try again.' },
+        { status: 429, headers: { 'Retry-After': String(rl.retryAfterSec) } },
+      )
+    }
   }
 
   try {
