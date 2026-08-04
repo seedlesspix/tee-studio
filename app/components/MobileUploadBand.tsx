@@ -7,7 +7,7 @@ import MobileAlignRow from './MobileAlignRow'
 //   • nothing selected → upload button + one horizontal "My Uploads" row.
 //   • an image selected → compact EDIT controls (align + Delete).
 // Align lives here now (the old top align strip was removed). Mobile-only.
-const ACCEPT = 'image/png,image/jpeg,image/svg+xml,image/webp,application/pdf,.pdf,.svg,.png,.jpg,.jpeg,.webp,.ai,.eps,.psd'
+const ACCEPT = 'image/png,image/jpeg,image/svg+xml,image/webp,application/pdf,.pdf,.svg,.png,.jpg,.jpeg,.webp,.ai,.psd'
 
 export default function MobileUploadBand({
   handleImageUpload,
@@ -105,7 +105,7 @@ export default function MobileUploadBand({
           <span className="text-lg leading-none">⬆</span> Upload image
           <input type="file" accept={ACCEPT} onChange={handleImageUpload} className="hidden" />
         </label>
-        <span className="truncate text-[11px] text-gray-400">JPG · PNG · SVG · AI · EPS · PSD · PDF</span>
+        <span className="truncate text-[11px] text-gray-400">JPG · PNG · SVG · AI · PSD · PDF</span>
       </div>
       <MyUploadsPanel
         uploads={libraryUploads}

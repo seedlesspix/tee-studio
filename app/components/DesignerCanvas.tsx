@@ -2065,9 +2065,17 @@ export default function DesignerCanvas({
     markDirty()
 
     const ext = file.name.split('.').pop()?.toLowerCase() || ''
-    const cloudinaryFormats = ['ai', 'psd', 'eps']
 
-    // AI, PSD, EPS — upload to Cloudinary which converts them to PNG
+    // EPS is dropped from supported formats: Cloudinary disabled EPS transformation platform-wide
+    // (security), so f_png would fail regardless of plan. Not advertised; if one still slips in
+    // (e.g. drag-dropped), send the customer to the email valve instead of a broken upload.
+    if (ext === 'eps') {
+      alert(`We can't process EPS files here — please email the file to us at ${SUPPORT_EMAIL} and we'll add it to your order.`)
+      return
+    }
+    const cloudinaryFormats = ['ai', 'psd']
+
+    // AI, PSD — upload to Cloudinary which converts them to PNG
     if (cloudinaryFormats.includes(ext)) {
       try {
         const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME

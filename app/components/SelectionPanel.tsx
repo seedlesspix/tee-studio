@@ -346,9 +346,9 @@ export default function SelectionPanel({
                   <span className="text-3xl mb-3">⬆</span>
                   <span className="text-sm text-gray-800 text-center">
                     Drop image here<br />
-                    <span className="text-xs opacity-60">JPG · PNG · SVG · AI · EPS · PSD · PDF</span>
+                    <span className="text-xs opacity-60">JPG · PNG · SVG · AI · PSD · PDF</span>
                   </span>
-                  <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,application/pdf,.pdf,.svg,.png,.jpg,.jpeg,.webp,.ai,.eps,.psd" onChange={handleImageUpload} className="hidden" />
+                  <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,application/pdf,.pdf,.svg,.png,.jpg,.jpeg,.webp,.ai,.psd" onChange={handleImageUpload} className="hidden" />
                 </label>
                 <MyUploadsPanel
                   uploads={libraryUploads}
