@@ -2299,7 +2299,9 @@ export default function DesignerCanvas({
   // persists to the bundle + auto-tracer, record url=revised / originalUrl=raw, and push an UNDO
   // step. Edits STACK — originalUrl always keeps the FIRST raw upload. Edited images are NOT added
   // to the My Uploads library (that's for source uploads; an edit is a per-design derivative).
-  const applyEditedImage = async (img: any, editedDataUrl: string, pos?: { left: number; top: number }) => {
+  // editedSrc may be a data URL (client pixel edit -> we re-host it) OR an already-hosted http URL
+  // (e.g. the Remove Background cutout, re-hosted server-side -> use directly, no re-upload).
+  const applyEditedImage = async (img: any, editedSrc: string, pos?: { left: number; top: number }) => {
     const oldSrc: string | undefined = img._uploadSrc
     setImageEditBusy(true)
     try {
@@ -2308,12 +2310,18 @@ export default function DesignerCanvas({
         img._editHist = [snapshotState(img, img.getSrc?.() ?? img._element?.src ?? oldSrc, oldSrc, preEntry ? { ...preEntry } : undefined)]
         img._editIdx = 0
       }
-      await img.setSrc(editedDataUrl)
+      const isData = editedSrc.startsWith('data:')
+      await img.setSrc(editedSrc, isData ? undefined : { crossOrigin: 'anonymous' }) // CORS so later edits can read pixels
       if (pos) img.set({ left: pos.left, top: pos.top }) // crop repositions so content stays put
       img.setCoords?.(); fabricCanvas?.renderAll(); markDirty()
-      const blob = await (await fetch(editedDataUrl)).blob()
-      const uploaded = await uploadToCloudinary(blob)
-      const revisedUrl = uploaded?.url || editedDataUrl
+      let revisedUrl: string
+      if (isData) {
+        const blob = await (await fetch(editedSrc)).blob()
+        const uploaded = await uploadToCloudinary(blob)
+        revisedUrl = uploaded?.url || editedSrc
+      } else {
+        revisedUrl = editedSrc // already hosted (server re-hosted the cutout) — no re-upload
+      }
       img._uploadSrc = revisedUrl
       const list = uploadedFilesRef.current
       const idx = list.findIndex(f => f.url === oldSrc)
@@ -2328,7 +2336,7 @@ export default function DesignerCanvas({
       }
       uploadedFilesRef.current = [...list]
       img._editHist = img._editHist.slice(0, img._editIdx + 1) // drop any redo tail
-      img._editHist.push(snapshotState(img, editedDataUrl, revisedUrl, { ...entry }))
+      img._editHist.push(snapshotState(img, editedSrc, revisedUrl, { ...entry }))
       img._editIdx = img._editHist.length - 1
       setEditHistTick(t => t + 1)
     } catch {
@@ -2367,17 +2375,14 @@ export default function DesignerCanvas({
   const removeBackgroundFromSelected = async () => {
     const img: any = fabricCanvas?.getActiveObject()
     if (!img || String(img.type).toLowerCase() !== 'image') return
-    let dataUrl: string
-    try {
-      const d = elementToImageData(img.getElement())
-      if (!d) return
-      dataUrl = imageDataToPngDataUrl(d)
-    } catch { alert("We couldn't read this image (it may be blocked by the source server). Try re-uploading it."); return }
+    // Send the image's HOSTED Cloudinary URL — remove.bg fetches it itself. Never ship the bytes:
+    // Vercel caps this function's request+response at ~4.5MB and any real phone photo exceeds it.
+    const src = String(img._uploadSrc || '')
+    if (!/^https?:\/\//.test(src)) { alert('Please wait a moment for the upload to finish (or re-upload the image), then try Remove Background again.'); return }
     setImageEditBusy(true)
     try {
-      const res = await fetch('/api/remove-bg', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageBase64: dataUrl }) })
-      // Surface the REAL cause — never a silent generic. A 404 HTML page (stale deploy), the
-      // route's JSON category (auth/quota/network), or a non-image 200 all show through here.
+      const res = await fetch('/api/remove-bg', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageUrl: src }) })
+      const ct = res.headers.get('content-type') || ''
       if (!res.ok) {
         const text = await res.text().catch(() => '')
         let msg = ''
@@ -2385,16 +2390,20 @@ export default function DesignerCanvas({
         alert(msg || `Background removal failed (HTTP ${res.status}).${text ? ` — ${text.slice(0, 140)}` : ''}`)
         return
       }
-      if (!(res.headers.get('content-type') || '').includes('image')) {
+      if (ct.includes('application/json')) {
+        const data = await res.json().catch(() => ({} as { url?: string }))
+        if (!data?.url) { alert('Background removal returned no image.'); return }
+        await applyEditedImage(img, data.url) // cutout already re-hosted on Cloudinary
+      } else if (ct.includes('image')) {
+        const blob = await res.blob()
+        const resultUrl = await new Promise<string>((resolve, reject) => {
+          const fr = new FileReader(); fr.onload = () => resolve(fr.result as string); fr.onerror = () => reject(new Error('read failed')); fr.readAsDataURL(blob)
+        })
+        await applyEditedImage(img, resultUrl)
+      } else {
         const text = await res.text().catch(() => '')
-        alert(`Background removal returned an unexpected response (not an image).${text ? ` — ${text.slice(0, 140)}` : ''}`)
-        return
+        alert(`Background removal returned an unexpected response.${text ? ` — ${text.slice(0, 140)}` : ''}`)
       }
-      const blob = await res.blob()
-      const resultUrl = await new Promise<string>((resolve, reject) => {
-        const fr = new FileReader(); fr.onload = () => resolve(fr.result as string); fr.onerror = () => reject(new Error('read failed')); fr.readAsDataURL(blob)
-      })
-      await applyEditedImage(img, resultUrl)
     } catch (e: any) {
       alert(`Background removal error: ${e?.message || e}`)
     } finally { setImageEditBusy(false) }
