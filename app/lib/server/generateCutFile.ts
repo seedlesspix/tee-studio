@@ -96,6 +96,16 @@ export async function outlineVectorObject(
   // stringToGlyphs and bails on lookups it doesn't support (e.g. Calistoga: substFormat 2). Wrap
   // it so ONE bad font becomes a typed loud-fail (listed, nothing generated), not a 500 crash.
   try {
+    // Missing-glyph guard: name the cause plainly instead of silently dropping characters. Some
+    // fonts lack whole classes of glyphs (e.g. Iron On Black, a blackletter, has NO digits) — a
+    // customer typing them would otherwise get mystery-vanishing letters in the cut.
+    const textStr = curved ? String(t._originalText ?? '') : String(t.text ?? '')
+    const missing = [...new Set([...textStr])].filter(ch => ch.trim().length > 0 && font.charToGlyph(ch).index === 0)
+    if (missing.length) {
+      const allDigits = missing.every(c => /[0-9]/.test(c))
+      return { failure: `${family} — no glyph for "${missing.join('')}"${allDigits ? ' (this font has no numbers)' : ''}. Use another font for those characters.` }
+    }
+
     if (curved) {
       const d = curvedTextToCutPath(
         font, String(t._originalText ?? ''),
