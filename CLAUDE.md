@@ -778,6 +778,19 @@ enhancement):
 - **Explicit Rotate control** — −360°…360° slider or input.
 - **"Add Design Notes" field** on the Order Options page — a text area for
   printing details that shows up with the order in admin.
+- **Low-resolution warning (WARN, don't block)** — two-tier quality check on
+  uploads (Denise 2026-08-04). (1) At upload: longest side < ~300px → immediate
+  warning. (2) The real one: **effective DPI at placed size** = source px ÷
+  placed inches (inches from the cut-file canvas→inch math /
+  `product_template_print_areas.width_in/height_in`), refreshing live as the
+  customer scales up; under ~150 effective DPI → "⚠ Low resolution — may print
+  blurry at this size. 300 DPI or higher looks best, or email us your original."
+  Bonus: flag effective DPI in `OrderInfo.txt` so the bench sees at-risk art
+  before printing. Wording = labels-as-data. Unlike `MAX_UPLOAD_MB` (a technical
+  cap), low-res is a quality judgment — never block. **DATA GAP:** designer
+  reads print areas as % today; Tier 2 needs the physical inches loaded
+  client-side. ~2–2.5 dev-days; rides with the Upload-panel rebuild /
+  launch-polish. Full scope in the `project_lowres_warning` memory.
 - **AI image generator** — generate images from a text prompt for use in
   designs. Needs research: provider (OpenAI/Anthropic/Stability), cost per
   generation, per-session usage limits, content moderation. A Phase 3+
