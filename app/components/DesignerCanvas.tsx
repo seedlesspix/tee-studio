@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase'
 import CanvasStage from './CanvasStage'
 import { getProduct } from '../lib/shopify'
 import { buildColorImageMap, getColorImages } from '../lib/productImages'
+import { AUTODRAFT_KEY, buildEnvelope, parseEnvelope, shouldRestore } from '../lib/autodraft'
 import { toPctContain, CANVAS_W, CANVAS_H, type PrintAreaPct } from '../lib/printAreaGeometry'
 import ActionBar from './ActionBar'
 import Stepper from './Stepper'
@@ -771,7 +772,20 @@ export default function DesignerCanvas({
   // canvas; restore repopulates it), which would claim "unsaved changes" when
   // the customer changed nothing.
   const [isDirty, setIsDirty] = useState(false)
-  const markDirty = () => setIsDirty(true)
+  // Auto-draft: a debounced sessionStorage snapshot so an accidental refresh / pull-to-refresh
+  // doesn't lose UNSAVED work. markDirty (fired on every design change) schedules a write; the
+  // writer itself is kept current via a ref (see the effect after snapshotDesignState).
+  const autodraftTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autodraftWriteRef = useRef<() => void>(() => {})
+  const scheduleAutodraft = useCallback(() => {
+    if (typeof window === 'undefined') return
+    if (autodraftTimer.current) clearTimeout(autodraftTimer.current)
+    autodraftTimer.current = setTimeout(() => autodraftWriteRef.current(), 1000)
+  }, [])
+  const clearAutodraft = useCallback(() => {
+    try { if (typeof window !== 'undefined') sessionStorage.removeItem(AUTODRAFT_KEY) } catch { /* storage disabled */ }
+  }, [])
+  const markDirty = () => { setIsDirty(true); scheduleAutodraft() }
 
   // Every style control is a design change. Guarded so this effect's own mount
   // run doesn't declare a fresh, untouched canvas dirty.
@@ -819,6 +833,37 @@ export default function DesignerCanvas({
     fabricCanvasRef.current = fabricCanvas
   }, [fabricCanvas])
 
+  // Rehydrate the canvas + surrounding state from a DesignState. Shared by the login-restore path
+  // AND the auto-draft (local snapshot) restore, so the two can't drift. Front objects load into the
+  // live canvas; back objects live in the ref (the Back toggle enlivens them); color/qty/uploads
+  // re-applied AFTER the product's defaults so the saved values win.
+  const applyDesignState = useCallback(async (state: any) => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas || !state) return
+    const { util } = await import('fabric')
+    if (state.front) await canvas.loadFromJSON(state.front)
+    if (state.back?.objects?.length) backObjectsRef.current = (await util.enlivenObjects(state.back.objects)) as any[]
+    else backObjectsRef.current = []
+    frontObjectsRef.current = []
+    canvas.discardActiveObject()
+    canvas.renderAll()
+    if (state.selectedColor) {
+      setSelectedColor(state.selectedColor)
+      setShirtHex(COLOR_HEX_MAP[state.selectedColor] || '#888')
+      const imgs = getColorImages(state.selectedColor, colorImageMap)
+      const restoreSrc = imgs?.front || firstImageUrlRef.current
+      if (restoreSrc && shirtImgRef.current) shirtImgRef.current.src = restoreSrc
+      const match = product?.variants.edges.find(({ node }) =>
+        node.selectedOptions.some((o: any) => o.name === 'Color' && o.value === state.selectedColor),
+      )
+      if (match) setSelectedVariant(match.node)
+    }
+    if (state.printMethod) setPrintMethod(state.printMethod)
+    if (state.quantities) setQuantities(state.quantities)
+    if (Array.isArray(state.uploadedFiles)) uploadedFilesRef.current = state.uploadedFiles
+    setShirtView('front')
+  }, [product, colorImageMap])
+
   // Restore a design snapshotted before a Shopify login round-trip. Runs once,
   // only after BOTH the fabric canvas and the product have loaded (so the draft
   // values win over the color/quantity defaults the product fetch sets), then
@@ -849,47 +894,32 @@ export default function DesignerCanvas({
         const { state } = await res.json()
         if (!state) return
 
-        const canvas = fabricCanvas
-        const { util } = await import('fabric')
-
-        // Front objects become the live canvas; back objects live in the ref so
-        // the Back toggle rehydrates them. We restore into the front view.
-        if (state.front) {
-          await canvas.loadFromJSON(state.front)
-        }
-        if (state.back?.objects?.length) {
-          backObjectsRef.current = (await util.enlivenObjects(state.back.objects)) as any[]
-        } else {
-          backObjectsRef.current = []
-        }
-        frontObjectsRef.current = []
-        canvas.discardActiveObject()
-        canvas.renderAll()
-
-        // Re-apply shirt color (image + hex + variant) without the quantity
-        // reset that handleColorSelect does, then restore quantities directly.
-        if (state.selectedColor) {
-          setSelectedColor(state.selectedColor)
-          setShirtHex(COLOR_HEX_MAP[state.selectedColor] || '#888')
-          const imgs = getColorImages(state.selectedColor, colorImageMap)
-          const restoreSrc = imgs?.front || firstImageUrlRef.current
-          if (restoreSrc && shirtImgRef.current) shirtImgRef.current.src = restoreSrc
-          const match = product.variants.edges.find(({ node }) =>
-            node.selectedOptions.some(o => o.name === 'Color' && o.value === state.selectedColor)
-          )
-          if (match) setSelectedVariant(match.node)
-        }
-        if (state.printMethod) setPrintMethod(state.printMethod)
-        if (state.quantities) setQuantities(state.quantities)
-        if (Array.isArray(state.uploadedFiles)) uploadedFilesRef.current = state.uploadedFiles
-        setShirtView('front')
+        await applyDesignState(state)
       } catch (err) {
         console.error('[designer] restore failed:', err)
       } finally {
         cleanUrl()
       }
     })()
-  }, [restoreId, fabricCanvas, product, colorImageMap])
+  }, [restoreId, fabricCanvas, product, colorImageMap, applyDesignState])
+
+  // Auto-draft restore: bring back an UNSAVED design after an accidental refresh / pull-to-refresh.
+  // ONLY on a genuine reload of the SAME product, and ONLY when no explicit server restore (login
+  // ?restore= or Edit-design ?design_id=) is in play — those authoritative paths take precedence.
+  // The reload gate is the anti-hijack rule: a fresh navigation to a product you designed earlier
+  // this session must NOT resurrect that snapshot onto a blank canvas.
+  const autodraftRestoredRef = useRef(false)
+  useEffect(() => {
+    if (autodraftRestoredRef.current || !fabricCanvas || !product) return
+    if (restoreId || designId) return
+    autodraftRestoredRef.current = true
+    if (typeof window === 'undefined') return
+    const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+    let env = null
+    try { env = parseEnvelope(sessionStorage.getItem(AUTODRAFT_KEY)) } catch { /* storage disabled */ }
+    if (!shouldRestore(env, { isReload: nav?.type === 'reload', currentProductId: product.id || productId })) return
+    applyDesignState((env as { state: unknown }).state)
+  }, [fabricCanvas, product, restoreId, designId, productId, applyDesignState])
 
   useEffect(() => {
     const canvas = fabricCanvasRef.current
@@ -1853,6 +1883,7 @@ export default function DesignerCanvas({
     canvas.discardActiveObject()
     canvas.clear()
     canvas.renderAll()
+    clearAutodraft()
     setBandOpen(false)
   }
 
@@ -2931,6 +2962,19 @@ export default function DesignerCanvas({
       uploadedFiles: uploadedFilesRef.current,
     }
   }
+
+  // Keep the debounced auto-draft writer pointed at the LATEST state (runs every render, so the timer
+  // scheduleAutodraft sets always serializes current values). An emptied design clears the key.
+  useEffect(() => {
+    autodraftWriteRef.current = () => {
+      if (typeof window === 'undefined') return
+      try {
+        const state = snapshotDesignState()
+        if (state) sessionStorage.setItem(AUTODRAFT_KEY, JSON.stringify(buildEnvelope(state, Date.now())))
+        else sessionStorage.removeItem(AUTODRAFT_KEY)
+      } catch { /* storage full/disabled — non-fatal */ }
+    }
+  })
 
   // Called by CustomerAuthButton before it redirects to Shopify login. Writes a
   // draft row and returns the path to come back to (this page + ?restore=<id>),
