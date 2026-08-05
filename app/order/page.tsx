@@ -64,6 +64,9 @@ function OrderPage() {
   // money; we just note it's included.
   const rosterEntries: RosterEntry[] = Array.isArray(design?.roster) ? (design!.roster as unknown as RosterEntry[]) : []
   const nnActive = rosterEntries.length > 0
+  // Manifest shows a Title column only when the roster actually uses titles (optional field).
+  const nnHasTitle = rosterEntries.some(e => (e.title ?? '').trim() !== '')
+  const nnGrid = nnHasTitle ? 'minmax(0,1fr) 44px minmax(0,1fr) 52px 32px' : 'minmax(0,1fr) 44px 52px 32px'
 
   // Per-side print-charge split. Read the exact captured columns (Day-4). Fall
   // back to deriving from side presence for legacy rows saved before the split
@@ -225,14 +228,15 @@ function OrderPage() {
             <p className="text-xs font-mono text-gray-900 uppercase tracking-widest mb-3">{nnActive ? 'Names & Numbers' : 'Sizes & Quantities'}</p>
             {nnActive ? (
               <div className="flex flex-col">
-                <div className="grid grid-cols-[1fr_44px_52px_32px] gap-2 border-b border-gray-200 pb-1 text-[10px] font-mono uppercase tracking-wide text-gray-500">
-                  <span>Name</span><span>Number</span><span>Size</span><span className="text-right">Qty</span>
+                <div className="grid gap-2 border-b border-gray-200 pb-1 text-[10px] font-mono uppercase tracking-wide text-gray-500" style={{ gridTemplateColumns: nnGrid }}>
+                  <span>Name</span><span>Number</span>{nnHasTitle && <span>Title</span>}<span>Size</span><span className="text-right">Qty</span>
                 </div>
                 <div className="max-h-72 overflow-y-auto">
                   {rosterEntries.map((e, i) => (
-                    <div key={i} className="grid grid-cols-[1fr_44px_52px_32px] items-center gap-2 border-b border-gray-100 py-1 text-sm text-gray-900 last:border-b-0">
+                    <div key={i} className="grid items-center gap-2 border-b border-gray-100 py-1 text-sm text-gray-900 last:border-b-0" style={{ gridTemplateColumns: nnGrid }}>
                       <span className="truncate font-medium">{e.name || '—'}</span>
                       <span>{e.number || '—'}</span>
+                      {nnHasTitle && <span className="truncate">{e.title || '—'}</span>}
                       <span className="whitespace-nowrap">{e.size || '—'}</span>
                       <span className="text-right">{e.qty}</span>
                     </div>

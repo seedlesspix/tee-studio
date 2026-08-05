@@ -3,7 +3,7 @@
 // (DesignerCanvas) owns the roster array + the placeholder objects on the canvas. Light designer-
 // panel palette; red = ACTION only (per the locked red-vocabulary rule).
 import { useState } from 'react'
-import { Plus, Trash2, Type, Hash, ClipboardPaste, Download, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, Trash2, Type, Hash, Tag, ClipboardPaste, Download, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
 import { type RosterEntry, emptyEntry, parseBulkRoster, rosterShirtCount } from '../lib/namesNumbers'
 import FontPicker from './FontPicker'
 
@@ -12,8 +12,10 @@ export default function NamesNumbersPanel({
   onChange,
   onAddNameField,
   onAddNumberField,
+  onAddTitleField,
   hasName,
   hasNumber,
+  hasTitle,
   sizes = [],
   selectedRole = null,
   style,
@@ -23,12 +25,14 @@ export default function NamesNumbersPanel({
   onChange: (roster: RosterEntry[]) => void
   onAddNameField: () => void
   onAddNumberField: () => void
+  onAddTitleField: () => void
   hasName: boolean
   hasNumber: boolean
+  hasTitle: boolean
   sizes?: string[]
   // When a placeholder is selected, style it HERE (limited, jersey-relevant controls) — placeholders
   // never enter the generic text-edit flow.
-  selectedRole?: 'name' | 'number' | null
+  selectedRole?: 'name' | 'number' | 'title' | null
   style?: {
     fonts: { label: string; value: string }[]
     selectedFont: string
@@ -67,6 +71,20 @@ export default function NamesNumbersPanel({
 
   const count = rosterShirtCount(rows)
 
+  // Roster columns MIRROR the placed fields: a column shows only for a field actually on the shirt
+  // (Size + Qty always). Before any field is placed, default to Name + Number so the table is usable.
+  // Name/Title uppercase as you type — the entry half of the belt-and-suspenders uppercase rule.
+  const anyPlaced = hasName || hasNumber || hasTitle
+  const cols = { name: hasName || !anyPlaced, number: hasNumber || !anyPlaced, title: hasTitle }
+  const gridTemplate = [
+    cols.name ? 'minmax(0,1fr)' : null,
+    cols.number ? '46px' : null,
+    cols.title ? 'minmax(0,1fr)' : null,
+    '56px', // size
+    '34px', // qty
+    '22px', // remove
+  ].filter(Boolean).join(' ')
+
   const fieldBtn = (active: boolean) =>
     `flex-1 flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
       active ? 'border-gray-800 bg-gray-100 text-gray-900' : 'border-dashed border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-900'
@@ -77,33 +95,47 @@ export default function NamesNumbersPanel({
       <div>
         <h3 className="text-sm font-semibold">Names &amp; Numbers</h3>
         <p className="mt-0.5 text-[11px] leading-snug text-gray-500">
-          Name and Number are <span className="font-medium text-gray-700">placeholders</span> — style each one once
-          (font, color, size). Every row in your list prints as its own shirt with that styling.
+          Name, Number, and Title are <span className="font-medium text-gray-700">placeholders</span> — style each once
+          (font, color, size). Every row in your list prints as its own shirt. Text prints UPPERCASE.
         </p>
       </div>
 
-      {/* Placeholder fields on the shirt */}
-      <div className="flex gap-2">
+      {/* Placeholder fields — the classic jersey stack: Name (top) · Title (below name) · Number (center) */}
+      <div className="flex flex-wrap gap-2">
         <button type="button" onClick={onAddNameField} className={fieldBtn(hasName)}>
-          <Type size={14} /> {hasName ? 'Name field ✓' : 'Add Name field'}
+          <Type size={14} /> {hasName ? 'Name ✓' : 'Add Name'}
         </button>
         <button type="button" onClick={onAddNumberField} className={fieldBtn(hasNumber)}>
-          <Hash size={14} /> {hasNumber ? 'Number field ✓' : 'Add Number field'}
+          <Hash size={14} /> {hasNumber ? 'Number ✓' : 'Add Number'}
+        </button>
+        <button type="button" onClick={onAddTitleField} className={fieldBtn(hasTitle)}>
+          <Tag size={14} /> {hasTitle ? 'Title ✓' : 'Add Title'}
         </button>
       </div>
 
-      {/* Roster table */}
+      {/* Roster table — columns mirror the placed fields (Name/Number/Title), Size + Qty always. */}
       <div className="rounded-lg border border-gray-200">
-        <div className="grid grid-cols-[1fr_44px_52px_38px_24px] gap-1 border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] font-mono uppercase tracking-wide text-gray-500">
-          <span>Name</span><span>Number</span><span>Size</span><span>Qty</span><span />
+        <div className="grid gap-1 border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] font-mono uppercase tracking-wide text-gray-500" style={{ gridTemplateColumns: gridTemplate }}>
+          {cols.name && <span>Name</span>}
+          {cols.number && <span>Number</span>}
+          {cols.title && <span>Title</span>}
+          <span>Size</span><span>Qty</span><span />
         </div>
         <div className="max-h-[46vh] overflow-y-auto">
           {rows.map((r, i) => (
-            <div key={i} className="grid grid-cols-[1fr_44px_52px_38px_24px] items-center gap-1 border-b border-gray-100 px-2 py-1 last:border-b-0">
-              <input value={r.name} onChange={e => update(i, { name: e.target.value })} placeholder="SMITH"
-                className="w-full rounded border border-gray-200 px-1.5 py-1 text-xs outline-none focus:border-[#dd3333]" />
-              <input value={r.number} onChange={e => update(i, { number: e.target.value })} placeholder="12"
-                className="w-full rounded border border-gray-200 px-1.5 py-1 text-xs outline-none focus:border-[#dd3333]" />
+            <div key={i} className="grid items-center gap-1 border-b border-gray-100 px-2 py-1 last:border-b-0" style={{ gridTemplateColumns: gridTemplate }}>
+              {cols.name && (
+                <input value={r.name} onChange={e => update(i, { name: e.target.value.toUpperCase() })} placeholder="SMITH"
+                  className="w-full rounded border border-gray-200 px-1.5 py-1 text-xs uppercase outline-none focus:border-[#dd3333]" />
+              )}
+              {cols.number && (
+                <input value={r.number} onChange={e => update(i, { number: e.target.value })} placeholder="12"
+                  className="w-full rounded border border-gray-200 px-1.5 py-1 text-xs outline-none focus:border-[#dd3333]" />
+              )}
+              {cols.title && (
+                <input value={r.title} onChange={e => update(i, { title: e.target.value.toUpperCase() })} placeholder="CAPTAIN"
+                  className="w-full rounded border border-gray-200 px-1.5 py-1 text-xs uppercase outline-none focus:border-[#dd3333]" />
+              )}
               {sizes.length ? (
                 <select value={r.size} onChange={e => update(i, { size: e.target.value })}
                   className="w-full rounded border border-gray-200 px-1 py-1 text-xs outline-none focus:border-[#dd3333]">
@@ -165,11 +197,13 @@ export default function NamesNumbersPanel({
           and numbers render differently even in the same font). */}
       {selectedRole && style && (() => {
         const fontLabel = style.fonts.find(f => f.value === style.selectedFont)?.label ?? style.selectedFont
+        const roleLabel = selectedRole === 'name' ? 'Name' : selectedRole === 'title' ? 'Title' : 'Number'
+        const roleSample = selectedRole === 'name' ? 'NAME' : selectedRole === 'title' ? 'TITLE' : '00'
         return (
           <div className="flex flex-col gap-2 rounded-lg border border-gray-300 bg-gray-50 p-2.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold">
-                Style the {selectedRole === 'name' ? 'Name' : 'Number'} field <span className="font-normal text-gray-500">— {fontLabel}</span>
+                Style the {roleLabel} field <span className="font-normal text-gray-500">— {fontLabel}</span>
               </span>
               <button type="button" onClick={style.onDeselect} className="text-[11px] text-gray-500 underline underline-offset-2 hover:text-gray-900">Done</button>
             </div>
@@ -181,7 +215,7 @@ export default function NamesNumbersPanel({
                 fonts={style.fonts}
                 value={style.selectedFont}
                 onChange={style.setSelectedFont}
-                previewText={selectedRole === 'name' ? 'NAME' : '00'}
+                previewText={roleSample}
                 maxHeightClass="max-h-40"
               />
             </div>

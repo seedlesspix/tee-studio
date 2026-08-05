@@ -5,14 +5,25 @@
 // A placeholder text object on the canvas is stamped with this custom prop so we know to substitute
 // it. Added to CANVAS_CUSTOM_PROPS in DesignerCanvas so it persists through save/restore/export.
 export const NN_ROLE_PROP = '_nnRole'
-export type NnRole = 'name' | 'number'
+export type NnRole = 'name' | 'number' | 'title'
+// Display order of the placeholder roles (top-to-bottom on the classic jersey stack).
+export const NN_ROLES: NnRole[] = ['name', 'number', 'title']
 
-export type RosterEntry = { name: string; number: string; size: string; qty: number }
+export type RosterEntry = { name: string; number: string; title: string; size: string; qty: number }
 
-export const emptyEntry = (size = ''): RosterEntry => ({ name: '', number: '', size, qty: 1 })
+export const emptyEntry = (size = ''): RosterEntry => ({ name: '', number: '', title: '', size, qty: 1 })
 
 // True when a roster row carries something worth printing/ordering.
-export const entryHasContent = (e: RosterEntry): boolean => e.name.trim() !== '' || e.number.trim() !== ''
+export const entryHasContent = (e: RosterEntry): boolean =>
+  e.name.trim() !== '' || e.number.trim() !== '' || e.title.trim() !== ''
+
+// The value a role prints for a given roster entry. FORCE UPPERCASE for text (name/title): a mixed
+// "Plumb"/"jones"/"PETTER" roster is ambiguous intent the shop would have to phone about — if only
+// uppercase is possible, that ambiguity never exists (Denise). Numbers pass through unchanged.
+export function rosterValue(entry: RosterEntry, role: NnRole): string {
+  const raw = role === 'name' ? entry.name : role === 'title' ? entry.title : entry.number
+  return role === 'number' ? raw : raw.toUpperCase()
+}
 
 export function rosterShirtCount(roster: RosterEntry[]): number {
   return roster.reduce((n, e) => n + (entryHasContent(e) ? Math.max(0, e.qty || 0) : 0), 0)
@@ -41,7 +52,8 @@ export function parseBulkRoster(text: string, defaultSize = ''): RosterEntry[] {
       if (m) { name = m[1].trim(); number = m[2] }
       else name = line
     }
-    if (name || number) out.push({ name, number, size, qty })
+    // Title isn't in the positional paste format (name/number/size/qty) — it's a table-only column.
+    if (name || number) out.push({ name: name.toUpperCase(), number, title: '', size, qty })
   }
   return out
 }
@@ -75,15 +87,16 @@ export function condensedScaleX(naturalWidth: number, maxWidth: number, baseScal
   return scaled > maxWidth ? maxWidth / naturalWidth : baseScaleX
 }
 
-// Substitute one roster entry into a set of canvas objects: every placeholder (_nnRole 'name'/'number')
-// gets its text replaced by the entry's value. Returns a NEW array (shallow-cloned changed objects);
-// non-placeholder objects pass through unchanged. Handles curved placeholders too (their editable
-// source is _originalText, which the arc renderer re-bakes from). Pure — no canvas/DOM.
+// Substitute one roster entry into a set of canvas objects: every placeholder (_nnRole
+// 'name'/'number'/'title') gets its text replaced by the entry's value (uppercased for name/title).
+// Returns a NEW array (shallow-cloned changed objects); non-placeholder objects pass through
+// unchanged. Handles curved placeholders too (their editable source is _originalText, which the arc
+// renderer re-bakes from). Pure — no canvas/DOM.
 export function substituteRosterEntry<T extends Record<string, unknown>>(objects: T[], entry: RosterEntry): T[] {
   return objects.map(obj => {
     const role = obj[NN_ROLE_PROP] as NnRole | undefined
-    if (role !== 'name' && role !== 'number') return obj
-    const value = role === 'name' ? entry.name : entry.number
+    if (role !== 'name' && role !== 'number' && role !== 'title') return obj
+    const value = rosterValue(entry, role)
     const next: Record<string, unknown> = { ...obj, text: value }
     if (obj._originalText !== undefined) next._originalText = value // curved-text bake source
     return next as T

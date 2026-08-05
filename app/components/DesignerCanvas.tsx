@@ -9,7 +9,7 @@ import { getProduct } from '../lib/shopify'
 import { buildColorImageMap, getColorImages } from '../lib/productImages'
 import { AUTODRAFT_KEY, buildEnvelope, parseEnvelope, shouldRestore } from '../lib/autodraft'
 import NamesNumbersPanel from './NamesNumbersPanel'
-import { type RosterEntry, NN_ROLE_PROP, entryHasContent, condensedScaleX, rosterShirtCount, rosterSizeQuantities } from '../lib/namesNumbers'
+import { type RosterEntry, type NnRole, NN_ROLE_PROP, entryHasContent, condensedScaleX, rosterShirtCount, rosterSizeQuantities, rosterValue } from '../lib/namesNumbers'
 import { toPctContain, CANVAS_W, CANVAS_H, type PrintAreaPct } from '../lib/printAreaGeometry'
 import ActionBar from './ActionBar'
 import Stepper from './Stepper'
@@ -196,8 +196,8 @@ export default function DesignerCanvas({
   const [activeTab, setActiveTab] = useState<'text' | 'upload' | 'clipart' | 'style' | 'names'>('text')
   // Names & Numbers roster (Phase 1: component state + auto-draft; DB persistence = Phase 2 migration).
   const [roster, setRoster] = useState<RosterEntry[]>([])
-  const [nnFields, setNnFields] = useState<{ name: boolean; number: boolean }>({ name: false, number: false })
-  const [selectedNnRole, setSelectedNnRole] = useState<'name' | 'number' | null>(null) // which placeholder is selected (drives in-panel styling)
+  const [nnFields, setNnFields] = useState<{ name: boolean; number: boolean; title: boolean }>({ name: false, number: false, title: false })
+  const [selectedNnRole, setSelectedNnRole] = useState<'name' | 'number' | 'title' | null>(null) // which placeholder is selected (drives in-panel styling)
   // Live roster preview: substitutes one entry onto the placeholders so the customer sees a real
   // shirt cycle through the list. TRANSIENT — never persisted. nnPreviewRef mirrors the index so
   // the auto-draft writer / snapshot / side-swap can synchronously tell "we're mid-preview, restore
@@ -825,7 +825,7 @@ export default function DesignerCanvas({
   // time (a fresh upload would misroute). So clipart→Art; any other image→Upload.
   const sectionForObject = (obj: any): 'text' | 'upload' | 'clipart' | 'names' => {
     // Placeholders stay in the Names & Numbers panel (styled there), never the generic text-edit flow.
-    if (obj?.[NN_ROLE_PROP] === 'name' || obj?.[NN_ROLE_PROP] === 'number') return 'names'
+    if (obj?.[NN_ROLE_PROP]) return 'names' // any placeholder (name/number/title)
     if (obj?.type === 'i-text' || obj?.type === 'textbox') return 'text'
     if (obj?._isCurvedText) return 'text'
     if (typeof obj?._isSvg === 'boolean') return 'clipart'
@@ -1994,7 +1994,7 @@ export default function DesignerCanvas({
   // Names & Numbers placeholders: a stamped IText the roster substitutes at print time (name ->
   // each player's name, number -> their number). One of each — re-select the existing one rather
   // than duplicating. Selecting it routes to the Text panel so it can be styled like any text.
-  const addPlaceholder = async (role: 'name' | 'number') => {
+  const addPlaceholder = async (role: NnRole) => {
     const canvas = fabricCanvasRef.current
     if (!canvas) return
     const existing = (canvas.getObjects() as any[]).find(o => o[NN_ROLE_PROP] === role)
@@ -2003,19 +2003,22 @@ export default function DesignerCanvas({
     const b = getPrintAreaBounds()
     if (!b) return
     const w = b.right - b.left, h = b.bottom - b.top
-    const sample = role === 'name' ? 'NAME' : '00'
-    // Default-match: a jersey almost always wants the Name and Number in the SAME font + color, and a
-    // customer can't eyeball whether "00" matches "NAME" across two fonts. So the SECOND field
-    // inherits the first field's font/color/size (they diverge only on purpose, by restyling). The
-    // sibling may sit on the other side, so look across both refs too.
+    // Sample + default landing spot per role — the classic jersey stack, top to bottom:
+    // NAME (top) · TITLE (below name) · NUMBER (center). Customer can drag any of them.
+    const sample = role === 'name' ? 'NAME' : role === 'title' ? 'TITLE' : '00'
+    const yFrac = role === 'name' ? 0.25 : role === 'title' ? 0.42 : 0.63
+    // Default-match: a jersey almost always wants all fields in the SAME font + color, and a customer
+    // can't eyeball whether "00" matches "NAME" across two fonts. So a NEW field inherits an existing
+    // field's font/color/size (they diverge only on purpose, by restyling). Sibling may be on the
+    // other side, so look across both refs too.
     const sibling = [...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current]
-      .find((o: any) => o && (o[NN_ROLE_PROP] === 'name' || o[NN_ROLE_PROP] === 'number') && o[NN_ROLE_PROP] !== role)
+      .find((o: any) => o && o[NN_ROLE_PROP] && o[NN_ROLE_PROP] !== role)
     const font = sibling?.fontFamily ?? selectedFont
     const fill = sibling?.fill ?? textColor
     const size = sibling?.fontSize ?? 64
     const t: any = new IText(sample, {
       left: b.left + w / 2,
-      top: b.top + h * (role === 'name' ? 0.42 : 0.62),
+      top: b.top + h * yFrac,
       originX: 'center', originY: 'center',
       fontFamily: font, fontSize: size, fill, textAlign: 'center',
       editable: false, // the value fills in per roster row — never typed on the canvas
@@ -2031,6 +2034,7 @@ export default function DesignerCanvas({
   }
   const addNameField = () => addPlaceholder('name')
   const addNumberField = () => addPlaceholder('number')
+  const addTitleField = () => addPlaceholder('title')
 
   // ── Live roster preview ────────────────────────────────────────────────────
   // Substitute one roster entry onto the placeholders, fit each to its box (keep the styled height,
@@ -2048,11 +2052,11 @@ export default function DesignerCanvas({
     const b = getPrintAreaBounds()
     const saved = nnPreviewSavedRef.current
     canvas.getObjects().forEach((o: any) => {
-      const role = o[NN_ROLE_PROP]
-      if (role !== 'name' && role !== 'number') return
+      const role = o[NN_ROLE_PROP] as NnRole | undefined
+      if (role !== 'name' && role !== 'number' && role !== 'title') return
       if (!saved.has(o)) saved.set(o, { text: o.text, scaleX: o.scaleX ?? 1 })
       const base = saved.get(o)!
-      const value = (role === 'name' ? entry.name : entry.number) || ' '
+      const value = rosterValue(entry, role) || ' ' // uppercased for name/title
       o.set({ text: value, scaleX: base.scaleX })
       o.initDimensions?.() // force width recompute so the fit measures the substituted string
       if (b) o.scaleX = condensedScaleX(o.width, (b.right - b.left) * 0.96, base.scaleX)
@@ -2128,7 +2132,7 @@ export default function DesignerCanvas({
     const canvas = fabricCanvasRef.current
     const hasPlaceholder = canvas
       ? [...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current]
-          .some((o: any) => o && (o[NN_ROLE_PROP] === 'name' || o[NN_ROLE_PROP] === 'number'))
+          .some((o: any) => o && o[NN_ROLE_PROP])
       : false
     // TEMP DIAGNOSTIC (auto-show-back not firing): tells us which guard blocked. Remove once resolved.
     console.log('[nn-autoback]', { hasBackImages, shirtView, hasPlaceholder, canvasReady: !!canvas })
@@ -2149,7 +2153,7 @@ export default function DesignerCanvas({
   // "Done" button) unmounts — so auto-exit here, or the substituted text would be stranded on the
   // canvas with no way back to the sample.
   useEffect(() => {
-    const stillValid = (nnFields.name || nnFields.number) && roster.some(entryHasContent)
+    const stillValid = (nnFields.name || nnFields.number || nnFields.title) && roster.some(entryHasContent)
     if (nnPreviewIndex !== null && !stillValid) exitNnPreview()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roster, nnFields, nnPreviewIndex])
@@ -2162,7 +2166,11 @@ export default function DesignerCanvas({
     const c = fabricCanvasRef.current
     if (!c) return
     const all = [...(c.getObjects() as any[]), ...frontObjectsRef.current, ...backObjectsRef.current]
-    setNnFields({ name: all.some(o => o[NN_ROLE_PROP] === 'name'), number: all.some(o => o[NN_ROLE_PROP] === 'number') })
+    setNnFields({
+      name: all.some(o => o[NN_ROLE_PROP] === 'name'),
+      number: all.some(o => o[NN_ROLE_PROP] === 'number'),
+      title: all.some(o => o[NN_ROLE_PROP] === 'title'),
+    })
   }, [canvasObjectCount, shirtView])
 
   // Rail = "add a NEW one." Selection drives the panel while something's picked,
@@ -3525,12 +3533,14 @@ export default function DesignerCanvas({
       onChange={r => { setRoster(r); markDirty() }}
       onAddNameField={addNameField}
       onAddNumberField={addNumberField}
+      onAddTitleField={addTitleField}
       hasName={nnFields.name}
       hasNumber={nnFields.number}
+      hasTitle={nnFields.title}
       sizes={Object.keys(quantities)}
       selectedRole={selectedNnRole}
       preview={{
-        canPreview: (nnFields.name || nnFields.number) && roster.some(entryHasContent),
+        canPreview: (nnFields.name || nnFields.number || nnFields.title) && roster.some(entryHasContent),
         entries: roster.filter(entryHasContent),
         index: nnPreviewIndex,
         onStart: enterNnPreview,
