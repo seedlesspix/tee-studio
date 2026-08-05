@@ -3,7 +3,7 @@
 // (DesignerCanvas) owns the roster array + the placeholder objects on the canvas. Light designer-
 // panel palette; red = ACTION only (per the locked red-vocabulary rule).
 import { useState } from 'react'
-import { Plus, Trash2, Type, Hash, ClipboardPaste } from 'lucide-react'
+import { Plus, Trash2, Type, Hash, ClipboardPaste, Download } from 'lucide-react'
 import { type RosterEntry, emptyEntry, parseBulkRoster, rosterShirtCount } from '../lib/namesNumbers'
 
 export default function NamesNumbersPanel({
@@ -95,26 +95,38 @@ export default function NamesNumbersPanel({
         </div>
       </div>
 
+      {/* PRIMARY = the row-by-row table above + Add row. Paste is a SECONDARY shortcut (small link). */}
       <div className="flex items-center gap-2">
-        <button type="button" onClick={addRow} className="flex items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-50">
+        <button type="button" onClick={addRow} className="flex items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
           <Plus size={13} /> Add row
-        </button>
-        <button type="button" onClick={() => setPasteOpen(v => !v)} className="flex items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-50">
-          <ClipboardPaste size={13} /> Paste list
         </button>
         <span className="ml-auto text-xs font-medium text-gray-600">{count} shirt{count === 1 ? '' : 's'}</span>
       </div>
 
+      <div className="flex items-center gap-3 text-[11px] text-gray-400">
+        <span>Have a spreadsheet?</span>
+        <button type="button" onClick={() => setPasteOpen(v => !v)} className="inline-flex items-center gap-1 text-gray-500 underline underline-offset-2 hover:text-gray-900">
+          <ClipboardPaste size={11} /> Paste a list
+        </button>
+        <a href="/roster-template.xlsx" download className="inline-flex items-center gap-1 text-gray-500 underline underline-offset-2 hover:text-gray-900">
+          <Download size={11} /> Template
+        </a>
+      </div>
+
       {pasteOpen && (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-1.5 rounded-lg border border-gray-200 bg-gray-50 p-2">
+          {/* Format guidance right at the moment of need — for coaches who already have a roster. */}
+          <p className="text-[11px] leading-snug text-gray-600">
+            Paste straight from your spreadsheet — one shirt per line, e.g. <span className="font-mono text-gray-800">SMITH, 12, L, 2</span>
+          </p>
           <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={4}
-            placeholder={'Paste rows, one per line:\nSMITH  12  L  1\nJONES, 8, M, 1'}
-            className="w-full rounded-lg border border-gray-300 p-2 text-xs outline-none focus:border-[#dd3333]" />
+            placeholder={'SMITH, 12, L, 1\nJONES, 8, M, 1\nDE LA CRUZ, 24, XL, 2'}
+            className="w-full rounded-lg border border-gray-300 bg-white p-2 font-mono text-xs outline-none focus:border-[#dd3333]" />
           <div className="flex gap-2">
             <button type="button" onClick={applyPaste} className="rounded-lg bg-[#dd3333] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#c62828]">Apply list</button>
             <button type="button" onClick={() => { setPasteOpen(false); setPasteText('') }} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-700">Cancel</button>
           </div>
-          <p className="text-[10px] text-gray-400">Tab, comma, or space separated. Replaces the current list.</p>
+          <p className="text-[10px] text-gray-400">Tab or comma separated (a spreadsheet copy works). Replaces the current list.</p>
         </div>
       )}
     </div>
