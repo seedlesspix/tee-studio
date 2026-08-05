@@ -21,10 +21,13 @@ const NN_LOCK_PROPS = {
 
 // Placeholders are single-line, all-caps/digits, display-only. Fabric IGNORES lineHeight for a
 // single line's box height (calcTextHeight uses getHeightOfLineImpl for the last line, no lineHeight
-// factor) — so the box is fontSize × _fontSizeMult (1.13) with a fat descender gap below the caps
-// (_fontSizeFraction 0.222). Tighten BOTH so the box hugs the glyphs (no empty band under NAME) and
-// "center" lands on the visible letters, not the padded em box. Tuned; adjustable per Denise's eye.
-const NN_TEXT_METRICS = { _fontSizeMult: 0.82, _fontSizeFraction: 0.1 } as const
+// factor) — so the box is fontSize × _fontSizeMult (default 1.13) with a fat descender gap below the
+// caps (_fontSizeFraction default 0.222). We tune BOTH: a small _fontSizeFraction keeps the BOTTOM
+// tight (no empty band under the letters), while _fontSizeMult stays high enough that the ASCENT
+// (=(1-frac)×mult ≈ 0.83) exceeds even tall-cap jersey fonts — otherwise their caps poke out the top
+// of the box (and risk the print area). Ascent 0.83 covers ~any font; bottom stays hugged. NAME also
+// sits with head room from the print-area top (STACK_Y_FRAC) so no font's caps can exceed the zone.
+const NN_TEXT_METRICS = { _fontSizeMult: 0.88, _fontSizeFraction: 0.06 } as const
 import { toPctContain, CANVAS_W, CANVAS_H, type PrintAreaPct } from '../lib/printAreaGeometry'
 import ActionBar from './ActionBar'
 import Stepper from './Stepper'
