@@ -6,6 +6,7 @@ import {
   publishProduct,
   deleteDesignProduct,
 } from '../../../../lib/design-products'
+import { type RosterEntry, entryHasContent, rosterValue, rosterShirtCount, rosterSizeQuantities } from '../../../../lib/namesNumbers'
 
 export const runtime = 'nodejs'
 
@@ -122,20 +123,30 @@ export async function POST(
   if (sizes.length === 0) {
     return NextResponse.json({ error: 'Design has no available sizes' }, { status: 422 })
   }
+  // Names & Numbers: a team order is one design × N personalized shirts, so the ROSTER on the design
+  // row (not the per-size body quantities) is the source of truth — detected first so an N&N order
+  // skips the per-size body validation entirely.
+  const rosterEntries: RosterEntry[] = Array.isArray(design.roster)
+    ? (design.roster as unknown as RosterEntry[]).filter(entryHasContent)
+    : []
+  const nnActive = rosterEntries.length > 0
+
+  // Per-size body quantities — only for plain (non-N&N) designs.
   const quantities: Record<string, number> = {}
-  for (const [size, qty] of Object.entries(rawQuantities as Record<string, unknown>)) {
-    if (typeof qty !== 'number' || !Number.isInteger(qty) || qty < 0) {
-      return NextResponse.json({ error: `Invalid quantity for size ${size}` }, { status: 400 })
+  if (!nnActive) {
+    for (const [size, qty] of Object.entries(rawQuantities as Record<string, unknown>)) {
+      if (typeof qty !== 'number' || !Number.isInteger(qty) || qty < 0) {
+        return NextResponse.json({ error: `Invalid quantity for size ${size}` }, { status: 400 })
+      }
+      if (qty === 0) continue
+      if (!sizes.includes(size)) {
+        return NextResponse.json({ error: `Unknown size: ${size}` }, { status: 400 })
+      }
+      quantities[size] = qty
     }
-    if (qty === 0) continue
-    if (!sizes.includes(size)) {
-      return NextResponse.json({ error: `Unknown size: ${size}` }, { status: 400 })
+    if (Object.values(quantities).reduce((a, b) => a + b, 0) === 0) {
+      return NextResponse.json({ error: 'No quantities selected' }, { status: 400 })
     }
-    quantities[size] = qty
-  }
-  const totalQty = Object.values(quantities).reduce((a, b) => a + b, 0)
-  if (totalQty === 0) {
-    return NextResponse.json({ error: 'No quantities selected' }, { status: 400 })
   }
 
   const price = design.price_per_item ?? 0
@@ -144,6 +155,28 @@ export async function POST(
       { error: 'Design has no price captured — re-save it from the designer' },
       { status: 422 }
     )
+  }
+
+  if (nnActive) {
+    // Never guess a size (Denise): block checkout and name the offending rows.
+    const missing = rosterEntries.filter((e) => !e.size || !sizes.includes(e.size))
+    if (missing.length) {
+      const who = missing
+        .slice(0, 6)
+        .map((e) => rosterValue(e, 'name') || rosterValue(e, 'title') || (e.number ? `#${e.number}` : 'a row'))
+        .join(', ')
+      return NextResponse.json(
+        { error: `Every roster row needs a size we offer before checkout. Please set a size for: ${who}.` },
+        { status: 422 }
+      )
+    }
+  }
+  // Pricing is Option 1 — personalization is the printed side, already in price_per_item — so every
+  // line (per size, or per roster entry) is price_per_item × qty. The roster drives N&N totals.
+  const effQuantities = nnActive ? rosterSizeQuantities(rosterEntries) : quantities
+  const effTotalQty = nnActive ? rosterShirtCount(rosterEntries) : Object.values(quantities).reduce((a, b) => a + b, 0)
+  if (effTotalQty === 0) {
+    return NextResponse.json({ error: 'No shirts to add — set at least one quantity.' }, { status: 400 })
   }
 
   // Idempotency: if this design is already a line in the customer's cart,
@@ -191,11 +224,27 @@ export async function POST(
     // 3. One items[] POST to the customer's own /cart/add.js. A just-
     // published variant can take a moment to reach the Online Store catalog
     // (Day-1/Day-6 probes: ~3-5s), so retry "Cannot find variant" briefly.
-    const items = Object.entries(quantities).map(([size, quantity]) => ({
-      id: Number(product.variantsBySize[size].split('/').pop()),
-      quantity,
-      properties: { _design_order_id: id },
-    }))
+    // N&N: one line PER ROSTER ENTRY with VISIBLE Name/Number/Title so the coach proof-reads their
+    // roster in the cart before paying (_design_order_id stays hidden with its underscore). Otherwise
+    // the classic one-line-per-size shape, unchanged.
+    const items = nnActive
+      ? rosterEntries.map((e) => {
+          const props: Record<string, string> = {}
+          const nm = rosterValue(e, 'name'); if (nm) props.Name = nm
+          if (e.number) props.Number = String(e.number)
+          const tt = rosterValue(e, 'title'); if (tt) props.Title = tt
+          props._design_order_id = id
+          return {
+            id: Number(product.variantsBySize[e.size].split('/').pop()),
+            quantity: Math.max(1, Math.floor(e.qty) || 1),
+            properties: props,
+          }
+        })
+      : Object.entries(effQuantities).map(([size, quantity]) => ({
+          id: Number(product.variantsBySize[size].split('/').pop()),
+          quantity,
+          properties: { _design_order_id: id },
+        }))
 
     let addRes: Response | null = null
     let lastError = ''
@@ -227,9 +276,9 @@ export async function POST(
     const { error: updateError } = await supabase
       .from('design_orders')
       .update({
-        quantities,
-        total_qty: totalQty,
-        total_price: Number((totalQty * price).toFixed(2)),
+        quantities: effQuantities,
+        total_qty: effTotalQty,
+        total_price: Number((effTotalQty * price).toFixed(2)),
         notes: typeof body.notes === 'string' ? body.notes.trim() || null : (body.notes ?? design.notes),
         status: 'cart_created',
         shopify_cart_url: cartUrl,
