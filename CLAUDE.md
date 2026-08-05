@@ -778,6 +778,13 @@ enhancement):
   "type in box, then add to shirt" flow.
 - **Text alignment buttons** — left/center/right (may already exist, needs
   verification).
+- **Universal / Illustrator-like icon set (Denise 2026-08-05).** Icons should be
+  consistent app-wide and match the standard glyph vocabulary designers already
+  know — specifically the **align-left / center / right / justify-distribute**
+  set as drawn in Illustrator. Today icons are ad-hoc Lucide picks; this is the
+  umbrella "universal-icons" pass (audit every tool/panel icon for a consistent,
+  familiar set, align controls first). Cosmetic-polish scope; fold into a
+  launch-polish or desktop-restructure pass.
 - **Center-on-shirt button** — one click centers the current text element.
 - **Rename "Curve" → "Arc"** — and expand range to −360°…360° (currently may be
   limited).
