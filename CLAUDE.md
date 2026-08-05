@@ -573,6 +573,16 @@ routed to a later phase. Logged here so they aren't rediscovered from scratch.
     obvious). Applies everywhere fonts are picked (the Text panel AND the new Names &
     Numbers styling section). Strengthens the case for Categories; don't build a
     one-off picker.
+    - **PER-FONT PREVIEW IN THE PICKER LIST (Denise 2026-08-05):** each font in the
+      scrolling list must render **its own name in that font** — preview *before*
+      choosing, like every real font menu. The desktop **Text** panel already does
+      this ("Preview Text" per font); the **N&N styling font control is a plain
+      native `<select>`** (per-`<option>` `font-family` is unreliable across
+      browsers/OS), so it does NOT preview. Fix = the N&N control adopts the same
+      custom per-font-preview list the Text panel uses (build it once, share it) —
+      this is the pick-a-font experience, distinct from the selected-font swatch
+      already shipped in the N&N styling section (that shows the *chosen* font+color;
+      keep it). Home = Font Categories/picker work.
 - **Product template print areas: pixels vs. percentages (Phase 3 reconcile).**
   The current designer reads print areas in **percentages** from a Shopify
   metafield (`designer.print_area` → `xPct/yPct/widthPct/heightPct`). The new

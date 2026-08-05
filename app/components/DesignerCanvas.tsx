@@ -2083,6 +2083,42 @@ export default function DesignerCanvas({
     setNnPreviewIndex(null)
   }
 
+  // Front/Back toggle, shared by the two stage buttons AND the N&N auto-show-back effect. Saves the
+  // current side's objects into its ref, loads the target side's objects, and swaps the shirt image +
+  // print area. Exits any live preview first so a substitution can't be swapped into the other side.
+  const switchView = (target: 'front' | 'back') => {
+    if (shirtView === target) return
+    exitNnPreview()
+    const canvas = fabricCanvasRef.current
+    if (canvas) {
+      if (shirtView === 'front') frontObjectsRef.current = canvas.getObjects().map((o: any) => o)
+      else backObjectsRef.current = canvas.getObjects().map((o: any) => o)
+      canvas.clear()
+      const targetObjs = target === 'front' ? frontObjectsRef.current : backObjectsRef.current
+      targetObjs.forEach((o: any) => canvas.add(o))
+      canvas.renderAll()
+    }
+    setShirtView(target)
+    const imgs = getColorImages(selectedColor, colorImageMap)
+    const src = (target === 'front' ? imgs?.front : imgs?.back) || firstImageUrlRef.current
+    if (src && shirtImgRef.current) shirtImgRef.current.src = src
+    const pa = target === 'front' ? printAreaDataRef.current?.front : printAreaDataRef.current?.back
+    if (pa) { setPrintArea(pa); window.dispatchEvent(new Event('printAreaChanged')) }
+  }
+
+  // Auto-show BACK when the customer opens Names & Numbers — the usual home for a name/number — but
+  // only on a FRESH design (no placeholder placed on either side yet), so we never yank a deliberate
+  // front placement, and only when the product actually has a back to design. No back template → stay.
+  useEffect(() => {
+    if (activeTab !== 'names' || !hasBackImages || shirtView !== 'front') return
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    const hasPlaceholder = [...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current]
+      .some((o: any) => o && (o[NN_ROLE_PROP] === 'name' || o[NN_ROLE_PROP] === 'number'))
+    if (!hasPlaceholder) switchView('back')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
+
   // Leaving the Names tab must drop the preview (its controls unmount, but the substituted text
   // would otherwise stay on the canvas). Side-swap and every save path guard synchronously at their
   // own call sites (a React effect runs too late — the swap reads getObjects() first).
@@ -3709,23 +3745,7 @@ export default function DesignerCanvas({
               one identical string, byte-for-byte. */}
           <div className="absolute bottom-5 flex gap-2">
             <button
-              onClick={() => {
-                if (shirtView === 'front') return
-                exitNnPreview() // never swap a preview substitution into the other side's ref
-                // Save back objects, restore front objects
-                const canvas = fabricCanvasRef.current
-                if (canvas) {
-                  backObjectsRef.current = canvas.getObjects().map((o: any) => o)
-                  canvas.clear()
-                  frontObjectsRef.current.forEach((o: any) => canvas.add(o))
-                  canvas.renderAll()
-                }
-                setShirtView('front')
-                const imgs = getColorImages(selectedColor, colorImageMap)
-                const frontSrc = imgs?.front || firstImageUrlRef.current
-                if (frontSrc && shirtImgRef.current) shirtImgRef.current.src = frontSrc
-                if (printAreaDataRef.current?.front) { setPrintArea(printAreaDataRef.current.front); window.dispatchEvent(new Event('printAreaChanged')) }
-              }}
+              onClick={() => switchView('front')}
               className={`px-4 py-1.5 rounded-full text-xs font-mono tracking-widest transition-all ${
                 shirtView === 'front'
                   ? 'bg-[#dd3333] text-white'
@@ -3768,23 +3788,7 @@ export default function DesignerCanvas({
             )}
             {hasBackImages && (
               <button
-                onClick={() => {
-                  if (shirtView === 'back') return
-                  exitNnPreview() // never swap a preview substitution into the other side's ref
-                  // Save front objects, restore back objects
-                  const canvas = fabricCanvasRef.current
-                  if (canvas) {
-                    frontObjectsRef.current = canvas.getObjects().map((o: any) => o)
-                    canvas.clear()
-                    backObjectsRef.current.forEach((o: any) => canvas.add(o))
-                    canvas.renderAll()
-                  }
-                  setShirtView('back')
-                  const imgs = getColorImages(selectedColor, colorImageMap)
-                  const backSrc = imgs?.back || firstImageUrlRef.current
-                  if (backSrc && shirtImgRef.current) shirtImgRef.current.src = backSrc
-                  if (printAreaDataRef.current?.back) { setPrintArea(printAreaDataRef.current.back); window.dispatchEvent(new Event('printAreaChanged')) }
-                }}
+                onClick={() => switchView('back')}
                 className={`px-4 py-1.5 rounded-full text-xs font-mono tracking-widest transition-all ${
                   shirtView === 'back'
                     ? 'bg-[#dd3333] text-white'
