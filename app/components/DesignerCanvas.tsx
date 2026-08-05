@@ -2040,7 +2040,7 @@ export default function DesignerCanvas({
       if (!spot) return
       // Re-assert lock + non-editable here too, so designs saved under the old movable regime conform
       // (locked + canonical) the moment they're viewed, without a migration.
-      o.set({ left: spot.left, top: spot.top, fontSize: spot.fontSize, scaleX: 1, scaleY: 1, angle: 0, originX: 'center', originY: 'center', lineHeight: 0.9, editable: false, ...NN_LOCK_PROPS })
+      o.set({ left: spot.left, top: spot.top, fontSize: spot.fontSize, scaleX: 1, scaleY: 1, angle: 0, originX: 'center', originY: 'center', lineHeight: 0.72, editable: false, ...NN_LOCK_PROPS })
       o.initDimensions?.()
       o.setCoords?.()
     })
@@ -2072,7 +2072,7 @@ export default function DesignerCanvas({
       left: b.left + (b.right - b.left) / 2, top: b.top + (b.bottom - b.top) / 2,
       originX: 'center', originY: 'center', textAlign: 'center',
       fontFamily: font, fill,
-      lineHeight: 0.9,   // hug the glyphs — the default ~1.16 pads the box well beyond the caps/digits,
+      lineHeight: 0.72,   // hug the glyphs — the default ~1.16 pads the box well beyond the caps/digits,
                           // which threw off where "center" visually lands (numbers have empty descender space)
       editable: false,   // the value fills in per roster row — never typed on the canvas
       ...NN_LOCK_PROPS,   // no move/resize/rotate — geometry is canonical
