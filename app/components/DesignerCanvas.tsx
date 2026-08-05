@@ -2142,7 +2142,6 @@ export default function DesignerCanvas({
     const frontHas = frontObjs.some(isPh)
     const backHas = backObjs.some(isPh)
     const currentHas = shirtView === 'front' ? frontHas : backHas
-    console.log('[nn-autoback]', { hasBackImages, shirtView, frontHas, backHas }) // TEMP — remove once confirmed
     if (currentHas) return
     if (frontHas) { switchView('front'); return }
     if (backHas && hasBackImages) { switchView('back'); return }
