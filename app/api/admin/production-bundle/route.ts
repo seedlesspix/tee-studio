@@ -19,6 +19,8 @@ import { collectCutPaths } from '../../../lib/server/generateCutFile'
 import { assembleCutSvgUnioned } from '../../../lib/server/cutBoolean'
 import { generateLayoutSvgForSide } from '../../../lib/server/generateLayout'
 import { autoTraceSvg } from '../../../lib/server/autoTrace'
+import { collectNnCutPaths, nnEntryFilename } from '../../../lib/server/nnCutFiles'
+import { type RosterEntry, entryHasContent, rosterValue, rosterShirtCount } from '../../../lib/namesNumbers'
 
 export const runtime = 'nodejs' // opentype.js + local-font fs read (see next.config trace-includes)
 
@@ -123,7 +125,7 @@ export async function GET(req: NextRequest) {
       'canvas_png_front', 'canvas_png_back', 'uploaded_files', 'shopify_order_number',
       'product_title', 'selected_color', 'selected_color_hex', 'print_method', 'sides_designed',
       'status', 'customer_name', 'customer_email', 'customer_phone', 'shipping_address',
-      'shipping_lines', 'quantities', 'available_sizes',
+      'shipping_lines', 'quantities', 'available_sizes', 'roster',
     ].join(','))
     .eq('id', orderId).maybeSingle() as { data: Record<string, unknown> | null; error: unknown }
   if (error || !o) return NextResponse.json({ error: 'order not found' }, { status: 404 })
@@ -139,19 +141,42 @@ export async function GET(req: NextRequest) {
   const cutFolder = root.folder('Cut Files')!
   const cutMirrorFolder = root.folder('Cut Files (Mirrored)')!
   const cutLines: string[] = []
+  const roster: RosterEntry[] = Array.isArray(o.roster) ? (o.roster as unknown as RosterEntry[]).filter(entryHasContent) : []
+  const nnActive = roster.length > 0
+
+  // Emit one CutPathsResult as normal + mirrored SVG into the given folders, logging the outcome.
+  const emitCut = (res: Awaited<ReturnType<typeof collectCutPaths>>, name: string, normalFolder: JSZip, mirrorFolder: JSZip, label: string) => {
+    if (res.ok) {
+      normalFolder.file(name, assembleCutSvgUnioned(res.paths, res.phys, { mirror: false }))
+      mirrorFolder.file(name, assembleCutSvgUnioned(res.paths, res.phys, { mirror: true }))
+      cutLines.push(`  ✓ ${label}  (normal + mirrored)`)
+      if (res.warning) cutLines.push(`    ⚠ ${res.warning}`) // template-anisotropy guard
+    } else if (res.reason === 'outline-failed' || res.reason === 'bad-json') {
+      cutLines.push(`  ⚠ COULD NOT GENERATE ${label}: ${res.message}${res.fonts ? ` [${res.fonts.join('; ')}]` : ''}`)
+    } else {
+      cutLines.push(`  — ${label}: ${res.message}`)
+    }
+  }
+
   for (const side of ['front', 'back'] as const) {
     const canvasJson = side === 'front' ? o.canvas_json_front : o.canvas_json_back
     const snap = side === 'front' ? o.print_area_front : o.print_area_back
-    const c = await collectCutPaths(canvasJson as string | null, snap)
-    if (c.ok) {
-      cutFolder.file(`${orderNo}-${side}.svg`, assembleCutSvgUnioned(c.paths, c.phys, { mirror: false }))
-      cutMirrorFolder.file(`${orderNo}-${side}.svg`, assembleCutSvgUnioned(c.paths, c.phys, { mirror: true }))
-      cutLines.push(`  ✓ ${orderNo}-${side}.svg  (normal + mirrored)`)
-      if (c.warning) cutLines.push(`    ⚠ ${side}: ${c.warning}`) // template-anisotropy guard
-    } else if (c.reason === 'outline-failed' || c.reason === 'bad-json') {
-      cutLines.push(`  ⚠ COULD NOT GENERATE ${side}: ${c.message}${c.fonts ? ` [${c.fonts.join('; ')}]` : ''}`)
+
+    // Names & Numbers: split this side into a SHARED base (logo/common art, cut once) + one file per
+    // roster entry (the substituted placeholders). Only the side(s) carrying placeholders take this
+    // path — the other side (e.g. a front logo) falls through to the normal whole-side file.
+    const nn = nnActive ? await collectNnCutPaths(canvasJson as string | null, snap, roster) : null
+    if (nn) {
+      emitCut(nn.base, `${orderNo}-${side}.svg`, cutFolder, cutMirrorFolder, `${orderNo}-${side}.svg (shared base — cut once)`)
+      const namesFolder = cutFolder.folder('Names')!
+      const namesMirror = cutMirrorFolder.folder('Names')!
+      for (const { entry, index, result } of nn.entries) {
+        const fn = nnEntryFilename(index, entry)
+        emitCut(result, fn, namesFolder, namesMirror, `Names/${fn}`)
+      }
     } else {
-      cutLines.push(`  — ${side}: ${c.message}`)
+      const c = await collectCutPaths(canvasJson as string | null, snap)
+      emitCut(c, `${orderNo}-${side}.svg`, cutFolder, cutMirrorFolder, `${orderNo}-${side}.svg`)
     }
   }
 
@@ -251,6 +276,16 @@ export async function GET(req: NextRequest) {
   const method = shipTitle || (addr ? 'Ship' : notYet)
   const printLabel = o.print_method === 'screen_print' ? 'Print' : val(o.print_method).replace(/_/g, ' ')
 
+  // Names & Numbers roster — the bench's pressing checklist (one row per shirt), + which files pair.
+  const nnManifest = nnActive ? [
+    `NAMES & NUMBERS ROSTER  (one shirt per row — pressing checklist)`,
+    `  ${'#'.padEnd(4)}${'NAME'.padEnd(16)}${'NUMBER'.padEnd(8)}${'TITLE'.padEnd(12)}${'SIZE'.padEnd(6)}QTY`,
+    ...roster.map((e, i) =>
+      `  ${String(i + 1).padEnd(4)}${rosterValue(e, 'name').slice(0, 15).padEnd(16)}${String(e.number ?? '').slice(0, 7).padEnd(8)}${rosterValue(e, 'title').slice(0, 11).padEnd(12)}${String(e.size ?? '').slice(0, 5).padEnd(6)}${e.qty ?? 1}`),
+    `  Total: ${rosterShirtCount(roster)} personalized shirts`,
+    `  Each Cut Files/Names/NN-NAME-NUMBER.svg overlays the shared base ${orderNo}-<side>.svg in the same print area.`,
+  ] : []
+
   const info: string[] = [
     `ORDER ${orderNo}${paid ? '' : `   [${String(o.status || 'draft').toUpperCase()} — not a paid order yet]`}`,
     `${'='.repeat(50)}`,
@@ -278,6 +313,7 @@ export async function GET(req: NextRequest) {
     `  Front: ${summarizeSide(o.canvas_json_front as string | null)}`,
     `  Back:  ${summarizeSide(o.canvas_json_back as string | null)}`,
     ``,
+    ...(nnActive ? [...nnManifest, ``] : []),
     `CUT FILES (vector to cut — union'd per color, cropped, no mask; NORMAL + MIRRORED)`,
     `  Cut Files/ = normal (adhesive, print-then-cut) · Cut Files (Mirrored)/ = HTV`,
     ...cutLines,
