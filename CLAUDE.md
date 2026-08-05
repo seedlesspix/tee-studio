@@ -567,6 +567,12 @@ routed to a later phase. Logged here so they aren't rediscovered from scratch.
   more than an upload button. The small **"add a category field"** slice can ship
   with Font Categories in the desktop restructure; the full ownership migration is
   its own scoped project.
+  - **FONT-PICKER UX (Denise 2026-08-04, N&N pass — fold into Font Categories):** the
+    currently-chosen font must be **clearly indicated**, and **scrolling the full flat
+    list is rough** — Categories is the fix (grouped, searchable, current-selection
+    obvious). Applies everywhere fonts are picked (the Text panel AND the new Names &
+    Numbers styling section). Strengthens the case for Categories; don't build a
+    one-off picker.
 - **Product template print areas: pixels vs. percentages (Phase 3 reconcile).**
   The current designer reads print areas in **percentages** from a Shopify
   metafield (`designer.print_area` → `xPct/yPct/widthPct/heightPct`). The new
