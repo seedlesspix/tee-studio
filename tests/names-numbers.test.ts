@@ -124,10 +124,16 @@ describe('names & numbers — jerseyStackLayout (locked, composition-aware, scal
     expect(L.name!.left).toBe(350); expect(L.number!.left).toBe(350) // centered
   })
 
-  it('a lone field centers vertically', () => {
+  it('fixed slots: a lone NAME stays pinned at the top (never re-centered)', () => {
     const L = jerseyStackLayout(['name'], box)
-    expect(L.name!.top).toBe(200 + 800 * 0.5) // box.top + h*0.5
+    expect(L.name!.top).toBe(200 + 800 * 0.12) // top slot, same as in the full stack
     expect(L.number).toBeUndefined()
+  })
+
+  it('fixed slots: NAME lands in the same spot regardless of composition', () => {
+    const alone = jerseyStackLayout(['name'], box)
+    const full = jerseyStackLayout(['name', 'number', 'title'], box)
+    expect(alone.name!.top).toBe(full.name!.top) // adding fields never shuffles Name off the top
   })
 
   it('scales font size with the box height', () => {

@@ -104,26 +104,15 @@ export function condensedScaleX(naturalWidth: number, maxWidth: number, baseScal
 // ── The locked jersey stack ────────────────────────────────────────────────
 // Placeholders don't get moved/resized by the customer — they land at canonical jersey positions and
 // sizes, computed here as fractions of the print box so the stack SCALES to whatever garment box it's
-// on (onesie vs tee). Composition-aware: a lone field centers; 2–3 fields form the classic stack
-// (top→bottom: NAME · TITLE · NUMBER, with the NUMBER the dominant element). Pure — the designer maps
-// the returned per-role {left, top (object CENTER), fontSize} straight onto the Fabric objects.
+// on (onesie vs tee). FIXED SLOTS (Denise, seeing it live): NAME pinned at the very top ALWAYS (even
+// alone — never re-centered), TITLE tucked just below Name, NUMBER the dominant element at center-mid.
+// Adding/removing a field never shuffles the others. Pure — the designer maps the returned per-role
+// {left, top (object CENTER), fontSize} straight onto the Fabric objects.
 
 // Font size as a fraction of box height, constant per role (a name is always name-sized).
 export const STACK_FONT_FRAC: Record<NnRole, number> = { name: 0.14, number: 0.42, title: 0.075 }
-
-// Center-Y fraction per present role. Positions shift with the composition so every combination reads
-// as an intentional jersey rather than fields stranded in fixed slots.
-function stackYFracs(has: { name: boolean; number: boolean; title: boolean }): Partial<Record<NnRole, number>> {
-  const { name, number, title } = has
-  if (name && number && title) return { name: 0.17, title: 0.32, number: 0.63 }
-  if (name && number) return { name: 0.28, number: 0.63 }
-  if (name && title) return { name: 0.40, title: 0.57 }
-  if (number && title) return { title: 0.33, number: 0.63 }
-  if (name) return { name: 0.5 }
-  if (number) return { number: 0.5 }
-  if (title) return { title: 0.5 }
-  return {}
-}
+// Fixed center-Y fraction per role — the SAME slot regardless of which other fields are present.
+export const STACK_Y_FRAC: Record<NnRole, number> = { name: 0.12, title: 0.25, number: 0.55 }
 
 export type StackBox = { left: number; top: number; right: number; bottom: number }
 export type StackSpot = { left: number; top: number; fontSize: number }
@@ -132,13 +121,10 @@ export function jerseyStackLayout(present: NnRole[], box: StackBox): Partial<Rec
   const w = box.right - box.left, h = box.bottom - box.top
   if (!(w > 0) || !(h > 0)) return {}
   const cx = box.left + w / 2
-  const has = { name: present.includes('name'), number: present.includes('number'), title: present.includes('title') }
-  const yf = stackYFracs(has)
   const out: Partial<Record<NnRole, StackSpot>> = {}
   for (const role of NN_ROLES) {
-    const f = yf[role]
-    if (f == null) continue
-    out[role] = { left: cx, top: box.top + h * f, fontSize: Math.max(8, Math.round(h * STACK_FONT_FRAC[role])) }
+    if (!present.includes(role)) continue
+    out[role] = { left: cx, top: box.top + h * STACK_Y_FRAC[role], fontSize: Math.max(8, Math.round(h * STACK_FONT_FRAC[role])) }
   }
   return out
 }

@@ -13,6 +13,7 @@ export default function NamesNumbersPanel({
   onAddNameField,
   onAddNumberField,
   onAddTitleField,
+  printReady = true,
   hasName,
   hasNumber,
   hasTitle,
@@ -26,6 +27,9 @@ export default function NamesNumbersPanel({
   onAddNameField: () => void
   onAddNumberField: () => void
   onAddTitleField: () => void
+  // False when this product/side has no loaded print area — the fields have nowhere to land, so the
+  // Add buttons are disabled with an explanation instead of silently doing nothing.
+  printReady?: boolean
   hasName: boolean
   hasNumber: boolean
   hasTitle: boolean
@@ -84,7 +88,7 @@ export default function NamesNumbersPanel({
   ].filter(Boolean).join(' ')
 
   const fieldBtn = (active: boolean) =>
-    `flex-1 flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+    `flex-1 flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
       active ? 'border-gray-800 bg-gray-100 text-gray-900' : 'border-dashed border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-900'
     }`
 
@@ -100,16 +104,22 @@ export default function NamesNumbersPanel({
 
       {/* Placeholder fields — the classic jersey stack: Name (top) · Title (below name) · Number (center) */}
       <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={onAddNameField} className={fieldBtn(hasName)}>
+        <button type="button" onClick={onAddNameField} disabled={!printReady} className={fieldBtn(hasName)}>
           <Type size={14} /> {hasName ? 'Name ✓' : 'Add Name'}
         </button>
-        <button type="button" onClick={onAddNumberField} className={fieldBtn(hasNumber)}>
+        <button type="button" onClick={onAddNumberField} disabled={!printReady} className={fieldBtn(hasNumber)}>
           <Hash size={14} /> {hasNumber ? 'Number ✓' : 'Add Number'}
         </button>
-        <button type="button" onClick={onAddTitleField} className={fieldBtn(hasTitle)}>
+        <button type="button" onClick={onAddTitleField} disabled={!printReady} className={fieldBtn(hasTitle)}>
           <Tag size={14} /> {hasTitle ? 'Title ✓' : 'Add Title'}
         </button>
       </div>
+      {!printReady && (
+        <p className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11px] leading-snug text-amber-800">
+          This product doesn&apos;t have a print area loaded yet, so there&apos;s nowhere to place the
+          name/number. Add a print area for it in <span className="font-medium">Templates</span> (admin), then reload the designer.
+        </p>
+      )}
 
       {/* Roster table — columns mirror the placed fields (Name/Number/Title), Size + Qty always. */}
       <div className="rounded-lg border border-gray-200">
