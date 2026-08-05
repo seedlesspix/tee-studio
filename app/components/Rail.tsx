@@ -23,7 +23,7 @@ import { Shirt, Type, Upload, Shapes, Hash } from 'lucide-react'
 // Phase 2 next visual sub-pass (logged, NOT here): the PANEL red-sweep — flip the
 // SelectionPanel's remaining red-for-selection states to quiet (selected-font
 // border, selected color-swatch ring, active align/direction/effects buttons).
-type Tab = 'text' | 'upload' | 'clipart'
+type Tab = 'text' | 'upload' | 'clipart' | 'names'
 
 type RailItem = {
   key: string
@@ -37,7 +37,7 @@ const ITEMS: RailItem[] = [
   { key: 'text',     label: 'Text',            Icon: Type,   wired: true  },
   { key: 'upload',   label: 'Upload',          Icon: Upload, wired: true  },
   { key: 'clipart',  label: 'Art',             Icon: Shapes, wired: true  },
-  { key: 'names',    label: 'Names & Numbers', Icon: Hash,   wired: false },
+  { key: 'names',    label: 'Names & Numbers', Icon: Hash,   wired: true  },
 ]
 
 export default function Rail({

@@ -3,6 +3,8 @@
 // snapshot) and /api/designs (My Designs saves) so the two write paths can't
 // drift apart when a column is added.
 
+import type { RosterEntry } from './namesNumbers'
+
 export type UploadedFile = { name: string; url: string; type: string }
 
 export type DesignState = {
@@ -19,6 +21,7 @@ export type DesignState = {
   front?: unknown
   back?: unknown
   uploadedFiles?: UploadedFile[]
+  roster?: RosterEntry[] // Names & Numbers (Phase 1: auto-draft only; no DB column until Phase 2)
 }
 
 // The columns rowToDesignState needs — keep in lockstep with it.

@@ -8,6 +8,8 @@ import CanvasStage from './CanvasStage'
 import { getProduct } from '../lib/shopify'
 import { buildColorImageMap, getColorImages } from '../lib/productImages'
 import { AUTODRAFT_KEY, buildEnvelope, parseEnvelope, shouldRestore } from '../lib/autodraft'
+import NamesNumbersPanel from './NamesNumbersPanel'
+import { type RosterEntry, NN_ROLE_PROP } from '../lib/namesNumbers'
 import { toPctContain, CANVAS_W, CANVAS_H, type PrintAreaPct } from '../lib/printAreaGeometry'
 import ActionBar from './ActionBar'
 import Stepper from './Stepper'
@@ -124,7 +126,8 @@ const COLOR_HEX_MAP: Record<string, string> = {
 const CANVAS_CUSTOM_PROPS = ['_isSvg', '_originalText', '_currentColor', '_isCurvedText', '_uploadSrc',
   // Bake params for a curved-text image, so selecting it reflects the curve
   // slider + font/size/color and adjusting the curve re-bakes from its OWN values.
-  '_curveAmount', '_curveFontFamily', '_curveFontSize', '_curveFill', '_curveBold', '_curveItalic']
+  '_curveAmount', '_curveFontFamily', '_curveFontSize', '_curveFill', '_curveBold', '_curveItalic',
+  '_nnRole'] // Names & Numbers placeholder role ('name'|'number') — the substitution + cut-file split key
 
 // Fallback size list ONLY — real sizes come per-product from the Shopify Size
 // option (see productSizes). Used when a product exposes no Size option.
@@ -190,7 +193,10 @@ export default function DesignerCanvas({
   const [shirtView, setShirtView] = useState<'front' | 'back'>('front')
   const [hasBackImages, setHasBackImages] = useState(false)
   const [printArea, setPrintArea] = useState<{xPct:number,yPct:number,widthPct:number,heightPct:number} | null>(null)
-  const [activeTab, setActiveTab] = useState<'text' | 'upload' | 'clipart' | 'style'>('text')
+  const [activeTab, setActiveTab] = useState<'text' | 'upload' | 'clipart' | 'style' | 'names'>('text')
+  // Names & Numbers roster (Phase 1: component state + auto-draft; DB persistence = Phase 2 migration).
+  const [roster, setRoster] = useState<RosterEntry[]>([])
+  const [nnFields, setNnFields] = useState<{ name: boolean; number: boolean }>({ name: false, number: false })
   const [textInput, setTextInput] = useState('')
   const [selectedFont, setSelectedFont] = useState('Arial Black')
   const [textColor, setTextColor] = useState('#ffffff')
@@ -867,6 +873,7 @@ export default function DesignerCanvas({
       if (state.printMethod) setPrintMethod(state.printMethod)
       if (state.quantities) setQuantities(state.quantities)
       if (Array.isArray(state.uploadedFiles)) uploadedFilesRef.current = state.uploadedFiles
+      if (Array.isArray(state.roster)) setRoster(state.roster)
       setShirtView('front')
     } finally {
       isRestoringRef.current = false
@@ -1886,11 +1893,48 @@ export default function DesignerCanvas({
     textInputRef.current?.focus()
   }
 
+  // Names & Numbers placeholders: a stamped IText the roster substitutes at print time (name ->
+  // each player's name, number -> their number). One of each — re-select the existing one rather
+  // than duplicating. Selecting it routes to the Text panel so it can be styled like any text.
+  const addPlaceholder = async (role: 'name' | 'number') => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    const existing = (canvas.getObjects() as any[]).find(o => o[NN_ROLE_PROP] === role)
+    if (existing) { canvas.setActiveObject(existing); canvas.renderAll(); return }
+    const { IText } = await import('fabric')
+    const b = getPrintAreaBounds()
+    if (!b) return
+    const w = b.right - b.left, h = b.bottom - b.top
+    const sample = role === 'name' ? 'NAME' : '00'
+    const t: any = new IText(sample, {
+      left: b.left + w / 2,
+      top: b.top + h * (role === 'name' ? 0.42 : 0.62),
+      originX: 'center', originY: 'center',
+      fontFamily: selectedFont, fontSize: 64, fill: textColor, textAlign: 'center',
+    })
+    t[NN_ROLE_PROP] = role
+    t._originalText = sample
+    canvas.add(t)
+    canvas.setActiveObject(t)
+    canvas.renderAll()
+    markDirty()
+  }
+  const addNameField = () => addPlaceholder('name')
+  const addNumberField = () => addPlaceholder('number')
+
+  // Keep the panel's "Name field ✓ / Number field ✓" indicators in sync with the canvas.
+  useEffect(() => {
+    const c = fabricCanvasRef.current
+    if (!c) return
+    const objs = c.getObjects() as any[]
+    setNnFields({ name: objs.some(o => o[NN_ROLE_PROP] === 'name'), number: objs.some(o => o[NN_ROLE_PROP] === 'number') })
+  }, [canvasObjectCount])
+
   // Rail = "add a NEW one." Selection drives the panel while something's picked,
   // so switching rail category means "leave edit mode": drop the selection
   // (selection:cleared resets selectedObjectType → the panel shows the chosen
   // category's ADD surface) and set the tab.
-  const handleSelectTab = (tab: 'text' | 'upload' | 'clipart') => {
+  const handleSelectTab = (tab: 'text' | 'upload' | 'clipart' | 'names') => {
     const canvas = fabricCanvasRef.current
     if (canvas) {
       canvas.discardActiveObject()
@@ -1901,7 +1945,7 @@ export default function DesignerCanvas({
 
   // Mobile band tab tap: switch tool AND open the band; tapping the ALREADY-active
   // tab closes it (back to just the icon strip, shirt at full size).
-  const bandSelectTab = (tab: 'text' | 'upload' | 'clipart') => {
+  const bandSelectTab = (tab: 'text' | 'upload' | 'clipart' | 'names') => {
     if (bandOpen && activeTab === tab) { setBandOpen(false); return }
     handleSelectTab(tab)
     setBandOpen(true)
@@ -2995,6 +3039,7 @@ export default function DesignerCanvas({
       front,
       back,
       uploadedFiles: uploadedFilesRef.current,
+      roster, // Phase 1: carried by the auto-draft snapshot; DB column lands in Phase 2
     }
   }
 
@@ -3222,6 +3267,17 @@ export default function DesignerCanvas({
       clipart={{ printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor }}
     />
   )
+  const namesPanel = (
+    <NamesNumbersPanel
+      roster={roster}
+      onChange={r => { setRoster(r); markDirty() }}
+      onAddNameField={addNameField}
+      onAddNumberField={addNumberField}
+      hasName={nnFields.name}
+      hasNumber={nnFields.number}
+      sizes={Object.keys(quantities)}
+    />
+  )
   // On mobile every tool gets a purpose-built compact band (horizontal rows), all
   // mobile-only so the desktop vertical SelectionPanel stays untouched.
   const mobileBandContent =
@@ -3266,6 +3322,7 @@ export default function DesignerCanvas({
         alignObject={alignObject}
       />
     )
+    : activeTab === 'names' ? namesPanel
     : selectionPanel
 
   // Root is a fixed, app-like viewport: no page scroll / pull-to-refresh on
@@ -3315,7 +3372,7 @@ export default function DesignerCanvas({
           <aside className="w-[360px] bg-white border-r border-gray-200 flex overflow-hidden shrink-0">
             <Rail activeTab={activeTab} onSelectTab={handleSelectTab} />
             <div className="flex-1 min-w-0 overflow-y-auto pt-3">
-              {selectionPanel}
+              {activeTab === 'names' ? namesPanel : selectionPanel}
             </div>
           </aside>
         )}
