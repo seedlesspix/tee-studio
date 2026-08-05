@@ -126,7 +126,7 @@ describe('names & numbers — jerseyStackLayout (locked, composition-aware, scal
 
   it('fixed slots: a lone NAME stays pinned at the top (never re-centered)', () => {
     const L = jerseyStackLayout(['name'], box)
-    expect(L.name!.top).toBe(200 + 800 * 0.10) // top slot, same as in the full stack
+    expect(L.name!.top).toBe(200 + 800 * 0.06) // top slot, same as in the full stack
     expect(L.number).toBeUndefined()
   })
 
