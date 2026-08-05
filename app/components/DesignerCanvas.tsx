@@ -564,6 +564,53 @@ export default function DesignerCanvas({
     }
   }, [selectedFont, textColor, isBold, isItalic, isUppercase, textAlign, letterSpacing, textDirection, textOutline, curveAmount])
 
+  // After a font CHANGE on the selected text, re-measure once the new font has actually loaded — the
+  // synchronous set above may have measured a fallback (see ensureFontLoaded). Corrects the box and
+  // re-constrains. Guarded against mirror-on-select so merely picking a text never reflows it.
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current
+    const active = canvas?.getActiveObject() as any
+    if (!canvas || !active || reflectingRef.current) return
+    if (active.type !== 'i-text' && active.type !== 'textbox') return
+    let cancelled = false
+    ;(async () => {
+      await ensureFontLoaded(selectedFont)
+      if (cancelled || fabricCanvasRef.current !== canvas) return
+      const { cache } = await import('fabric')
+      cache.clearFontCache()
+      if (!active.isEditing && typeof active.initDimensions === 'function') { active.initDimensions(); active.setCoords() }
+      const b = getPrintAreaBounds(); if (b) constrainObject(active, b)
+      canvas.requestRenderAll()
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFont])
+
+  // Initial FOUT guard: the page's web fonts (Google display=swap + local @font-face) can still be
+  // downloading when text is first created or a saved design is restored, so Fabric measures a
+  // fallback and caches wrong widths. When the fonts finish, drop the stale widths and re-measure
+  // everything (live canvas + both side refs) so every box matches its rendered glyphs. Re-runs as
+  // objects change, since a newly-used local font can kick off a fresh load.
+  useEffect(() => {
+    if (typeof document === 'undefined' || !document.fonts?.ready) return
+    let cancelled = false
+    document.fonts.ready.then(async () => {
+      if (cancelled) return
+      const { cache } = await import('fabric')
+      cache.clearFontCache()
+      const canvas = fabricCanvasRef.current
+      const fix = (objs: any[]) => objs.forEach(o => {
+        if (!o || o.isEditing || typeof o.initDimensions !== 'function') return
+        o.initDimensions(); o.setCoords?.()
+      })
+      if (canvas) fix(canvas.getObjects())
+      fix(frontObjectsRef.current); fix(backObjectsRef.current)
+      canvas?.requestRenderAll()
+    })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fabricCanvas, canvasObjectCount])
+
   // Constrain all objects whenever fontSize changes (slider update)
   const fabricCanvasRef = useRef<any>(null)
   const lastActiveObjectRef = useRef<any>(null)
@@ -1905,6 +1952,40 @@ export default function DesignerCanvas({
     textInputRef.current?.focus()
   }
 
+  // ── Web-font measurement correctness ───────────────────────────────────────
+  // A custom/web font (Google `display=swap` or a local @font-face) is measured by Fabric the moment
+  // a text object is created — but if the font file hasn't downloaded yet, Fabric measures the
+  // FALLBACK glyphs and CACHES those widths. The real font then swaps in on render, so the cached
+  // bounding box disagrees with what's drawn: dead space beside the text, or text spilling past its
+  // box. Everything positioned off those bounds — centering, condense-to-fit, the Phase-4 cut files —
+  // inherits the error. Fabric's own remedy: wait for the font, drop the stale widths, re-measure.
+  const ensureFontLoaded = async (family?: string) => {
+    if (!family || typeof document === 'undefined' || !document.fonts?.load) return
+    const primary = family.split(',')[0].trim().replace(/^["']|["']$/g, '')
+    if (!primary) return
+    try {
+      await Promise.all([
+        document.fonts.load(`16px "${primary}"`),
+        document.fonts.load(`700 16px "${primary}"`), // bold face measures separately
+      ])
+    } catch { /* unknown/local family the browser can't resolve — nothing to wait on */ }
+  }
+
+  // Re-measure the given text objects in place after their fonts are guaranteed loaded. Clears
+  // Fabric's char-width cache (the documented step) so initDimensions() recomputes from the real
+  // glyphs. Skips non-text and objects being edited (would disrupt the caret). Renders once.
+  const remeasureTextObjects = async (objs: any[], families: string[]) => {
+    await Promise.all(families.filter(Boolean).map(f => ensureFontLoaded(f)))
+    const { cache } = await import('fabric')
+    cache.clearFontCache()
+    objs.forEach(o => {
+      if (!o || o.isEditing || typeof o.initDimensions !== 'function') return
+      o.initDimensions()
+      o.setCoords?.()
+    })
+    fabricCanvasRef.current?.requestRenderAll()
+  }
+
   // Names & Numbers placeholders: a stamped IText the roster substitutes at print time (name ->
   // each player's name, number -> their number). One of each — re-select the existing one rather
   // than duplicating. Selecting it routes to the Text panel so it can be styled like any text.
@@ -1931,6 +2012,8 @@ export default function DesignerCanvas({
     canvas.setActiveObject(t)
     canvas.renderAll()
     markDirty()
+    // Correct the box once the font is really loaded (it may have measured a fallback just now).
+    void remeasureTextObjects([t], [selectedFont])
   }
   const addNameField = () => addPlaceholder('name')
   const addNumberField = () => addPlaceholder('number')
@@ -1967,7 +2050,17 @@ export default function DesignerCanvas({
     setNnPreviewIndex(idx)
   }
 
-  const enterNnPreview = () => { if (rosterContentEntries().length) applyNnPreview(0) }
+  const enterNnPreview = async () => {
+    if (!rosterContentEntries().length) return
+    // Guarantee the placeholders' fonts are loaded + the cache is clean before the condense-fit
+    // measures widths — otherwise a fallback measurement would let a long value spill the box.
+    const canvas = fabricCanvasRef.current
+    const fams = canvas ? (canvas.getObjects() as any[]).filter(o => o[NN_ROLE_PROP]).map(o => o.fontFamily) : []
+    await Promise.all(Array.from(new Set(fams)).map(f => ensureFontLoaded(f)))
+    const { cache } = await import('fabric')
+    cache.clearFontCache()
+    applyNnPreview(0)
+  }
   const stepNnPreview = (delta: number) => { if (nnPreviewRef.current !== null) applyNnPreview(nnPreviewRef.current + delta) }
 
   // Restore the sample text + base scaleX on every previewed placeholder. Idempotent — safe to call
