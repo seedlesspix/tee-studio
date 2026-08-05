@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseBulkRoster, substituteRosterEntry, rosterShirtCount, rosterSizeQuantities, rosterValue, condensedScaleX, NN_ROLE_PROP } from '../app/lib/namesNumbers'
+import { parseBulkRoster, substituteRosterEntry, rosterShirtCount, rosterSizeQuantities, rosterValue, condensedScaleX, jerseyStackLayout, NN_ROLE_PROP } from '../app/lib/namesNumbers'
 
 describe('names & numbers — bulk roster parsing', () => {
   it('parses tab-separated "Name Number Size Qty" (name uppercased, title empty)', () => {
@@ -109,6 +109,35 @@ describe('names & numbers — rosterSizeQuantities (roster drives the order quan
   it('skips empty/zero-qty rows and buckets an unsized entry under \'\'', () => {
     const q = rosterSizeQuantities([R('A', '1', '', 2), R('B', '2', 'L', 0), R('', '', 'M', 4)])
     expect(q).toEqual({ '': 2 })
+  })
+})
+
+describe('names & numbers — jerseyStackLayout (locked, composition-aware, scales to the box)', () => {
+  const box = { left: 100, top: 200, right: 600, bottom: 1000 } // 500 x 800, center x = 350
+
+  it('full stack: NUMBER dominant, NAME on top, all horizontally centered', () => {
+    const L = jerseyStackLayout(['name', 'number', 'title'], box)
+    expect(L.name && L.number && L.title).toBeTruthy()
+    expect(L.number!.fontSize).toBeGreaterThan(L.name!.fontSize)
+    expect(L.name!.fontSize).toBeGreaterThan(L.title!.fontSize)
+    expect(L.name!.top).toBeLessThan(L.number!.top) // name higher up the box
+    expect(L.name!.left).toBe(350); expect(L.number!.left).toBe(350) // centered
+  })
+
+  it('a lone field centers vertically', () => {
+    const L = jerseyStackLayout(['name'], box)
+    expect(L.name!.top).toBe(200 + 800 * 0.5) // box.top + h*0.5
+    expect(L.number).toBeUndefined()
+  })
+
+  it('scales font size with the box height', () => {
+    const small = jerseyStackLayout(['number'], { left: 0, top: 0, right: 250, bottom: 400 })
+    const big = jerseyStackLayout(['number'], { left: 0, top: 0, right: 500, bottom: 800 })
+    expect(big.number!.fontSize).toBeGreaterThan(small.number!.fontSize)
+  })
+
+  it('degenerate box yields nothing', () => {
+    expect(jerseyStackLayout(['name'], { left: 0, top: 0, right: 0, bottom: 0 })).toEqual({})
   })
 })
 

@@ -9,7 +9,15 @@ import { getProduct } from '../lib/shopify'
 import { buildColorImageMap, getColorImages } from '../lib/productImages'
 import { AUTODRAFT_KEY, buildEnvelope, parseEnvelope, shouldRestore } from '../lib/autodraft'
 import NamesNumbersPanel from './NamesNumbersPanel'
-import { type RosterEntry, type NnRole, NN_ROLE_PROP, entryHasContent, condensedScaleX, rosterShirtCount, rosterSizeQuantities, rosterValue } from '../lib/namesNumbers'
+import { type RosterEntry, type NnRole, NN_ROLE_PROP, entryHasContent, condensedScaleX, rosterShirtCount, rosterSizeQuantities, rosterValue, jerseyStackLayout } from '../lib/namesNumbers'
+
+// Locked jersey placeholders can't be moved/resized/rotated by the customer (geometry is canonical;
+// only font + color are theirs). These locks ENFORCE that on desktop AND mobile regardless of which
+// control handles show; the control sets are separately trimmed to delete-only for a placeholder.
+const NN_LOCK_PROPS = {
+  lockMovementX: true, lockMovementY: true,
+  lockScalingX: true, lockScalingY: true, lockRotation: true,
+} as const
 import { toPctContain, CANVAS_W, CANVAS_H, type PrintAreaPct } from '../lib/printAreaGeometry'
 import ActionBar from './ActionBar'
 import Stepper from './Stepper'
@@ -523,6 +531,13 @@ export default function DesignerCanvas({
     if (reflectingRef.current) return  // mirror-on-select, not a real knob change
     const active = canvas.getActiveObject()
     if (!active || (active.type !== 'i-text' && active.type !== 'textbox')) return
+    // Locked jersey placeholder: apply ONLY font + color. Its size + position are canonical (set by
+    // applyStackLayout) — never reWrap/resize/reposition it here.
+    if ((active as any)[NN_ROLE_PROP]) {
+      (active as any).set({ fontFamily: selectedFont, fill: textColor })
+      canvas.renderAll()
+      return
+    }
     {
       const currentText = (active as any).text || ''
       const currentFontSize = (active as any).fontSize || fontSize
@@ -584,7 +599,9 @@ export default function DesignerCanvas({
       const { cache } = await import('fabric')
       cache.clearFontCache()
       if (!active.isEditing && typeof active.initDimensions === 'function') { active.initDimensions(); active.setCoords() }
-      const b = getPrintAreaBounds(); if (b) constrainObject(active, b)
+      // Locked placeholder: never constrain/reposition it — re-assert the canonical stack instead
+      // (its size + position are jersey-canonical, not the fit-to-box treatment).
+      if (active[NN_ROLE_PROP]) { applyStackLayout() } else { const b = getPrintAreaBounds(); if (b) constrainObject(active, b) }
       canvas.requestRenderAll()
     })()
     return () => { cancelled = true }
@@ -718,7 +735,8 @@ export default function DesignerCanvas({
       }
       const applyTo = (obj: any) => {
         if (obj._isCropRect) return // the crop frame owns its own edge-only handles — never disc/delete it
-        obj.controls = controls
+        // Locked jersey placeholder: DELETE disc only — no move/resize/rotate (locks enforce it too).
+        obj.controls = obj[NN_ROLE_PROP] ? { del: controls.del } : controls
         obj.set({ cornerSize, touchCornerSize, transparentCorners: false, borderColor: '#111827', borderScaleFactor })
         obj.setCoords?.()
       }
@@ -1526,6 +1544,9 @@ export default function DesignerCanvas({
 
         const applyControls = (obj: any) => {
           if (obj._isCropRect) return // the crop frame keeps its own edge-only handles — no delete/rotate
+          // Locked jersey placeholder: DELETE only — no move/resize/rotate handles (the locks also
+          // enforce it functionally). Applies on both platforms.
+          if (obj[NN_ROLE_PROP]) { obj.controls = { deleteControl }; obj.setCoords(); return }
           // MOBILE uses its own 3-disc control set (applied by the mobile effect, which
           // also hooks object:added). Skip the desktop red-circle set here so the two
           // systems don't fight (the desktop set was overriding the mobile discs on
@@ -1994,6 +2015,31 @@ export default function DesignerCanvas({
   // Names & Numbers placeholders: a stamped IText the roster substitutes at print time (name ->
   // each player's name, number -> their number). One of each — re-select the existing one rather
   // than duplicating. Selecting it routes to the Text panel so it can be styled like any text.
+  // Snap every placeholder on the CURRENT side to its canonical jersey position + size for the current
+  // composition. THE single source of truth for stack geometry — called on add/remove, side switch,
+  // box change, and restore, so old (movable-regime) designs conform on reopen too. Never runs during
+  // preview (which owns the substituted text/scaleX). Style (font/color) is untouched.
+  const applyStackLayout = () => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas || nnPreviewRef.current !== null) return
+    const b = getPrintAreaBounds()
+    if (!b) return
+    const placeholders = (canvas.getObjects() as any[]).filter(o => o[NN_ROLE_PROP])
+    if (!placeholders.length) return
+    const present = placeholders.map(o => o[NN_ROLE_PROP] as NnRole)
+    const layout = jerseyStackLayout(present, b)
+    placeholders.forEach(o => {
+      const spot = layout[o[NN_ROLE_PROP] as NnRole]
+      if (!spot) return
+      // Re-assert lock + non-editable here too, so designs saved under the old movable regime conform
+      // (locked + canonical) the moment they're viewed, without a migration.
+      o.set({ left: spot.left, top: spot.top, fontSize: spot.fontSize, scaleX: 1, scaleY: 1, angle: 0, originX: 'center', originY: 'center', editable: false, ...NN_LOCK_PROPS })
+      o.initDimensions?.()
+      o.setCoords?.()
+    })
+    canvas.requestRenderAll()
+  }
+
   const addPlaceholder = async (role: NnRole) => {
     const canvas = fabricCanvasRef.current
     if (!canvas) return
@@ -2002,31 +2048,25 @@ export default function DesignerCanvas({
     const { IText } = await import('fabric')
     const b = getPrintAreaBounds()
     if (!b) return
-    const w = b.right - b.left, h = b.bottom - b.top
-    // Sample + default landing spot per role — the classic jersey stack (fractions are the object's
-    // CENTER down the print box, all horizontally centered): NAME near the top · TITLE just below the
-    // name · NUMBER the dominant center element. Tuned to Denise's spec; the customer can still drag.
     const sample = role === 'name' ? 'NAME' : role === 'title' ? 'TITLE' : '00'
-    const yFrac = role === 'name' ? 0.18 : role === 'title' ? 0.34 : 0.58
-    // Default-match: a jersey almost always wants all fields in the SAME font + color, and a customer
-    // can't eyeball whether "00" matches "NAME" across two fonts. So a NEW field inherits an existing
-    // field's font/color/size (they diverge only on purpose, by restyling). Sibling may be on the
-    // other side, so look across both refs too.
+    // Font + color DEFAULT-MATCH an existing field (jerseys want one look); SIZE + POSITION are
+    // canonical/locked — applyStackLayout arranges the whole stack right after this add. Sibling may
+    // be on the other side, so look across both refs.
     const sibling = [...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current]
       .find((o: any) => o && o[NN_ROLE_PROP] && o[NN_ROLE_PROP] !== role)
     const font = sibling?.fontFamily ?? selectedFont
     const fill = sibling?.fill ?? textColor
-    const size = sibling?.fontSize ?? 64
     const t: any = new IText(sample, {
-      left: b.left + w / 2,
-      top: b.top + h * yFrac,
-      originX: 'center', originY: 'center',
-      fontFamily: font, fontSize: size, fill, textAlign: 'center',
-      editable: false, // the value fills in per roster row — never typed on the canvas
+      left: b.left + (b.right - b.left) / 2, top: b.top + (b.bottom - b.top) / 2,
+      originX: 'center', originY: 'center', textAlign: 'center',
+      fontFamily: font, fill,
+      editable: false,   // the value fills in per roster row — never typed on the canvas
+      ...NN_LOCK_PROPS,   // no move/resize/rotate — geometry is canonical
     })
     t[NN_ROLE_PROP] = role
     t._originalText = sample
     canvas.add(t)
+    applyStackLayout()   // position + size the full stack for the new composition
     canvas.setActiveObject(t)
     canvas.renderAll()
     markDirty()
@@ -2036,6 +2076,13 @@ export default function DesignerCanvas({
   const addNameField = () => addPlaceholder('name')
   const addNumberField = () => addPlaceholder('number')
   const addTitleField = () => addPlaceholder('title')
+
+  // Re-apply the canonical stack whenever the composition, side, or print box changes (covers add,
+  // remove via any delete path, side swap, product load, and restore). Cheap + idempotent.
+  useEffect(() => {
+    applyStackLayout()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canvasObjectCount, shirtView, printArea])
 
   // ── Live roster preview ────────────────────────────────────────────────────
   // Substitute one roster entry onto the placeholders, fit each to its box (keep the styled height,
@@ -3560,7 +3607,6 @@ export default function DesignerCanvas({
         selectedFont, setSelectedFont,
         colors: dbColors,
         textColor, setTextColor,
-        fontSize, setFontSize,
         onDeselect: () => { const c = fabricCanvasRef.current; c?.discardActiveObject(); c?.renderAll() },
       }}
     />

@@ -795,6 +795,17 @@ enhancement):
   umbrella "universal-icons" pass (audit every tool/panel icon for a consistent,
   familiar set, align controls first). Cosmetic-polish scope; fold into a
   launch-polish or desktop-restructure pass.
+- **Names & Numbers — admin stack-preview overlay (Denise 2026-08-05, real item not a maybe).** Now
+  that the N&N jersey stack is LOCKED (canonical position + size, no user drag/resize), the print box
+  is the single source of truth for where the stack lands. Draw a faint NAME/TITLE/NUMBER preview in
+  the `/admin/templates` print-area editor so the shape/position of the locked stack is visible
+  per-product at box-setup time — prevention-at-source, same spirit as the template anisotropy badge
+  and the "⚠ 0 areas" badge. Fast-follow to the lock (shipped as movable→locked in the N&N work).
+- **Names & Numbers — front chest-number layout (named follow-up).** The locked stack applies the
+  same big-centered jersey layout on whichever side it's placed (front or back). A real FRONT jersey
+  number is a *different* convention — small, upper-left chest — so it needs its own front-specific
+  locked layout. Deferred deliberately; front placement still works today (just gets the big centered
+  stack). Scope a front-number layout mode when front personalization demand appears.
 - **Center-on-shirt button** — one click centers the current text element.
 - **Rename "Curve" → "Arc"** — and expand range to −360°…360° (currently may be
   limited).

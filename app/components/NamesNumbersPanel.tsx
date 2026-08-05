@@ -40,8 +40,6 @@ export default function NamesNumbersPanel({
     colors: { label: string; hex: string }[]
     textColor: string
     setTextColor: (c: string) => void
-    fontSize: number
-    setFontSize: (n: number) => void
     onDeselect: () => void
   }
   // Cycle the roster onto the shirt so the customer sees a real personalized preview. index===null
@@ -232,13 +230,10 @@ export default function NamesNumbersPanel({
                 })}
               </div>
             </div>
-            <div>
-              <label className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wide text-gray-500">
-                <span>Size</span><span className="text-gray-700">{Math.round(style.fontSize)}</span>
-              </label>
-              <input type="range" min={12} max={200} value={style.fontSize} onChange={e => style.setFontSize(Number(e.target.value))} className="mt-1 w-full accent-[#dd3333]" />
-            </div>
-            <p className="text-[10px] leading-snug text-gray-400">Styles the placeholder — every {selectedRole} on your roster prints this way.</p>
+            <p className="text-[10px] leading-snug text-gray-400">
+              Font &amp; color only — position and size are set automatically to the jersey layout (long
+              names shrink to fit). Every {selectedRole} on your roster prints this way.
+            </p>
           </div>
         )
       })()}
