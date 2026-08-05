@@ -26,7 +26,7 @@ export type DesignState = {
 
 // The columns rowToDesignState needs — keep in lockstep with it.
 export const DESIGN_STATE_COLUMNS =
-  'shopify_product_id, shopify_variant_id, product_title, selected_color, print_method, quantities, uploaded_files, sides_designed, canvas_json_front, canvas_json_back'
+  'shopify_product_id, shopify_variant_id, product_title, selected_color, print_method, quantities, roster, uploaded_files, sides_designed, canvas_json_front, canvas_json_back'
 
 export type DesignStateRow = {
   shopify_product_id: string | null
@@ -35,6 +35,7 @@ export type DesignStateRow = {
   selected_color: string | null
   print_method: string | null
   quantities: unknown
+  roster: unknown
   uploaded_files: unknown
   sides_designed: number | null
   canvas_json_front: string | null
@@ -49,6 +50,7 @@ export function designStateToRow(state: DesignState) {
     selected_color: state.selectedColor ?? null,
     print_method: state.printMethod ?? null,
     quantities: (state.quantities ?? null) as never,
+    roster: (state.roster ?? null) as never,
     uploaded_files: (state.uploadedFiles ?? null) as never,
     sides_designed: state.sidesDesigned ?? null,
     canvas_json_front: state.front ? JSON.stringify(state.front) : null,
@@ -65,6 +67,7 @@ export function rowToDesignState(data: DesignStateRow): DesignState {
     selectedColor: data.selected_color ?? undefined,
     printMethod: data.print_method ?? undefined,
     quantities: (data.quantities as Record<string, number> | null) ?? undefined,
+    roster: (data.roster as RosterEntry[] | null) ?? undefined,
     uploadedFiles: (data.uploaded_files as UploadedFile[] | null) ?? undefined,
     sidesDesigned: data.sides_designed ?? undefined,
     front: data.canvas_json_front ? safeParse(data.canvas_json_front) : undefined,

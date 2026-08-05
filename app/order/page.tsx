@@ -2,6 +2,7 @@
 import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import type { Tables } from '@/types/database'
+import { type RosterEntry } from '@/app/lib/namesNumbers'
 import Stepper from '@/app/components/Stepper'
 
 type DesignOrder = Omit<Tables<'design_orders'>, 'quantities'> & {
@@ -55,6 +56,14 @@ function OrderPage() {
   const totalQty = Object.values(quantities).reduce((a, b) => a + b, 0)
   const pricePerItem = design ? ((design.unit_price ?? 0) + (design.print_charge ?? 0)) : 0
   const total = (totalQty * pricePerItem).toFixed(2)
+
+  // Names & Numbers: the saved roster is this order's source of truth for who gets which shirt. Its
+  // size/qty aggregate is already what we loaded into `quantities`, so the total math is unchanged;
+  // for N&N we show the roster manifest (read-only) instead of the size steppers. Personalization is
+  // Option 1 — the printed side, already inside the per-side print charge — so no separate line adds
+  // money; we just note it's included.
+  const rosterEntries: RosterEntry[] = Array.isArray(design?.roster) ? (design!.roster as unknown as RosterEntry[]) : []
+  const nnActive = rosterEntries.length > 0
 
   // Per-side print-charge split. Read the exact captured columns (Day-4). Fall
   // back to deriving from side presence for legacy rows saved before the split
@@ -197,6 +206,12 @@ function OrderPage() {
                   <span className="text-gray-900">+${backCharge.toFixed(2)}</span>
                 </div>
               )}
+              {nnActive && (
+                <div className="flex justify-between text-gray-600 text-xs italic">
+                  <span>Personalization (names &amp; numbers)</span>
+                  <span>included in print</span>
+                </div>
+              )}
               <div className="flex justify-between font-bold border-t border-gray-200 pt-2">
                 <span className="text-gray-900 font-bold">Price per item</span>
                 <span className="text-[#dd3333]">${pricePerItem.toFixed(2)}</span>
@@ -204,29 +219,49 @@ function OrderPage() {
             </div>
           </div>
 
-          {/* Size Quantities */}
+          {/* Size Quantities — or, for a Names & Numbers order, the roster manifest (read-only: the
+              list is edited in the designer, and it's the source of truth for who gets which shirt). */}
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-            <p className="text-xs font-mono text-gray-900 uppercase tracking-widest mb-3">Sizes & Quantities</p>
-            <div className="flex flex-col gap-2">
-              {sortedSizes.map(size => (
-                <div key={size} className="flex items-center justify-between gap-3">
-                  {/* min-w keeps adult sizes aligned in a column; shrink-0 +
-                      nowrap stop multi-character names ("12-18MO") wrapping at
-                      the hyphen. w-10 was sized for single-character sizes. */}
-                  <span className="text-sm font-mono text-gray-900 font-semibold min-w-[2.5rem] shrink-0 whitespace-nowrap">{size}</span>
-                  <div className="flex items-center gap-3 bg-white border border-[#333] rounded-lg px-3 py-1.5">
-                    <button onClick={() => setQuantities(q => ({ ...q, [size]: Math.max(0, (q[size] || 0) - 1) }))}
-                      className="text-gray-900 hover:text-[#dd3333] font-bold w-5 text-center text-lg leading-none">−</button>
-                    <span className="text-sm font-mono w-5 text-center text-gray-900 font-bold">{quantities[size] || 0}</span>
-                    <button onClick={() => setQuantities(q => ({ ...q, [size]: (q[size] || 0) + 1 }))}
-                      className="text-gray-900 hover:text-[#dd3333] font-bold w-5 text-center text-lg leading-none">+</button>
-                  </div>
-                  <span className="text-xs text-gray-800 font-mono w-16 text-right">
-                    {quantities[size] > 0 ? `$${(quantities[size] * pricePerItem).toFixed(2)}` : ''}
-                  </span>
+            <p className="text-xs font-mono text-gray-900 uppercase tracking-widest mb-3">{nnActive ? 'Names & Numbers' : 'Sizes & Quantities'}</p>
+            {nnActive ? (
+              <div className="flex flex-col">
+                <div className="grid grid-cols-[1fr_44px_52px_32px] gap-2 border-b border-gray-200 pb-1 text-[10px] font-mono uppercase tracking-wide text-gray-500">
+                  <span>Name</span><span>Number</span><span>Size</span><span className="text-right">Qty</span>
                 </div>
-              ))}
-            </div>
+                <div className="max-h-72 overflow-y-auto">
+                  {rosterEntries.map((e, i) => (
+                    <div key={i} className="grid grid-cols-[1fr_44px_52px_32px] items-center gap-2 border-b border-gray-100 py-1 text-sm text-gray-900 last:border-b-0">
+                      <span className="truncate font-medium">{e.name || '—'}</span>
+                      <span>{e.number || '—'}</span>
+                      <span className="whitespace-nowrap">{e.size || '—'}</span>
+                      <span className="text-right">{e.qty}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-2 text-[11px] text-gray-500">Edit this list in the designer — it sets the shirts and quantities.</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {sortedSizes.map(size => (
+                  <div key={size} className="flex items-center justify-between gap-3">
+                    {/* min-w keeps adult sizes aligned in a column; shrink-0 +
+                        nowrap stop multi-character names ("12-18MO") wrapping at
+                        the hyphen. w-10 was sized for single-character sizes. */}
+                    <span className="text-sm font-mono text-gray-900 font-semibold min-w-[2.5rem] shrink-0 whitespace-nowrap">{size}</span>
+                    <div className="flex items-center gap-3 bg-white border border-[#333] rounded-lg px-3 py-1.5">
+                      <button onClick={() => setQuantities(q => ({ ...q, [size]: Math.max(0, (q[size] || 0) - 1) }))}
+                        className="text-gray-900 hover:text-[#dd3333] font-bold w-5 text-center text-lg leading-none">−</button>
+                      <span className="text-sm font-mono w-5 text-center text-gray-900 font-bold">{quantities[size] || 0}</span>
+                      <button onClick={() => setQuantities(q => ({ ...q, [size]: (q[size] || 0) + 1 }))}
+                        className="text-gray-900 hover:text-[#dd3333] font-bold w-5 text-center text-lg leading-none">+</button>
+                    </div>
+                    <span className="text-xs text-gray-800 font-mono w-16 text-right">
+                      {quantities[size] > 0 ? `$${(quantities[size] * pricePerItem).toFixed(2)}` : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Totals */}
             <div className="border-t border-gray-200 mt-4 pt-4 flex flex-col gap-2">

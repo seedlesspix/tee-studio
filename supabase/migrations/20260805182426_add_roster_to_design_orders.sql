@@ -1,0 +1,12 @@
+-- Names & Numbers (Phase 2): capture the roster on each design order.
+--
+-- Option 1 pricing (confirmed with Denise 2026-08-05): personalization is the
+-- printed side — the name/number is baked into that side's print and is already
+-- covered by the per-side print charge. So there is NO separate fee column and
+-- NO add-on rate table (the earlier three-part plan's Parts B/C were dropped).
+-- This migration adds only the roster capture: the per-shirt name/number/size/qty
+-- list that the order page, admin, and (Phase 4) the print shop read.
+--
+-- Additive and non-destructive: one nullable JSONB column. Existing rows and
+-- every non-personalized order leave it NULL.
+ALTER TABLE public.design_orders ADD COLUMN roster jsonb;

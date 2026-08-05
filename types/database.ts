@@ -181,6 +181,7 @@ export type Database = {
           print_method: string | null
           product_title: string | null
           quantities: Json | null
+          roster: Json | null
           selected_color: string | null
           selected_color_hex: string | null
           shipping_address: Json | null
@@ -224,6 +225,7 @@ export type Database = {
           print_method?: string | null
           product_title?: string | null
           quantities?: Json | null
+          roster?: Json | null
           selected_color?: string | null
           selected_color_hex?: string | null
           shipping_address?: Json | null
@@ -267,6 +269,7 @@ export type Database = {
           print_method?: string | null
           product_title?: string | null
           quantities?: Json | null
+          roster?: Json | null
           selected_color?: string | null
           selected_color_hex?: string | null
           shipping_address?: Json | null

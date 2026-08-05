@@ -46,6 +46,23 @@ export function parseBulkRoster(text: string, defaultSize = ''): RosterEntry[] {
   return out
 }
 
+// Aggregate a roster into a size -> count map (the shape design_orders.quantities uses). For an N&N
+// order the roster IS the quantity source: each entry is `qty` shirts of its size. Sums content
+// entries by size; the grand total equals rosterShirtCount, so the order total stays consistent
+// whether it's derived from this map or the shirt count. Empty size buckets under '' (order page
+// renders it as an em dash).
+export function rosterSizeQuantities(roster: RosterEntry[]): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const e of roster) {
+    if (!entryHasContent(e)) continue
+    const qty = Math.max(0, e.qty || 0)
+    if (qty <= 0) continue
+    const size = (e.size || '').trim()
+    out[size] = (out[size] || 0) + qty
+  }
+  return out
+}
+
 // THE fit rule for substituted placeholder text — shared by the designer preview AND (later) the
 // per-entry cut-file generation, so both keep names on the shirt the same way. A jersey nameplate
 // keeps its styled HEIGHT (font size / scaleY untouched) and CONDENSES horizontally when the value

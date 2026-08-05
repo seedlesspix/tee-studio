@@ -9,7 +9,7 @@ import { getProduct } from '../lib/shopify'
 import { buildColorImageMap, getColorImages } from '../lib/productImages'
 import { AUTODRAFT_KEY, buildEnvelope, parseEnvelope, shouldRestore } from '../lib/autodraft'
 import NamesNumbersPanel from './NamesNumbersPanel'
-import { type RosterEntry, NN_ROLE_PROP, entryHasContent, condensedScaleX } from '../lib/namesNumbers'
+import { type RosterEntry, NN_ROLE_PROP, entryHasContent, condensedScaleX, rosterShirtCount, rosterSizeQuantities } from '../lib/namesNumbers'
 import { toPctContain, CANVAS_W, CANVAS_H, type PrintAreaPct } from '../lib/printAreaGeometry'
 import ActionBar from './ActionBar'
 import Stepper from './Stepper'
@@ -3070,6 +3070,16 @@ export default function DesignerCanvas({
         })
       )
 
+      // Names & Numbers: the roster IS the order's quantity source — each entry is `qty` shirts of
+      // its size — so an N&N order's quantities/total derive from the roster, not the size steppers
+      // (which the designer hides for N&N). The personalization price is Option 1: it's the printed
+      // side, already in the per-side print charge, so pricePerItem is unchanged — nothing added.
+      const nnEntries = roster.filter(entryHasContent)
+      const nnActive = nnEntries.length > 0
+      const effQuantities = nnActive ? rosterSizeQuantities(nnEntries) : quantities
+      const effTotalQty = nnActive ? rosterShirtCount(nnEntries) : totalQty
+      const effTotalPrice = effTotalQty * pricePerItem
+
       // 5. Save to design_orders via the server route (service role) — the
       // public RLS insert policy is gone (BLOCKER-1 lockdown). The route
       // forces status='draft' and rejects order-linkage/PII columns, so this
@@ -3104,7 +3114,10 @@ export default function DesignerCanvas({
         canvas_json_front: front.json,
         canvas_json_back: back.json,
         uploaded_files: uploadedFileUrls,
-        quantities,
+        quantities: effQuantities,
+        // Names & Numbers roster (Option 1 pricing: no separate fee). Only sent for N&N designs so a
+        // plain order never touches the new column. Content entries only.
+        ...(nnActive ? { roster: nnEntries } : {}),
         // Real sizes available for the selected color, in Shopify variant order.
         available_sizes: (productSizes.length ? productSizes : SIZES).filter(s => isSizeAvailable(s)),
         unit_price: unitPrice,
@@ -3114,8 +3127,8 @@ export default function DesignerCanvas({
         print_charge_front: frontHasContent ? frontCharge : null,
         print_charge_back: backHasContent ? backCharge : null,
         price_per_item: pricePerItem,
-        total_qty: totalQty,
-        total_price: parseFloat(total),
+        total_qty: effTotalQty,
+        total_price: parseFloat(effTotalPrice.toFixed(2)),
         }),
       })
 

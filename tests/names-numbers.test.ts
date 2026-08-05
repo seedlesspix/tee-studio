@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseBulkRoster, substituteRosterEntry, rosterShirtCount, condensedScaleX, NN_ROLE_PROP } from '../app/lib/namesNumbers'
+import { parseBulkRoster, substituteRosterEntry, rosterShirtCount, rosterSizeQuantities, condensedScaleX, NN_ROLE_PROP } from '../app/lib/namesNumbers'
 
 describe('names & numbers — bulk roster parsing', () => {
   it('parses tab-separated "Name Number Size Qty"', () => {
@@ -60,6 +60,28 @@ describe('names & numbers — placeholder substitution (shared by preview + per-
     substituteRosterEntry(objects, { name: 'X', number: 'Y', size: '', qty: 1 })
     expect(objects[1].text).toBe('NAME')
     expect(objects[3]._originalText).toBe('NAME')
+  })
+})
+
+describe('names & numbers — rosterSizeQuantities (roster drives the order quantities)', () => {
+  const R = (name: string, number: string, size: string, qty: number) => ({ name, number, size, qty })
+
+  it('sums content entries by size', () => {
+    const q = rosterSizeQuantities([R('SMITH', '12', 'L', 2), R('JONES', '8', 'M', 1), R('LEE', '5', 'L', 1)])
+    expect(q).toEqual({ L: 3, M: 1 })
+  })
+
+  it('grand total equals rosterShirtCount (order total stays consistent)', () => {
+    const roster = [R('SMITH', '12', 'L', 2), R('', '', 'M', 5) /* no content: skipped */, R('LEE', '5', 'S', 3)]
+    const q = rosterSizeQuantities(roster)
+    const sum = Object.values(q).reduce((a, b) => a + b, 0)
+    expect(sum).toBe(rosterShirtCount(roster))
+    expect(sum).toBe(5)
+  })
+
+  it('skips empty/zero-qty rows and buckets an unsized entry under \'\'', () => {
+    const q = rosterSizeQuantities([R('A', '1', '', 2), R('B', '2', 'L', 0), R('', '', 'M', 4)])
+    expect(q).toEqual({ '': 2 })
   })
 })
 
