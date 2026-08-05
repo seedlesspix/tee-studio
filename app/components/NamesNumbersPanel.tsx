@@ -230,7 +230,7 @@ export default function NamesNumbersPanel({
               />
             </div>
             <div>
-              <label className="text-[10px] font-mono uppercase tracking-wide text-gray-500">Color</label>
+              <label className="text-[10px] font-mono uppercase tracking-wide text-gray-500">Color <span className="normal-case text-gray-400">— one ink, all fields</span></label>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {style.colors.map(c => {
                   const active = style.textColor.toLowerCase() === c.hex.toLowerCase()

@@ -114,7 +114,7 @@ export const STACK_FONT_FRAC: Record<NnRole, number> = { name: 0.14, number: 0.4
 // Fixed center-Y fraction per role — the SAME slot regardless of which other fields are present. A
 // COHESIVE jersey block in the upper portion, not three items scattered down the shirt: NAME near the
 // top, TITLE right under it, and the big NUMBER directly beneath the title (not floated to mid-shirt).
-export const STACK_Y_FRAC: Record<NnRole, number> = { name: 0.11, title: 0.22, number: 0.45 }
+export const STACK_Y_FRAC: Record<NnRole, number> = { name: 0.11, title: 0.22, number: 0.48 }
 
 export type StackBox = { left: number; top: number; right: number; bottom: number }
 export type StackSpot = { left: number; top: number; fontSize: number }

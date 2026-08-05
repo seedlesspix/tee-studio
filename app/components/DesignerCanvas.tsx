@@ -542,9 +542,13 @@ export default function DesignerCanvas({
     const active = canvas.getActiveObject()
     if (!active || (active.type !== 'i-text' && active.type !== 'textbox')) return
     // Locked jersey placeholder: apply ONLY font + color. Its size + position are canonical (set by
-    // applyStackLayout) — never reWrap/resize/reposition it here.
+    // applyStackLayout) — never reWrap/resize/reposition it here. FONT is per-field; COLOR is UNIFIED
+    // across the whole stack (Name/Number/Title share one ink — easier to print; Denise). So a color
+    // pick lands on every placeholder, on this side or the other.
     if ((active as any)[NN_ROLE_PROP]) {
-      (active as any).set({ fontFamily: selectedFont, fill: textColor })
+      (active as any).set({ fontFamily: selectedFont })
+      ;[...(canvas.getObjects() as any[]), ...frontObjectsRef.current, ...backObjectsRef.current]
+        .forEach((o: any) => { if (o && o[NN_ROLE_PROP]) o.set({ fill: textColor }) })
       canvas.renderAll()
       return
     }
