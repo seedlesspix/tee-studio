@@ -82,48 +82,6 @@ export default function NamesNumbersPanel({
         </p>
       </div>
 
-      {/* Selected-placeholder styling — limited, jersey-relevant controls, right here in the panel. */}
-      {selectedRole && style && (
-        <div className="flex flex-col gap-2 rounded-lg border border-gray-300 bg-gray-50 p-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold">Style the {selectedRole === 'name' ? 'Name' : 'Number'} field</span>
-            <button type="button" onClick={style.onDeselect} className="text-[11px] text-gray-500 underline underline-offset-2 hover:text-gray-900">Done</button>
-          </div>
-          <div>
-            <label className="text-[10px] font-mono uppercase tracking-wide text-gray-500">Font</label>
-            {/* Same picker the Text panel uses — each font renders its own name, previewing the
-                placeholder's sample ("NAME"/"00"). */}
-            <FontPicker
-              fonts={style.fonts}
-              value={style.selectedFont}
-              onChange={style.setSelectedFont}
-              previewText={selectedRole === 'name' ? 'NAME' : '00'}
-              maxHeightClass="max-h-40"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] font-mono uppercase tracking-wide text-gray-500">Color</label>
-            <div className="mt-1 flex flex-wrap gap-1.5">
-              {style.colors.map(c => {
-                const active = style.textColor.toLowerCase() === c.hex.toLowerCase()
-                return (
-                  <button key={c.hex} type="button" title={c.label} onClick={() => style.setTextColor(c.hex)}
-                    className={`h-6 w-6 rounded-full ${active ? 'ring-2 ring-gray-900 ring-offset-1' : 'ring-1 ring-gray-300'}`}
-                    style={{ background: c.hex }} />
-                )
-              })}
-            </div>
-          </div>
-          <div>
-            <label className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wide text-gray-500">
-              <span>Size</span><span className="text-gray-700">{Math.round(style.fontSize)}</span>
-            </label>
-            <input type="range" min={12} max={200} value={style.fontSize} onChange={e => style.setFontSize(Number(e.target.value))} className="mt-1 w-full accent-[#dd3333]" />
-          </div>
-          <p className="text-[10px] leading-snug text-gray-400">Styles the placeholder — every {selectedRole} on your roster prints this way.</p>
-        </div>
-      )}
-
       {/* Placeholder fields on the shirt */}
       <div className="flex gap-2">
         <button type="button" onClick={onAddNameField} className={fieldBtn(hasName)}>
@@ -201,6 +159,55 @@ export default function NamesNumbersPanel({
           )
         })()
       )}
+
+      {/* Selected-placeholder styling — BELOW the fields/roster (Denise: the list stays on top). The
+          font name is shown persistently so a coach can eyeball that Name and Number match (letters
+          and numbers render differently even in the same font). */}
+      {selectedRole && style && (() => {
+        const fontLabel = style.fonts.find(f => f.value === style.selectedFont)?.label ?? style.selectedFont
+        return (
+          <div className="flex flex-col gap-2 rounded-lg border border-gray-300 bg-gray-50 p-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold">
+                Style the {selectedRole === 'name' ? 'Name' : 'Number'} field <span className="font-normal text-gray-500">— {fontLabel}</span>
+              </span>
+              <button type="button" onClick={style.onDeselect} className="text-[11px] text-gray-500 underline underline-offset-2 hover:text-gray-900">Done</button>
+            </div>
+            <div>
+              <label className="text-[10px] font-mono uppercase tracking-wide text-gray-500">Font</label>
+              {/* Same picker the Text panel uses — each font renders its own name, previewing the
+                  placeholder's sample ("NAME"/"00"). */}
+              <FontPicker
+                fonts={style.fonts}
+                value={style.selectedFont}
+                onChange={style.setSelectedFont}
+                previewText={selectedRole === 'name' ? 'NAME' : '00'}
+                maxHeightClass="max-h-40"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-mono uppercase tracking-wide text-gray-500">Color</label>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {style.colors.map(c => {
+                  const active = style.textColor.toLowerCase() === c.hex.toLowerCase()
+                  return (
+                    <button key={c.hex} type="button" title={c.label} onClick={() => style.setTextColor(c.hex)}
+                      className={`h-6 w-6 rounded-full ${active ? 'ring-2 ring-gray-900 ring-offset-1' : 'ring-1 ring-gray-300'}`}
+                      style={{ background: c.hex }} />
+                  )
+                })}
+              </div>
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wide text-gray-500">
+                <span>Size</span><span className="text-gray-700">{Math.round(style.fontSize)}</span>
+              </label>
+              <input type="range" min={12} max={200} value={style.fontSize} onChange={e => style.setFontSize(Number(e.target.value))} className="mt-1 w-full accent-[#dd3333]" />
+            </div>
+            <p className="text-[10px] leading-snug text-gray-400">Styles the placeholder — every {selectedRole} on your roster prints this way.</p>
+          </div>
+        )
+      })()}
 
       <div className="flex items-center gap-3 text-[11px] text-gray-400">
         <span>Have a spreadsheet?</span>

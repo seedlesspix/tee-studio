@@ -2004,11 +2004,20 @@ export default function DesignerCanvas({
     if (!b) return
     const w = b.right - b.left, h = b.bottom - b.top
     const sample = role === 'name' ? 'NAME' : '00'
+    // Default-match: a jersey almost always wants the Name and Number in the SAME font + color, and a
+    // customer can't eyeball whether "00" matches "NAME" across two fonts. So the SECOND field
+    // inherits the first field's font/color/size (they diverge only on purpose, by restyling). The
+    // sibling may sit on the other side, so look across both refs too.
+    const sibling = [...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current]
+      .find((o: any) => o && (o[NN_ROLE_PROP] === 'name' || o[NN_ROLE_PROP] === 'number') && o[NN_ROLE_PROP] !== role)
+    const font = sibling?.fontFamily ?? selectedFont
+    const fill = sibling?.fill ?? textColor
+    const size = sibling?.fontSize ?? 64
     const t: any = new IText(sample, {
       left: b.left + w / 2,
       top: b.top + h * (role === 'name' ? 0.42 : 0.62),
       originX: 'center', originY: 'center',
-      fontFamily: selectedFont, fontSize: 64, fill: textColor, textAlign: 'center',
+      fontFamily: font, fontSize: size, fill, textAlign: 'center',
       editable: false, // the value fills in per roster row — never typed on the canvas
     })
     t[NN_ROLE_PROP] = role
@@ -2018,7 +2027,7 @@ export default function DesignerCanvas({
     canvas.renderAll()
     markDirty()
     // Correct the box once the font is really loaded (it may have measured a fallback just now).
-    void remeasureTextObjects([t], [selectedFont])
+    void remeasureTextObjects([t], [font])
   }
   const addNameField = () => addPlaceholder('name')
   const addNumberField = () => addPlaceholder('number')
@@ -2115,11 +2124,15 @@ export default function DesignerCanvas({
   // only on a FRESH design (no placeholder placed on either side yet), so we never yank a deliberate
   // front placement, and only when the product actually has a back to design. No back template → stay.
   useEffect(() => {
-    if (activeTab !== 'names' || !hasBackImages || shirtView !== 'front') return
+    if (activeTab !== 'names') return
     const canvas = fabricCanvasRef.current
-    if (!canvas) return
-    const hasPlaceholder = [...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current]
-      .some((o: any) => o && (o[NN_ROLE_PROP] === 'name' || o[NN_ROLE_PROP] === 'number'))
+    const hasPlaceholder = canvas
+      ? [...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current]
+          .some((o: any) => o && (o[NN_ROLE_PROP] === 'name' || o[NN_ROLE_PROP] === 'number'))
+      : false
+    // TEMP DIAGNOSTIC (auto-show-back not firing): tells us which guard blocked. Remove once resolved.
+    console.log('[nn-autoback]', { hasBackImages, shirtView, hasPlaceholder, canvasReady: !!canvas })
+    if (!hasBackImages || shirtView !== 'front' || !canvas) return
     if (!hasPlaceholder) switchView('back')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab])
