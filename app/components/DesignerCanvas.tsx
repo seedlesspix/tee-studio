@@ -197,6 +197,7 @@ export default function DesignerCanvas({
   // Names & Numbers roster (Phase 1: component state + auto-draft; DB persistence = Phase 2 migration).
   const [roster, setRoster] = useState<RosterEntry[]>([])
   const [nnFields, setNnFields] = useState<{ name: boolean; number: boolean }>({ name: false, number: false })
+  const [selectedNnRole, setSelectedNnRole] = useState<'name' | 'number' | null>(null) // which placeholder is selected (drives in-panel styling)
   const [textInput, setTextInput] = useState('')
   const [selectedFont, setSelectedFont] = useState('Arial Black')
   const [textColor, setTextColor] = useState('#ffffff')
@@ -762,7 +763,9 @@ export default function DesignerCanvas({
   // setActiveObject fires the selection event, so it's reliably present; `_uploadSrc`
   // is stamped AFTER the upload is placed+selected, so it's undefined at selection
   // time (a fresh upload would misroute). So clipart→Art; any other image→Upload.
-  const sectionForObject = (obj: any): 'text' | 'upload' | 'clipart' => {
+  const sectionForObject = (obj: any): 'text' | 'upload' | 'clipart' | 'names' => {
+    // Placeholders stay in the Names & Numbers panel (styled there), never the generic text-edit flow.
+    if (obj?.[NN_ROLE_PROP] === 'name' || obj?.[NN_ROLE_PROP] === 'number') return 'names'
     if (obj?.type === 'i-text' || obj?.type === 'textbox') return 'text'
     if (obj?._isCurvedText) return 'text'
     if (typeof obj?._isSvg === 'boolean') return 'clipart'
@@ -1272,7 +1275,7 @@ export default function DesignerCanvas({
         // A curve re-bake swaps the object under us — keep the refs, but don't
         // re-run the tab-switch/reflect on every frame (that was the "shake").
         if (curveBakingRef.current) return
-        if (obj) setActiveTab(sectionForObject(obj))
+        if (obj) { setActiveTab(sectionForObject(obj)); setSelectedNnRole(obj[NN_ROLE_PROP] ?? null) }
         if (obj && (obj.type === 'i-text' || obj.type === 'textbox' || (obj as any)._isCurvedText)) {
           const raw = ((obj as any)._originalText || obj.text || '').replace(/\n/g, ' ')
           setSelectedTextPreview(raw.trim())
@@ -1300,7 +1303,7 @@ export default function DesignerCanvas({
         // A curve re-bake swaps the object under us — keep the refs, but don't
         // re-run the tab-switch/reflect on every frame (that was the "shake").
         if (curveBakingRef.current) return
-        if (obj) setActiveTab(sectionForObject(obj))
+        if (obj) { setActiveTab(sectionForObject(obj)); setSelectedNnRole(obj[NN_ROLE_PROP] ?? null) }
         if (obj && (obj.type === 'i-text' || obj.type === 'textbox' || (obj as any)._isCurvedText)) {
           const raw = ((obj as any)._originalText || obj.text || '').replace(/\n/g, ' ')
           setSelectedTextPreview(raw.trim())
@@ -1329,6 +1332,7 @@ export default function DesignerCanvas({
       canvas.on('selection:cleared', () => {
         setSelectedTextPreview('')
         setSelectedObjectType(null)
+        setSelectedNnRole(null)
         setTextInput('')
         // Tapping empty shirt space (deselect) = "I'm done with tools" → collapse the
         // mobile band so the shirt returns to full size. BUT only when the text box
@@ -1911,6 +1915,7 @@ export default function DesignerCanvas({
       top: b.top + h * (role === 'name' ? 0.42 : 0.62),
       originX: 'center', originY: 'center',
       fontFamily: selectedFont, fontSize: 64, fill: textColor, textAlign: 'center',
+      editable: false, // the value fills in per roster row — never typed on the canvas
     })
     t[NN_ROLE_PROP] = role
     t._originalText = sample
@@ -3276,6 +3281,15 @@ export default function DesignerCanvas({
       hasName={nnFields.name}
       hasNumber={nnFields.number}
       sizes={Object.keys(quantities)}
+      selectedRole={selectedNnRole}
+      style={{
+        fonts: dbFonts.length ? dbFonts : fonts,
+        selectedFont, setSelectedFont,
+        colors: dbColors,
+        textColor, setTextColor,
+        fontSize, setFontSize,
+        onDeselect: () => { const c = fabricCanvasRef.current; c?.discardActiveObject(); c?.renderAll() },
+      }}
     />
   )
   // On mobile every tool gets a purpose-built compact band (horizontal rows), all

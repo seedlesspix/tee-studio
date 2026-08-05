@@ -14,6 +14,8 @@ export default function NamesNumbersPanel({
   hasName,
   hasNumber,
   sizes = [],
+  selectedRole = null,
+  style,
 }: {
   roster: RosterEntry[]
   onChange: (roster: RosterEntry[]) => void
@@ -22,6 +24,20 @@ export default function NamesNumbersPanel({
   hasName: boolean
   hasNumber: boolean
   sizes?: string[]
+  // When a placeholder is selected, style it HERE (limited, jersey-relevant controls) — placeholders
+  // never enter the generic text-edit flow.
+  selectedRole?: 'name' | 'number' | null
+  style?: {
+    fonts: { label: string; value: string }[]
+    selectedFont: string
+    setSelectedFont: (f: string) => void
+    colors: { label: string; hex: string }[]
+    textColor: string
+    setTextColor: (c: string) => void
+    fontSize: number
+    setFontSize: (n: number) => void
+    onDeselect: () => void
+  }
 }) {
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState('')
@@ -49,9 +65,47 @@ export default function NamesNumbersPanel({
       <div>
         <h3 className="text-sm font-semibold">Names &amp; Numbers</h3>
         <p className="mt-0.5 text-[11px] leading-snug text-gray-500">
-          Add a Name and/or Number field to the shirt, then list who gets what — one shirt per row.
+          Name and Number are <span className="font-medium text-gray-700">placeholders</span> — style each one once
+          (font, color, curve). Every row in your list prints as its own shirt with that styling.
         </p>
       </div>
+
+      {/* Selected-placeholder styling — limited, jersey-relevant controls, right here in the panel. */}
+      {selectedRole && style && (
+        <div className="flex flex-col gap-2 rounded-lg border border-gray-300 bg-gray-50 p-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold">Style the {selectedRole === 'name' ? 'Name' : 'Number'} field</span>
+            <button type="button" onClick={style.onDeselect} className="text-[11px] text-gray-500 underline underline-offset-2 hover:text-gray-900">Done</button>
+          </div>
+          <div>
+            <label className="text-[10px] font-mono uppercase tracking-wide text-gray-500">Font</label>
+            <select value={style.selectedFont} onChange={e => style.setSelectedFont(e.target.value)}
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-xs outline-none focus:border-[#dd3333]">
+              {style.fonts.map(f => <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>{f.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-mono uppercase tracking-wide text-gray-500">Color</label>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {style.colors.map(c => {
+                const active = style.textColor.toLowerCase() === c.hex.toLowerCase()
+                return (
+                  <button key={c.hex} type="button" title={c.label} onClick={() => style.setTextColor(c.hex)}
+                    className={`h-6 w-6 rounded-full ${active ? 'ring-2 ring-gray-900 ring-offset-1' : 'ring-1 ring-gray-300'}`}
+                    style={{ background: c.hex }} />
+                )
+              })}
+            </div>
+          </div>
+          <div>
+            <label className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wide text-gray-500">
+              <span>Size</span><span className="text-gray-700">{Math.round(style.fontSize)}</span>
+            </label>
+            <input type="range" min={12} max={200} value={style.fontSize} onChange={e => style.setFontSize(Number(e.target.value))} className="mt-1 w-full accent-[#dd3333]" />
+          </div>
+          <p className="text-[10px] leading-snug text-gray-400">Styles the placeholder — every {selectedRole} on your roster prints this way.</p>
+        </div>
+      )}
 
       {/* Placeholder fields on the shirt */}
       <div className="flex gap-2">
@@ -65,12 +119,12 @@ export default function NamesNumbersPanel({
 
       {/* Roster table */}
       <div className="rounded-lg border border-gray-200">
-        <div className="grid grid-cols-[1fr_56px_64px_44px_28px] gap-1 border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] font-mono uppercase tracking-wide text-gray-500">
+        <div className="grid grid-cols-[1fr_44px_52px_38px_24px] gap-1 border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] font-mono uppercase tracking-wide text-gray-500">
           <span>Name</span><span>Number</span><span>Size</span><span>Qty</span><span />
         </div>
         <div className="max-h-[46vh] overflow-y-auto">
           {rows.map((r, i) => (
-            <div key={i} className="grid grid-cols-[1fr_56px_64px_44px_28px] items-center gap-1 border-b border-gray-100 px-2 py-1 last:border-b-0">
+            <div key={i} className="grid grid-cols-[1fr_44px_52px_38px_24px] items-center gap-1 border-b border-gray-100 px-2 py-1 last:border-b-0">
               <input value={r.name} onChange={e => update(i, { name: e.target.value })} placeholder="SMITH"
                 className="w-full rounded border border-gray-200 px-1.5 py-1 text-xs outline-none focus:border-[#dd3333]" />
               <input value={r.number} onChange={e => update(i, { number: e.target.value })} placeholder="12"
