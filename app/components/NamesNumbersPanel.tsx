@@ -3,7 +3,7 @@
 // (DesignerCanvas) owns the roster array + the placeholder objects on the canvas. Light designer-
 // panel palette; red = ACTION only (per the locked red-vocabulary rule).
 import { useState } from 'react'
-import { Plus, Trash2, Type, Hash, ClipboardPaste, Download } from 'lucide-react'
+import { Plus, Trash2, Type, Hash, ClipboardPaste, Download, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
 import { type RosterEntry, emptyEntry, parseBulkRoster, rosterShirtCount } from '../lib/namesNumbers'
 
 export default function NamesNumbersPanel({
@@ -16,6 +16,7 @@ export default function NamesNumbersPanel({
   sizes = [],
   selectedRole = null,
   style,
+  preview,
 }: {
   roster: RosterEntry[]
   onChange: (roster: RosterEntry[]) => void
@@ -37,6 +38,16 @@ export default function NamesNumbersPanel({
     fontSize: number
     setFontSize: (n: number) => void
     onDeselect: () => void
+  }
+  // Cycle the roster onto the shirt so the customer sees a real personalized preview. index===null
+  // means not previewing. The parent owns the canvas substitution/restore.
+  preview?: {
+    canPreview: boolean
+    entries: RosterEntry[]
+    index: number | null
+    onStart: () => void
+    onStep: (delta: number) => void
+    onExit: () => void
   }
 }) {
   const [pasteOpen, setPasteOpen] = useState(false)
@@ -66,7 +77,7 @@ export default function NamesNumbersPanel({
         <h3 className="text-sm font-semibold">Names &amp; Numbers</h3>
         <p className="mt-0.5 text-[11px] leading-snug text-gray-500">
           Name and Number are <span className="font-medium text-gray-700">placeholders</span> — style each one once
-          (font, color, curve). Every row in your list prints as its own shirt with that styling.
+          (font, color, size). Every row in your list prints as its own shirt with that styling.
         </p>
       </div>
 
@@ -156,6 +167,34 @@ export default function NamesNumbersPanel({
         </button>
         <span className="ml-auto text-xs font-medium text-gray-600">{count} shirt{count === 1 ? '' : 's'}</span>
       </div>
+
+      {/* Live preview — cycle each roster entry onto the shirt so the customer sees the real thing
+          (and that long names/3-digit numbers fit the box). Transient; never saved. */}
+      {preview?.canPreview && (
+        preview.index === null ? (
+          <button type="button" onClick={preview.onStart}
+            className="flex items-center justify-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">
+            <Eye size={14} /> Preview on shirt
+          </button>
+        ) : (() => {
+          const e = preview.entries[preview.index]
+          const label = e ? [e.name, e.number].filter(v => v && v.trim()).join(' · ') : ''
+          return (
+            <div className="flex items-center gap-1 rounded-lg border border-gray-800 bg-gray-100 px-1.5 py-1.5">
+              <button type="button" onClick={() => preview.onStep(-1)} title="Previous"
+                className="flex h-7 w-7 items-center justify-center rounded text-gray-600 hover:bg-white hover:text-gray-900"><ChevronLeft size={16} /></button>
+              <div className="flex-1 text-center">
+                <div className="truncate text-xs font-semibold text-gray-900">{label || '—'}</div>
+                <div className="text-[10px] font-mono text-gray-500">{preview.index + 1} / {preview.entries.length}</div>
+              </div>
+              <button type="button" onClick={() => preview.onStep(1)} title="Next"
+                className="flex h-7 w-7 items-center justify-center rounded text-gray-600 hover:bg-white hover:text-gray-900"><ChevronRight size={16} /></button>
+              <button type="button" onClick={preview.onExit} title="Exit preview"
+                className="ml-1 rounded px-2 py-1 text-[11px] font-medium text-gray-500 hover:text-gray-900">Done</button>
+            </div>
+          )
+        })()
+      )}
 
       <div className="flex items-center gap-3 text-[11px] text-gray-400">
         <span>Have a spreadsheet?</span>

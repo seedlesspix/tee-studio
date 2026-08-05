@@ -9,7 +9,7 @@ import { getProduct } from '../lib/shopify'
 import { buildColorImageMap, getColorImages } from '../lib/productImages'
 import { AUTODRAFT_KEY, buildEnvelope, parseEnvelope, shouldRestore } from '../lib/autodraft'
 import NamesNumbersPanel from './NamesNumbersPanel'
-import { type RosterEntry, NN_ROLE_PROP } from '../lib/namesNumbers'
+import { type RosterEntry, NN_ROLE_PROP, entryHasContent, condensedScaleX } from '../lib/namesNumbers'
 import { toPctContain, CANVAS_W, CANVAS_H, type PrintAreaPct } from '../lib/printAreaGeometry'
 import ActionBar from './ActionBar'
 import Stepper from './Stepper'
@@ -198,6 +198,14 @@ export default function DesignerCanvas({
   const [roster, setRoster] = useState<RosterEntry[]>([])
   const [nnFields, setNnFields] = useState<{ name: boolean; number: boolean }>({ name: false, number: false })
   const [selectedNnRole, setSelectedNnRole] = useState<'name' | 'number' | null>(null) // which placeholder is selected (drives in-panel styling)
+  // Live roster preview: substitutes one entry onto the placeholders so the customer sees a real
+  // shirt cycle through the list. TRANSIENT — never persisted. nnPreviewRef mirrors the index so
+  // the auto-draft writer / snapshot / side-swap can synchronously tell "we're mid-preview, restore
+  // the sample first" without waiting for a re-render. nnPreviewSavedRef holds each placeholder's
+  // sample text + base scaleX to restore on exit.
+  const [nnPreviewIndex, setNnPreviewIndex] = useState<number | null>(null)
+  const nnPreviewRef = useRef<number | null>(null)
+  const nnPreviewSavedRef = useRef<Map<any, { text: string; scaleX: number }>>(new Map())
   const [textInput, setTextInput] = useState('')
   const [selectedFont, setSelectedFont] = useState('Arial Black')
   const [textColor, setTextColor] = useState('#ffffff')
@@ -1927,6 +1935,78 @@ export default function DesignerCanvas({
   const addNameField = () => addPlaceholder('name')
   const addNumberField = () => addPlaceholder('number')
 
+  // ── Live roster preview ────────────────────────────────────────────────────
+  // Substitute one roster entry onto the placeholders, fit each to its box (keep the styled height,
+  // condense width — condensedScaleX), and remember the sample so exit restores it exactly. Purely
+  // visual: guarded everywhere a save/side-swap could otherwise capture the substituted text.
+  const rosterContentEntries = () => roster.filter(entryHasContent)
+
+  const applyNnPreview = (i: number) => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    const entries = rosterContentEntries()
+    if (!entries.length) return
+    const idx = ((i % entries.length) + entries.length) % entries.length
+    const entry = entries[idx]
+    const b = getPrintAreaBounds()
+    const saved = nnPreviewSavedRef.current
+    canvas.getObjects().forEach((o: any) => {
+      const role = o[NN_ROLE_PROP]
+      if (role !== 'name' && role !== 'number') return
+      if (!saved.has(o)) saved.set(o, { text: o.text, scaleX: o.scaleX ?? 1 })
+      const base = saved.get(o)!
+      const value = (role === 'name' ? entry.name : entry.number) || ' '
+      o.set({ text: value, scaleX: base.scaleX })
+      o.initDimensions?.() // force width recompute so the fit measures the substituted string
+      if (b) o.scaleX = condensedScaleX(o.width, (b.right - b.left) * 0.96, base.scaleX)
+      o.setCoords?.()
+    })
+    canvas.discardActiveObject()
+    canvas.renderAll()
+    nnPreviewRef.current = idx
+    setNnPreviewIndex(idx)
+  }
+
+  const enterNnPreview = () => { if (rosterContentEntries().length) applyNnPreview(0) }
+  const stepNnPreview = (delta: number) => { if (nnPreviewRef.current !== null) applyNnPreview(nnPreviewRef.current + delta) }
+
+  // Restore the sample text + base scaleX on every previewed placeholder. Idempotent — safe to call
+  // from any guard (snapshot, side-swap, tab-away) even when no preview is active.
+  const exitNnPreview = () => {
+    const canvas = fabricCanvasRef.current
+    const saved = nnPreviewSavedRef.current
+    if (canvas && saved.size) {
+      canvas.getObjects().forEach((o: any) => {
+        const s = saved.get(o)
+        if (!s) return
+        o.set({ text: s.text, scaleX: s.scaleX })
+        o.initDimensions?.()
+        o.setCoords?.()
+      })
+      canvas.renderAll()
+    }
+    saved.clear()
+    nnPreviewRef.current = null
+    setNnPreviewIndex(null)
+  }
+
+  // Leaving the Names tab must drop the preview (its controls unmount, but the substituted text
+  // would otherwise stay on the canvas). Side-swap and every save path guard synchronously at their
+  // own call sites (a React effect runs too late — the swap reads getObjects() first).
+  useEffect(() => {
+    if (nnPreviewIndex !== null && activeTab !== 'names') exitNnPreview()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
+
+  // If the roster loses all content or the placeholders are removed mid-preview, the strip (with its
+  // "Done" button) unmounts — so auto-exit here, or the substituted text would be stranded on the
+  // canvas with no way back to the sample.
+  useEffect(() => {
+    const stillValid = (nnFields.name || nnFields.number) && roster.some(entryHasContent)
+    if (nnPreviewIndex !== null && !stillValid) exitNnPreview()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roster, nnFields, nnPreviewIndex])
+
   // Keep the panel's "Name field ✓ / Number field ✓" indicators in sync with the canvas.
   useEffect(() => {
     const c = fabricCanvasRef.current
@@ -3014,6 +3094,10 @@ export default function DesignerCanvas({
   const snapshotDesignState = () => {
     const canvas = fabricCanvasRef.current
     if (!canvas) return null
+    // A save must never capture a preview substitution — restore the sample placeholders first. The
+    // auto-draft writer skips entirely during preview (nnPreviewRef guard below), so in practice this
+    // only fires on an explicit save/Next-Step while previewing, where exiting preview is correct UX.
+    if (nnPreviewRef.current !== null) exitNnPreview()
     // Custom props Fabric's default serializer drops but we rely on for editing
     // affordances (SVG recolor, uppercase toggle, curved-text identity).
     const CUSTOM_PROPS = CANVAS_CUSTOM_PROPS
@@ -3057,7 +3141,7 @@ export default function DesignerCanvas({
       // snapshotDesignState() returns null for BOTH "canvas not ready yet" (fabric loads via async
       // import — can resolve AFTER this debounce on slow mobile) and "genuinely empty". Treating the
       // not-ready case as empty would removeItem and wipe the very snapshot we're about to restore.
-      if (!fabricCanvasRef.current || isRestoringRef.current) return
+      if (!fabricCanvasRef.current || isRestoringRef.current || nnPreviewRef.current !== null) return
       try {
         const state = snapshotDesignState()
         // ONLY WRITE, never remove: removal is explicit (Clear All / fresh-nav), so a transiently-
@@ -3282,6 +3366,14 @@ export default function DesignerCanvas({
       hasNumber={nnFields.number}
       sizes={Object.keys(quantities)}
       selectedRole={selectedNnRole}
+      preview={{
+        canPreview: (nnFields.name || nnFields.number) && roster.some(entryHasContent),
+        entries: roster.filter(entryHasContent),
+        index: nnPreviewIndex,
+        onStart: enterNnPreview,
+        onStep: stepNnPreview,
+        onExit: exitNnPreview,
+      }}
       style={{
         fonts: dbFonts.length ? dbFonts : fonts,
         selectedFont, setSelectedFont,
@@ -3526,6 +3618,7 @@ export default function DesignerCanvas({
             <button
               onClick={() => {
                 if (shirtView === 'front') return
+                exitNnPreview() // never swap a preview substitution into the other side's ref
                 // Save back objects, restore front objects
                 const canvas = fabricCanvasRef.current
                 if (canvas) {
@@ -3584,6 +3677,7 @@ export default function DesignerCanvas({
               <button
                 onClick={() => {
                   if (shirtView === 'back') return
+                  exitNnPreview() // never swap a preview substitution into the other side's ref
                   // Save front objects, restore back objects
                   const canvas = fabricCanvasRef.current
                   if (canvas) {

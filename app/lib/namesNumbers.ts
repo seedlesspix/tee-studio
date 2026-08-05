@@ -46,6 +46,18 @@ export function parseBulkRoster(text: string, defaultSize = ''): RosterEntry[] {
   return out
 }
 
+// THE fit rule for substituted placeholder text — shared by the designer preview AND (later) the
+// per-entry cut-file generation, so both keep names on the shirt the same way. A jersey nameplate
+// keeps its styled HEIGHT (font size / scaleY untouched) and CONDENSES horizontally when the value
+// is wider than its box ("DE LA CRUZ", a 3-digit number). Returns the scaleX to apply: the object's
+// own base scaleX when it already fits, otherwise the factor that pulls the scaled width down to
+// maxWidth. Never widens (base is the ceiling). Pure — pass in a measured natural width.
+export function condensedScaleX(naturalWidth: number, maxWidth: number, baseScaleX = 1): number {
+  if (!(naturalWidth > 0) || !(maxWidth > 0)) return baseScaleX
+  const scaled = naturalWidth * baseScaleX
+  return scaled > maxWidth ? maxWidth / naturalWidth : baseScaleX
+}
+
 // Substitute one roster entry into a set of canvas objects: every placeholder (_nnRole 'name'/'number')
 // gets its text replaced by the entry's value. Returns a NEW array (shallow-cloned changed objects);
 // non-placeholder objects pass through unchanged. Handles curved placeholders too (their editable

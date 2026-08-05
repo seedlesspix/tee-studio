@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseBulkRoster, substituteRosterEntry, rosterShirtCount, NN_ROLE_PROP } from '../app/lib/namesNumbers'
+import { parseBulkRoster, substituteRosterEntry, rosterShirtCount, condensedScaleX, NN_ROLE_PROP } from '../app/lib/namesNumbers'
 
 describe('names & numbers — bulk roster parsing', () => {
   it('parses tab-separated "Name Number Size Qty"', () => {
@@ -60,5 +60,25 @@ describe('names & numbers — placeholder substitution (shared by preview + per-
     substituteRosterEntry(objects, { name: 'X', number: 'Y', size: '', qty: 1 })
     expect(objects[1].text).toBe('NAME')
     expect(objects[3]._originalText).toBe('NAME')
+  })
+})
+
+describe('names & numbers — condensedScaleX (keep height, shrink width to the box)', () => {
+  it('leaves a value that already fits at its base scaleX', () => {
+    expect(condensedScaleX(100, 200)).toBe(1)
+    expect(condensedScaleX(100, 200, 0.9)).toBe(0.9)
+  })
+
+  it('condenses only enough to reach the box width when a value overflows', () => {
+    // "DE LA CRUZ" is 300 wide in a 200 box -> squeeze to 2/3
+    expect(condensedScaleX(300, 200)).toBeCloseTo(200 / 300)
+    // base scaleX is the ceiling, not a multiplier on the fit
+    expect(condensedScaleX(300, 200, 1.5)).toBeCloseTo(200 / 300)
+  })
+
+  it('never widens and is safe on degenerate input', () => {
+    expect(condensedScaleX(50, 200, 0.8)).toBe(0.8) // fits -> stays condensed at base, not widened
+    expect(condensedScaleX(0, 200)).toBe(1)         // no measured width -> base
+    expect(condensedScaleX(100, 0)).toBe(1)         // no box -> base
   })
 })
