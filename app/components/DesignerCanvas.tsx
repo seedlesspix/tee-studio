@@ -3723,7 +3723,7 @@ export default function DesignerCanvas({
             is mounted → one textInputRef, one textarea. Desktop uses `flex`
             exactly as before → parity-safe. */}
         {!isMobile && (
-          <aside className="w-[360px] bg-white border-r border-gray-200 flex overflow-hidden shrink-0">
+          <aside className="w-[400px] bg-white border-r border-gray-200 flex overflow-hidden shrink-0">
             <Rail activeTab={activeTab} onSelectTab={handleSelectTab} />
             <div className="flex-1 min-w-0 overflow-y-auto pt-3">
               {activeTab === 'names' ? namesPanel : selectionPanel}

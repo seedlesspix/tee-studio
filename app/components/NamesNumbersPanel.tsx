@@ -78,13 +78,15 @@ export default function NamesNumbersPanel({
   // Name/Title uppercase as you type — the entry half of the belt-and-suspenders uppercase rule.
   const anyPlaced = hasName || hasNumber || hasTitle
   const cols = { name: hasName || !anyPlaced, number: hasNumber || !anyPlaced, title: hasTitle }
+  // Name + Title carry WORDS and get the flexible room; Number/Size/Qty are 2–3 chars (Size is a
+  // dropdown) so they're pinned narrow — otherwise four boxes crush the name fields (Denise).
   const gridTemplate = [
-    cols.name ? 'minmax(0,1fr)' : null,
-    cols.number ? '46px' : null,
+    cols.name ? 'minmax(0,1.2fr)' : null,
+    cols.number ? '34px' : null,
     cols.title ? 'minmax(0,1fr)' : null,
-    '56px', // size
-    '34px', // qty
-    '22px', // remove
+    '48px', // size (dropdown)
+    '30px', // qty
+    '20px', // remove
   ].filter(Boolean).join(' ')
 
   const fieldBtn = (active: boolean) =>
