@@ -469,6 +469,7 @@ export default function DesignerCanvas({
             canvas_json_front: string | null
             canvas_json_back: string | null
             uploaded_files: unknown
+            roster: unknown
           } | undefined
           if (!data) return
           try {
@@ -486,6 +487,10 @@ export default function DesignerCanvas({
             if (Array.isArray(data.uploaded_files)) {
               uploadedFilesRef.current = data.uploaded_files as typeof uploadedFilesRef.current
             }
+            // Names & Numbers: the placeholders ride back on the canvas JSON (they're _nnRole-stamped
+            // objects), but the ROSTER (the coach's list of players) is separate state on the roster
+            // column — restore it or a 15-name list is silently lost on the Edit round-trip.
+            if (Array.isArray(data.roster)) setRoster(data.roster as RosterEntry[])
             canvas.discardActiveObject()
             canvas.renderAll()
           } catch (e) { /* ignore restore errors */ }
@@ -2136,13 +2141,16 @@ export default function DesignerCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roster, nnFields, nnPreviewIndex])
 
-  // Keep the panel's "Name field ✓ / Number field ✓" indicators in sync with the canvas.
+  // Keep the panel's "Name field ✓ / Number field ✓" indicators in sync — across BOTH sides. A
+  // placeholder often lives on the back (auto-show-back), which sits in backObjectsRef, not the live
+  // canvas; checking only the live canvas would show "Add Name field" after an Edit restore even
+  // though the field exists on the back. shirtView is a dep so the counts refresh on a side swap.
   useEffect(() => {
     const c = fabricCanvasRef.current
     if (!c) return
-    const objs = c.getObjects() as any[]
-    setNnFields({ name: objs.some(o => o[NN_ROLE_PROP] === 'name'), number: objs.some(o => o[NN_ROLE_PROP] === 'number') })
-  }, [canvasObjectCount])
+    const all = [...(c.getObjects() as any[]), ...frontObjectsRef.current, ...backObjectsRef.current]
+    setNnFields({ name: all.some(o => o[NN_ROLE_PROP] === 'name'), number: all.some(o => o[NN_ROLE_PROP] === 'number') })
+  }, [canvasObjectCount, shirtView])
 
   // Rail = "add a NEW one." Selection drives the panel while something's picked,
   // so switching rail category means "leave edit mode": drop the selection
