@@ -18,6 +18,13 @@ const NN_LOCK_PROPS = {
   lockMovementX: true, lockMovementY: true,
   lockScalingX: true, lockScalingY: true, lockRotation: true,
 } as const
+
+// Placeholders are single-line, all-caps/digits, display-only. Fabric IGNORES lineHeight for a
+// single line's box height (calcTextHeight uses getHeightOfLineImpl for the last line, no lineHeight
+// factor) — so the box is fontSize × _fontSizeMult (1.13) with a fat descender gap below the caps
+// (_fontSizeFraction 0.222). Tighten BOTH so the box hugs the glyphs (no empty band under NAME) and
+// "center" lands on the visible letters, not the padded em box. Tuned; adjustable per Denise's eye.
+const NN_TEXT_METRICS = { _fontSizeMult: 0.82, _fontSizeFraction: 0.1 } as const
 import { toPctContain, CANVAS_W, CANVAS_H, type PrintAreaPct } from '../lib/printAreaGeometry'
 import ActionBar from './ActionBar'
 import Stepper from './Stepper'
@@ -2040,7 +2047,7 @@ export default function DesignerCanvas({
       if (!spot) return
       // Re-assert lock + non-editable here too, so designs saved under the old movable regime conform
       // (locked + canonical) the moment they're viewed, without a migration.
-      o.set({ left: spot.left, top: spot.top, fontSize: spot.fontSize, scaleX: 1, scaleY: 1, angle: 0, originX: 'center', originY: 'center', lineHeight: 0.72, editable: false, ...NN_LOCK_PROPS })
+      o.set({ left: spot.left, top: spot.top, fontSize: spot.fontSize, scaleX: 1, scaleY: 1, angle: 0, originX: 'center', originY: 'center', editable: false, ...NN_TEXT_METRICS, ...NN_LOCK_PROPS })
       o.initDimensions?.()
       o.setCoords?.()
     })
@@ -2072,8 +2079,7 @@ export default function DesignerCanvas({
       left: b.left + (b.right - b.left) / 2, top: b.top + (b.bottom - b.top) / 2,
       originX: 'center', originY: 'center', textAlign: 'center',
       fontFamily: font, fill,
-      lineHeight: 0.72,   // hug the glyphs — the default ~1.16 pads the box well beyond the caps/digits,
-                          // which threw off where "center" visually lands (numbers have empty descender space)
+      ...NN_TEXT_METRICS, // hug the glyphs (single-line box ignores lineHeight — see NN_TEXT_METRICS)
       editable: false,   // the value fills in per roster row — never typed on the canvas
       ...NN_LOCK_PROPS,   // no move/resize/rotate — geometry is canonical
     })

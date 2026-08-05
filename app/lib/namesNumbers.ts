@@ -111,9 +111,10 @@ export function condensedScaleX(naturalWidth: number, maxWidth: number, baseScal
 
 // Font size as a fraction of box height, constant per role (a name is always name-sized).
 export const STACK_FONT_FRAC: Record<NnRole, number> = { name: 0.14, number: 0.42, title: 0.075 }
-// Fixed center-Y fraction per role — the SAME slot regardless of which other fields are present.
-// NAME rides near the very top; TITLE tucked right under it; NUMBER dominant at center-mid.
-export const STACK_Y_FRAC: Record<NnRole, number> = { name: 0.09, title: 0.22, number: 0.55 }
+// Fixed center-Y fraction per role — the SAME slot regardless of which other fields are present. A
+// COHESIVE jersey block in the upper portion, not three items scattered down the shirt: NAME near the
+// top, TITLE right under it, and the big NUMBER directly beneath the title (not floated to mid-shirt).
+export const STACK_Y_FRAC: Record<NnRole, number> = { name: 0.10, title: 0.21, number: 0.40 }
 
 export type StackBox = { left: number; top: number; right: number; bottom: number }
 export type StackSpot = { left: number; top: number; fontSize: number }
