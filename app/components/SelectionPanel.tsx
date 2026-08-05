@@ -2,6 +2,7 @@
 import { type Dispatch, type SetStateAction, type RefObject, type ChangeEventHandler, type DragEventHandler } from 'react'
 import ClipartPanel from './ClipartPanel'
 import MyUploadsPanel, { type UploadItem } from './MyUploadsPanel'
+import FontPicker from './FontPicker'
 
 // SelectionPanel — the designer's LEFT TOOL PANEL BODY (Text / Upload / Clipart).
 //
@@ -160,21 +161,12 @@ export default function SelectionPanel({
                 )}
                 <div>
                   <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Font</label>
-                  <div className="flex flex-col gap-1 mt-1 max-h-48 overflow-y-auto pr-1">
-                    {(dbFonts.length > 0 ? dbFonts : fonts).map(f => (
-                      <button key={f.value} onClick={() => setSelectedFont(f.value)}
-                        className={`w-full text-left px-3 py-2 rounded border transition-all ${
-                          selectedFont === f.value
-                            ? 'border-gray-800 bg-white'
-                            : 'border-gray-200 bg-gray-100 hover:border-[#444]'
-                        }`}>
-                        <div className="text-xs text-gray-800 font-mono mb-0.5">{f.label}</div>
-                        <div style={{ fontFamily: f.value, fontSize: '18px', color: '#161616', lineHeight: 1.2 }}>
-                          {selectedTextPreview || textInput || 'Preview Text'}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+                  <FontPicker
+                    fonts={dbFonts.length > 0 ? dbFonts : fonts}
+                    value={selectedFont}
+                    onChange={setSelectedFont}
+                    previewText={selectedTextPreview || textInput || 'Preview Text'}
+                  />
                 </div>
                 <div>
                   <div className="flex justify-between items-center">

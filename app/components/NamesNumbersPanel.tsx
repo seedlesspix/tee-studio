@@ -5,6 +5,7 @@
 import { useState } from 'react'
 import { Plus, Trash2, Type, Hash, ClipboardPaste, Download, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
 import { type RosterEntry, emptyEntry, parseBulkRoster, rosterShirtCount } from '../lib/namesNumbers'
+import FontPicker from './FontPicker'
 
 export default function NamesNumbersPanel({
   roster,
@@ -88,22 +89,17 @@ export default function NamesNumbersPanel({
             <span className="text-xs font-semibold">Style the {selectedRole === 'name' ? 'Name' : 'Number'} field</span>
             <button type="button" onClick={style.onDeselect} className="text-[11px] text-gray-500 underline underline-offset-2 hover:text-gray-900">Done</button>
           </div>
-          {/* Live style preview — the chosen font + color rendered, not just named. Thin ring keeps
-              light inks (white) visible on the light card. */}
-          <div className="flex h-14 items-center justify-center overflow-hidden rounded border border-gray-300 bg-white px-2">
-            <span
-              className="truncate leading-none"
-              style={{ fontFamily: style.selectedFont, color: style.textColor, fontSize: 34, textShadow: '0 0 1px rgba(0,0,0,0.45)' }}
-            >
-              {selectedRole === 'name' ? 'NAME' : '00'}
-            </span>
-          </div>
           <div>
             <label className="text-[10px] font-mono uppercase tracking-wide text-gray-500">Font</label>
-            <select value={style.selectedFont} onChange={e => style.setSelectedFont(e.target.value)}
-              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-xs outline-none focus:border-[#dd3333]">
-              {style.fonts.map(f => <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>{f.label}</option>)}
-            </select>
+            {/* Same picker the Text panel uses — each font renders its own name, previewing the
+                placeholder's sample ("NAME"/"00"). */}
+            <FontPicker
+              fonts={style.fonts}
+              value={style.selectedFont}
+              onChange={style.setSelectedFont}
+              previewText={selectedRole === 'name' ? 'NAME' : '00'}
+              maxHeightClass="max-h-40"
+            />
           </div>
           <div>
             <label className="text-[10px] font-mono uppercase tracking-wide text-gray-500">Color</label>
