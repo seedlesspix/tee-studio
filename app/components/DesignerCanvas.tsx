@@ -2003,10 +2003,11 @@ export default function DesignerCanvas({
     const b = getPrintAreaBounds()
     if (!b) return
     const w = b.right - b.left, h = b.bottom - b.top
-    // Sample + default landing spot per role — the classic jersey stack, top to bottom:
-    // NAME (top) · TITLE (below name) · NUMBER (center). Customer can drag any of them.
+    // Sample + default landing spot per role — the classic jersey stack (fractions are the object's
+    // CENTER down the print box, all horizontally centered): NAME near the top · TITLE just below the
+    // name · NUMBER the dominant center element. Tuned to Denise's spec; the customer can still drag.
     const sample = role === 'name' ? 'NAME' : role === 'title' ? 'TITLE' : '00'
-    const yFrac = role === 'name' ? 0.25 : role === 'title' ? 0.42 : 0.63
+    const yFrac = role === 'name' ? 0.18 : role === 'title' ? 0.34 : 0.58
     // Default-match: a jersey almost always wants all fields in the SAME font + color, and a customer
     // can't eyeball whether "00" matches "NAME" across two fonts. So a NEW field inherits an existing
     // field's font/color/size (they diverge only on purpose, by restyling). Sibling may be on the
@@ -2130,14 +2131,22 @@ export default function DesignerCanvas({
   useEffect(() => {
     if (activeTab !== 'names') return
     const canvas = fabricCanvasRef.current
-    const hasPlaceholder = canvas
-      ? [...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current]
-          .some((o: any) => o && o[NN_ROLE_PROP])
-      : false
-    // TEMP DIAGNOSTIC (auto-show-back not firing): tells us which guard blocked. Remove once resolved.
-    console.log('[nn-autoback]', { hasBackImages, shirtView, hasPlaceholder, canvasReady: !!canvas })
-    if (!hasBackImages || shirtView !== 'front' || !canvas) return
-    if (!hasPlaceholder) switchView('back')
+    if (!canvas) return
+    // Take the customer to WHERE THE PLACEHOLDERS LIVE. The current side's objects are on the live
+    // canvas; the other side's live in its ref. Rule: already on the side with fields -> stay; fields
+    // on the other side (e.g. Edit-restore lands on front but the jersey stack is on the back) -> go
+    // there; a FRESH design with no fields anywhere -> default to the back (the usual home).
+    const isPh = (o: any) => o && o[NN_ROLE_PROP]
+    const frontObjs = shirtView === 'front' ? (canvas.getObjects() as any[]) : frontObjectsRef.current
+    const backObjs = shirtView === 'back' ? (canvas.getObjects() as any[]) : backObjectsRef.current
+    const frontHas = frontObjs.some(isPh)
+    const backHas = backObjs.some(isPh)
+    const currentHas = shirtView === 'front' ? frontHas : backHas
+    console.log('[nn-autoback]', { hasBackImages, shirtView, frontHas, backHas }) // TEMP — remove once confirmed
+    if (currentHas) return
+    if (frontHas) { switchView('front'); return }
+    if (backHas && hasBackImages) { switchView('back'); return }
+    if (!frontHas && !backHas && hasBackImages && shirtView === 'front') switchView('back')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab])
 

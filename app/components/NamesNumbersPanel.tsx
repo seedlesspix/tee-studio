@@ -257,10 +257,10 @@ export default function NamesNumbersPanel({
         <div className="flex flex-col gap-1.5 rounded-lg border border-gray-200 bg-gray-50 p-2">
           {/* Format guidance right at the moment of need — for coaches who already have a roster. */}
           <p className="text-[11px] leading-snug text-gray-600">
-            Paste straight from your spreadsheet — one shirt per line, e.g. <span className="font-mono text-gray-800">SMITH, 12, L, 2</span>
+            One shirt per line: <span className="font-mono text-gray-800">Name, Number, Size, Qty, Title</span> — Title is optional, e.g. <span className="font-mono text-gray-800">SMITH, 12, L, 1, CAPTAIN</span>
           </p>
           <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={4}
-            placeholder={'SMITH, 12, L, 1\nJONES, 8, M, 1\nDE LA CRUZ, 24, XL, 2'}
+            placeholder={'SMITH, 12, L, 1, CAPTAIN\nJONES, 8, M, 1\nDE LA CRUZ, 24, XL, 2'}
             className="w-full rounded-lg border border-gray-300 bg-white p-2 font-mono text-xs outline-none focus:border-[#dd3333]" />
           <div className="flex gap-2">
             <button type="button" onClick={applyPaste} className="rounded-lg bg-[#dd3333] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#c62828]">Apply list</button>

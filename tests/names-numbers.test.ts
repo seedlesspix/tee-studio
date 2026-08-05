@@ -30,6 +30,17 @@ describe('names & numbers — bulk roster parsing', () => {
     expect(r[0].name).toBe('SMITH')
   })
 
+  it('reads Title as the optional 5th positional column (template order)', () => {
+    const r = parseBulkRoster('SMITH, 12, L, 1, captain\nJONES, 8, M, 1')
+    expect(r[0]).toEqual({ name: 'SMITH', number: '12', title: 'CAPTAIN', size: 'L', qty: 1 })
+    expect(r[1].title).toBe('') // 4-column row still works, no title
+  })
+
+  it('maps columns by header when a header row is present (any order)', () => {
+    const r = parseBulkRoster('Name,Number,Title,Size,Qty\nSMITH,12,coach,L,2')
+    expect(r[0]).toEqual({ name: 'SMITH', number: '12', title: 'COACH', size: 'L', qty: 2 })
+  })
+
   it('rosterShirtCount sums qty over rows with content only (name/number/title)', () => {
     const roster = [
       { name: 'SMITH', number: '12', title: '', size: 'L', qty: 2 },

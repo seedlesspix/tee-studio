@@ -30,30 +30,44 @@ export function rosterShirtCount(roster: RosterEntry[]): number {
 }
 
 // Parse a pasted block into roster entries. Tolerant of what customers actually paste from a
-// spreadsheet or notes: tab- OR comma-separated "Name, Number, Size, Qty", or a bare "SMITH 12"
-// where the trailing token is the number. Skips a header row and blank lines.
+// spreadsheet or notes. HEADER-AWARE: if the first row names its columns (contains "name" & "number"),
+// columns are mapped by header so any order works and Title lines up. Otherwise POSITIONAL, matching
+// the downloadable template's order: Name, Number, Size, Qty, Title (Title optional last, so a legacy
+// 4-column paste still works and a 5-column template paste picks up titles even without the header).
+// Also handles a bare "SMITH 12" line (trailing token is the number). Uppercases name + title.
 export function parseBulkRoster(text: string, defaultSize = ''): RosterEntry[] {
-  const out: RosterEntry[] = []
-  for (const rawLine of text.split(/\r?\n/)) {
-    const line = rawLine.trim()
-    if (!line) continue
-    // header row (e.g. "Name  Number  Size  Qty") — skip it
-    if (/\bname\b/i.test(line) && /\bnumber\b/i.test(line)) continue
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l !== '')
+  if (!lines.length) return []
 
-    let name = '', number = '', size = defaultSize, qty = 1
-    const delimited = line.split(/\t|,/).map(s => s.trim())
-    if (delimited.length >= 2) {
-      ;[name, number, size = defaultSize] = [delimited[0], delimited[1], delimited[2] || defaultSize]
-      const q = parseInt(delimited[3] || '', 10)
-      if (Number.isFinite(q) && q > 0) qty = q
-    } else {
-      // single field: "SMITH 12" -> name="SMITH", number="12" (trailing numeric token)
+  // Column indices — positional default (template order), overridden by a header row if present.
+  let idx = { name: 0, number: 1, size: 2, qty: 3, title: 4 }
+  let start = 0
+  const isHeader = (l: string) => /\bname\b/i.test(l) && /\bnumber\b/i.test(l)
+  if (isHeader(lines[0])) {
+    const h = lines[0].split(/\t|,/).map(s => s.trim().toLowerCase())
+    const find = (kw: string) => h.findIndex(c => c.includes(kw))
+    idx = { name: find('name'), number: find('number'), size: find('size'), title: find('title'),
+      qty: h.findIndex(c => c.includes('qty') || c.includes('quantity')) }
+    start = 1
+  }
+
+  const out: RosterEntry[] = []
+  for (let li = start; li < lines.length; li++) {
+    const line = lines[li]
+    if (isHeader(line)) continue // stray repeated header
+    const cells = line.split(/\t|,/).map(s => s.trim())
+    const at = (i: number) => (i >= 0 && i < cells.length ? cells[i] : '')
+    let name = at(idx.name), number = at(idx.number), title = at(idx.title), size = at(idx.size) || defaultSize
+    let qty = 1
+    const q = parseInt(at(idx.qty) || '', 10)
+    if (Number.isFinite(q) && q > 0) qty = q
+    // bare "SMITH 12" — a single un-delimited cell with a trailing number (only when unheadered)
+    if (start === 0 && cells.length < 2) {
       const m = line.match(/^(.*?)[\s]+(\d+)$/)
-      if (m) { name = m[1].trim(); number = m[2] }
-      else name = line
+      if (m) { name = m[1].trim(); number = m[2] } else { name = line; number = '' }
+      title = ''; size = defaultSize
     }
-    // Title isn't in the positional paste format (name/number/size/qty) — it's a table-only column.
-    if (name || number) out.push({ name: name.toUpperCase(), number, title: '', size, qty })
+    if (name || number || title) out.push({ name: name.toUpperCase(), number, title: title.toUpperCase(), size, qty })
   }
   return out
 }
