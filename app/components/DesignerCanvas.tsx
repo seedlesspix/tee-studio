@@ -11,6 +11,8 @@ import { AUTODRAFT_KEY, buildEnvelope, parseEnvelope, shouldRestore } from '../l
 import NamesNumbersPanel from './NamesNumbersPanel'
 import { type RosterEntry, type NnRole, NN_ROLE_PROP, entryHasContent, condensedScaleX, rosterShirtCount, rosterSizeQuantities, rosterValue, jerseyStackLayout } from '../lib/namesNumbers'
 import { renderCurvedArc } from '../lib/curvedArc'
+import { refitSide, rebakeCurveParams, type RefitBox, type CanvasObj } from '../lib/refitEngine'
+import { boxFromSnapshot, isSnapshot, boxFromPct } from '../lib/boxSnapshot'
 
 // Locked jersey placeholders can't be moved/resized/rotated by the customer (geometry is canonical;
 // only font + color are theirs). These locks ENFORCE that on desktop AND mobile regardless of which
@@ -45,6 +47,7 @@ import {
   Undo2, Redo2,
 } from 'lucide-react'
 import MyDesignsDrawer, { type SavedDesign } from './MyDesignsDrawer'
+import ProductPickerModal, { type TemplateProduct } from './ProductPickerModal'
 import { useCustomerSession } from '../hooks/useCustomerSession'
 import { knockoutColorGlobal, knockoutWhiteFromEdges, elementToImageData, imageDataToPngDataUrl, sampleColorAt, cropToDataUrl } from '../lib/imageEdit'
 
@@ -114,6 +117,10 @@ interface Props {
   // Quantity carried from the product page (?quantity=). Applied to the
   // matched size so the count survives into design_orders. Optional/blank → 1.
   initialQuantity?: string
+  // D2 Design Portability: when true, the designId design was made on a DIFFERENT product — re-fit its
+  // artwork onto THIS product's print box on open (proportional scale-to-fit + re-center) instead of a
+  // plain edit-restore. Set by the "Use on another product" flow.
+  refit?: boolean
 }
 
 const COLOR_HEX_MAP: Record<string, string> = {
@@ -193,7 +200,7 @@ function getImageNaturalSize(url: string): Promise<{ w: number; h: number } | nu
 }
 
 export default function DesignerCanvas({
-  productId, variantId, productTitle, productPrice, designId = '', restoreId = '', initialQuantity = ''
+  productId, variantId, productTitle, productPrice, designId = '', restoreId = '', initialQuantity = '', refit = false
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const shirtImgRef = useRef<HTMLImageElement>(null)
@@ -460,63 +467,89 @@ export default function DesignerCanvas({
     }
   }, [printMethod, fetchDesignerConfig])
 
-  // Restore canvas when designId provided (back from order page)
+  // Restore canvas when designId provided. Plain EDIT restore (refit=false, "Edit design" flow) loads
+  // the saved design as-is onto its own product. A D2 PORT (refit=true, "Use on another product")
+  // RE-FITS the artwork onto THIS product's print box first (proportional scale-to-fit + re-center),
+  // then re-wraps text / re-curves curved text; the N&N stack regenerates itself on the new box.
+  // BLOCKER-1 lockdown: reads flow through the server route (service role); uploaded_files + roster +
+  // print_area snapshots ride along (the port needs the frozen source box).
   useEffect(() => {
     if (!designId) return
-    // Restore an existing order into the designer ("Edit design" flow). Reads
-    // BOTH sides: front loads into the live canvas (restore lands on Front),
-    // and back is enlivened into backObjectsRef so the Back toggle rehydrates
-    // it — mirroring the login-restore path's enlivenObjects usage. Without
-    // back restoration, the Day-4 view-aware save would overwrite the back to
-    // null on the Edit round-trip.
     let attempts = 0
     const poll = setInterval(() => {
       attempts++
       const canvas = fabricCanvasRef.current
-      if (!canvas) { if (attempts > 20) clearInterval(poll); return }
+      // A port also needs THIS product's print box loaded — the target box for the re-fit.
+      const targetReady = !refit || !!printAreaDataRef.current
+      if (!canvas || !targetReady) { if (attempts > 40) clearInterval(poll); return }
       clearInterval(poll)
-      // BLOCKER-1 lockdown: reads flow through the server route (service
-      // role) — the public RLS read policy is gone. Same URL-as-key
-      // semantics: the exact UUID is required, enumeration is impossible.
-      // uploaded_files rides along: without it uploadedFilesRef starts EMPTY
-      // on this path, so the used-files filter has nothing to match against
-      // and the order carries zero files no matter how good the stamps are.
       fetch(`/api/design-orders/${designId}`)
         .then((r) => (r.ok ? r.json() : null))
         .then(async (payload) => {
           const data = payload?.order as {
             canvas_json_front: string | null
             canvas_json_back: string | null
+            print_area_front: unknown
+            print_area_back: unknown
             uploaded_files: unknown
             roster: unknown
           } | undefined
           if (!data) return
           try {
             const { util } = await import('fabric')
-            if (data.canvas_json_front) {
-              const frontJson = JSON.parse(data.canvas_json_front)
-              if (frontJson.objects?.length > 0) await canvas.loadFromJSON(frontJson)
-            }
-            if (data.canvas_json_back) {
-              const backJson = JSON.parse(data.canvas_json_back)
-              backObjectsRef.current = backJson.objects?.length
-                ? (await util.enlivenObjects(backJson.objects)) as any[]
-                : []
+            if (refit) {
+              // D2 PORT — re-fit each side's JSON onto the target box (boxFromSnapshot = source, the
+              // live product's box = target), then per-type follow-ups. Guard on across the transform
+              // so the auto-draft writer never snapshots a mid-port state.
+              isRestoringRef.current = true
+              const refitJson = (cj: string | null, snap: unknown, pct: { xPct: number; yPct: number; widthPct: number; heightPct: number } | null | undefined): { objs: CanvasObj[]; scale: number } => {
+                if (!cj) return { objs: [], scale: 1 }
+                let parsed: { objects?: CanvasObj[] }
+                try { parsed = JSON.parse(cj) } catch { return { objs: [], scale: 1 } }
+                const objs = (parsed.objects ?? []) as CanvasObj[]
+                if (!isSnapshot(snap) || !pct) return { objs, scale: 1 } // no reconstructable box → pass through
+                const r = refitSide(objs, boxFromSnapshot(snap) as RefitBox, boxFromPct(pct) as RefitBox)
+                return { objs: r.objects, scale: r.scale }
+              }
+              const front = refitJson(data.canvas_json_front, data.print_area_front, printAreaDataRef.current?.front)
+              if (front.objs.length) {
+                const fobjs = (await util.enlivenObjects(front.objs)) as any[]
+                fobjs.forEach(o => canvas.add(o))
+                await refitFollowups(fobjs, front.scale, getPrintAreaBounds())
+                // N&N placeholders were passed through by refitSide (their geometry is regenerated,
+                // never transformed). Re-lay the whole stack onto THIS product's print box now that
+                // it's mounted — otherwise a ported jersey keeps its source-box position/size.
+                applyStackLayout()
+              }
+              // Back geometry re-fits into the ref; the DOM-coupled follow-ups (re-wrap/re-curve/
+              // re-stack) defer to the first flip to Back, when its print-area overlay mounts.
+              const back = refitJson(data.canvas_json_back, data.print_area_back, printAreaDataRef.current?.back)
+              backObjectsRef.current = back.objs.length ? (await util.enlivenObjects(back.objs)) as any[] : []
+              backRefitPendingRef.current = back.objs.length ? back.scale : null
+            } else {
+              if (data.canvas_json_front) {
+                const frontJson = JSON.parse(data.canvas_json_front)
+                if (frontJson.objects?.length > 0) await canvas.loadFromJSON(frontJson)
+              }
+              if (data.canvas_json_back) {
+                const backJson = JSON.parse(data.canvas_json_back)
+                backObjectsRef.current = backJson.objects?.length ? (await util.enlivenObjects(backJson.objects)) as any[] : []
+              }
             }
             if (Array.isArray(data.uploaded_files)) {
               uploadedFilesRef.current = data.uploaded_files as typeof uploadedFilesRef.current
             }
-            // Names & Numbers: the placeholders ride back on the canvas JSON (they're _nnRole-stamped
-            // objects), but the ROSTER (the coach's list of players) is separate state on the roster
-            // column — restore it or a 15-name list is silently lost on the Edit round-trip.
+            // Names & Numbers: placeholders ride back on the canvas JSON, but the ROSTER (the player
+            // list) is separate state — restore it or a 15-name list is silently lost.
             if (Array.isArray(data.roster)) setRoster(data.roster as RosterEntry[])
             canvas.discardActiveObject()
             canvas.renderAll()
           } catch (e) { /* ignore restore errors */ }
+          finally { if (refit) { isRestoringRef.current = false; markDirty() } }
         })
     }, 300)
     return () => clearInterval(poll)
-  }, [designId])
+  }, [designId, refit])
 
   const fonts = [
     { label: 'Arial Black',     value: 'Arial Black, sans-serif' },
@@ -653,6 +686,11 @@ export default function DesignerCanvas({
   const lastActiveObjectRef = useRef<any>(null)
   const frontObjectsRef = useRef<any[]>([])
   const backObjectsRef = useRef<any[]>([])
+  // D2 port: the back side re-fits its GEOMETRY into backObjectsRef up front, but the DOM-coupled
+  // follow-ups (text re-wrap, curved re-bake, N&N re-stack) need the back print-area overlay mounted,
+  // which only happens on the first flip to Back. This holds the back re-fit scale until then; a flip
+  // to Back consumes it (see the lazy back-refit effect). null = nothing pending.
+  const backRefitPendingRef = useRef<number | null>(null)
 
   // Mobile: a REDUCED control set (Instagram/Canva-style) instead of Fabric's 8 tiny
   // handles. THREE controls sitting OUTSIDE the selection box corners so they never
@@ -918,6 +956,10 @@ export default function DesignerCanvas({
   const [savedDesigns, setSavedDesigns] = useState<SavedDesign[]>([])
   const [designsLoading, setDesignsLoading] = useState(true)
   const [designsOpen, setDesignsOpen] = useState(false)
+  // D2 Design Portability: the saved design the customer chose "Use on another product" for.
+  // Opening the picker while it's set; on pick we navigate to the designer for the target product
+  // with the same design_id + refit=1 (the design_orders row carries the frozen source print box).
+  const [portDesign, setPortDesign] = useState<SavedDesign | null>(null)
   // The design currently being edited (set on restore, and after a save) so
   // re-saving updates it in place instead of forking a copy.
   const currentDesignIdRef = useRef<string | null>(null)
@@ -1708,6 +1750,38 @@ export default function DesignerCanvas({
     return img
   }
 
+  // D2 port follow-ups: after refitSide has re-projected a side's geometry onto the target box, run the
+  // DOM-coupled refinements per object (the pure engine can't): curved text re-curves at the scaled
+  // size, plain text re-wraps to the new box width from _originalText (re-applying uppercase) and
+  // constrains, images/clipart just constrain. N&N placeholders are skipped — applyStackLayout
+  // regenerates their geometry from the target print box on its own. Front side only (live canvas).
+  const refitFollowups = async (objs: any[], scale: number, targetLTRB: { left: number; top: number; right: number; bottom: number } | null) => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    const norm = (s: string) => s.replace(/\s+/g, ' ').trim()
+    for (const obj of objs) {
+      if (obj[NN_ROLE_PROP]) continue // applyStackLayout owns N&N geometry on the target box
+      if (obj._isCurvedText) {
+        const p = rebakeCurveParams(Number(obj._curveFontSize) || 36, Number(obj._curveAmount) || 0, scale)
+        const rebaked = await bakeCurvedArc(
+          String(obj._originalText || ''),
+          { curveAmount: p.curveAmount, fontSize: p.curveFontSize, fontFamily: String(obj._curveFontFamily || 'Impact'), fill: String(obj._curveFill || '#000000'), bold: !!obj._curveBold, italic: !!obj._curveItalic },
+          obj.left, obj.top, targetLTRB,
+        )
+        canvas.remove(obj); canvas.add(rebaked)
+      } else if (obj.type === 'i-text' || obj.type === 'textbox') {
+        const raw = String(obj._originalText || obj.text || '')
+        const { text, fontSize } = reWrapText(raw, Number(obj.fontSize) || 36, obj.fontFamily, obj.fontWeight === 'bold', obj.fontStyle === 'italic', Number(obj.charSpacing) || 0)
+        const wasUpper = raw !== '' && norm(String(obj.text || '')) === norm(raw.toUpperCase()) && norm(String(obj.text || '')) !== norm(raw)
+        obj.set({ text: wasUpper ? text.toUpperCase() : text, fontSize })
+        if (targetLTRB) constrainObject(obj, targetLTRB)
+      } else if (targetLTRB) {
+        constrainObject(obj, targetLTRB)
+      }
+    }
+    canvas.renderAll()
+  }
+
   // Re-render curved text when curveAmount (or the baked font/size/color) changes.
   // Bug #1 fix: this used to rasterize + remove/add + re-select on EVERY slider
   // tick, so dragging shook the tool. Now the bake is COALESCED to one per
@@ -2155,6 +2229,31 @@ export default function DesignerCanvas({
     if (pa) { setPrintArea(pa); window.dispatchEvent(new Event('printAreaChanged')) }
   }
 
+  // D2 lazy back-refit: consume the pending back re-fit the first time the customer flips to Back.
+  // Runs AFTER switchView has swapped the back objects onto the live canvas and repositioned the
+  // print-area overlay, so getPrintAreaBounds() (which reads that overlay) returns the BACK box.
+  // Guarded by isRestoringRef so the auto-draft writer can't snapshot the mid-refine canvas.
+  useEffect(() => {
+    if (shirtView !== 'back' || backRefitPendingRef.current === null) return
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    const bounds = getPrintAreaBounds()
+    if (!bounds) return // overlay not laid out yet — a later render re-runs this effect
+    const scale = backRefitPendingRef.current
+    backRefitPendingRef.current = null
+    isRestoringRef.current = true
+    ;(async () => {
+      try {
+        await refitFollowups(canvas.getObjects() as any[], scale, bounds)
+        applyStackLayout() // re-stack any N&N placeholders now living on the back onto its box
+      } finally {
+        backObjectsRef.current = canvas.getObjects().map((o: any) => o)
+        isRestoringRef.current = false
+        markDirty()
+      }
+    })()
+  }, [shirtView, printArea]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-show BACK when the customer opens Names & Numbers — the usual home for a name/number — but
   // only on a FRESH design (no placeholder placed on either side yet), so we never yank a deliberate
   // front placement, and only when the product actually has a back to design. No back template → stay.
@@ -2377,6 +2476,21 @@ export default function DesignerCanvas({
     if (d.productTitle) params.set('title', d.productTitle)
     if (d.unitPrice != null) params.set('price', String(Math.round(d.unitPrice * 100)))
     params.set('restore', d.designId)
+    window.location.href = `/designer?${params.toString()}`
+  }
+
+  // D2 "Use on another product": re-open the saved design on a DIFFERENT garment and re-fit it.
+  // Unlike openSavedDesign (which uses ?restore= → the draft path with no frozen print box), this
+  // goes through ?design_id= → the design_orders row, which carries print_area_front/back — the
+  // source box the re-fit projects FROM. product_id/title are the TARGET's; the target's variant +
+  // price load from getProduct. refit=1 flips DesignerCanvas into the re-fit restore branch.
+  const openSavedOnProduct = (d: SavedDesign, target: TemplateProduct) => {
+    const bare = target.shopify_product_id.split('/').pop() || ''
+    const params = new URLSearchParams()
+    params.set('product_id', bare)
+    params.set('design_id', d.designId)
+    params.set('title', target.name)
+    params.set('refit', '1')
     window.location.href = `/designer?${params.toString()}`
   }
 
@@ -3956,7 +4070,16 @@ export default function DesignerCanvas({
         loading={designsLoading}
         onClose={() => setDesignsOpen(false)}
         onOpenDesign={openSavedDesign}
+        onUseOnProduct={(d) => { setDesignsOpen(false); setPortDesign(d) }}
         onDelete={deleteSavedDesign}
+      />
+
+      <ProductPickerModal
+        open={!!portDesign}
+        onClose={() => setPortDesign(null)}
+        excludeProductId={portDesign?.productId ?? null}
+        subtitle={portDesign ? `Re-fit "${portDesign.name || portDesign.productTitle || 'your design'}" onto:` : undefined}
+        onPick={(target) => { if (portDesign) openSavedOnProduct(portDesign, target) }}
       />
     </div>
   )

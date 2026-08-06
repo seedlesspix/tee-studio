@@ -15,6 +15,9 @@ function DesignerContent() {
   // Set when returning from a Shopify login round-trip: the id of the draft
   // snapshotted before the redirect, to rehydrate the canvas.
   const restoreId = searchParams.get('restore') || ''
+  // D2 Design Portability: the design_id design was made on a DIFFERENT product — re-fit it onto this
+  // product on open ("Use on another product") instead of a plain edit-restore.
+  const refit = searchParams.get('refit') === '1'
   
   // Safely decode title - handle any encoding issues
   let title = 'Custom Product'
@@ -35,6 +38,7 @@ function DesignerContent() {
         designId={designId}
         restoreId={restoreId}
         initialQuantity={quantity}
+        refit={refit}
       />
     </main>
   )

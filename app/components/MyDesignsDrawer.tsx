@@ -25,6 +25,7 @@ type Props = {
   loading: boolean
   onClose: () => void
   onOpenDesign: (d: SavedDesign) => void
+  onUseOnProduct: (d: SavedDesign) => void
   onDelete: (savedId: string) => void
 }
 
@@ -38,7 +39,7 @@ const when = (iso: string) => {
 }
 
 export default function MyDesignsDrawer({
-  open, designs, loading, onClose, onOpenDesign, onDelete,
+  open, designs, loading, onClose, onOpenDesign, onUseOnProduct, onDelete,
 }: Props) {
   // Escape closes — a slide-over that traps you is worse than no slide-over.
   useEffect(() => {
@@ -120,6 +121,14 @@ export default function MyDesignsDrawer({
                         {[d.color, when(d.updatedAt)].filter(Boolean).join(' · ')}
                       </p>
                     </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onUseOnProduct(d)}
+                    title="Use this design on another product"
+                    className="block w-full border-t border-gray-100 px-2.5 py-1.5 text-left text-[10px] font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-[#dd3333]"
+                  >
+                    ↪ Use on another product
                   </button>
                   <button
                     type="button"
