@@ -3,6 +3,7 @@ import {
   refitObject, refitSide, fitScale, boxFromLTRB, boxToLTRB, rebakeCurveParams,
   type RefitBox, type CanvasObj,
 } from '../app/lib/refitEngine'
+import { boxFromPct } from '../app/lib/boxSnapshot'
 
 const B = (left: number, top: number, width: number, height: number): RefitBox => ({ left, top, width, height })
 // object factory — defaults to a center-origin image (geometry rides scaleX/scaleY)
@@ -233,5 +234,11 @@ describe('refit engine — box adapters', () => {
     const box = boxFromLTRB(ltrb)
     expect(box).toEqual({ left: 10, top: 20, width: 100, height: 200 })
     expect(boxToLTRB(box)).toEqual(ltrb)
+  })
+
+  it('boxFromPct maps print-area percentages to the 680x850 target box', () => {
+    // D2.2: the live target product's box comes from printArea percentages
+    const box = boxFromPct({ xPct: 10, yPct: 20, widthPct: 50, heightPct: 60 })
+    expect(box).toEqual({ left: 68, top: 170, width: 340, height: 510 }) // 0.1*680, 0.2*850, 0.5*680, 0.6*850
   })
 })
