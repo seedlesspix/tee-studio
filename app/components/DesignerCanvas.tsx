@@ -2537,19 +2537,22 @@ export default function DesignerCanvas({
     userToggledMethodRef.current = true // an in-flight product load must not clobber this choice
     const canvas = fabricCanvasRef.current
     if (m === 'embroidery') {
-      // Warn + convert: uploaded images can't be embroidered (removed), and existing text moves to an
-      // embroidery font + thread color. Only prompt when there's something to convert; a blank or
-      // already-compatible (clipart/text-free) canvas switches silently.
+      // Warn + convert: uploaded images (raster) AND print clipart don't carry to embroidery — both are
+      // removed (Denise 2026-08-06); existing text moves to an embroidery font + thread color. Only prompt
+      // when there's something to convert; a blank / text-free-and-art-free canvas switches silently.
       const all = canvas ? [...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current] : []
+      const isRemovable = (o: any) => o && (o._uploadSrc || typeof o._isSvg === 'boolean') // upload OR clipart
       const uploads = all.filter((o: any) => o && o._uploadSrc)
+      const clipart = all.filter((o: any) => o && typeof o._isSvg === 'boolean')
       const hasText = all.some((o: any) => o && (o.type === 'i-text' || o.type === 'textbox') && !o[NN_ROLE_PROP])
-      if (uploads.length || hasText) {
-        const bits = [uploads.length ? 'remove uploaded images' : '', hasText ? 'set your text to an embroidery font + thread color' : ''].filter(Boolean)
+      if (uploads.length || clipart.length || hasText) {
+        const removeLabel = [uploads.length && 'uploaded images', clipart.length && 'clipart'].filter(Boolean).join(' and ')
+        const bits = [removeLabel && `remove your ${removeLabel}`, hasText && 'set your text to an embroidery font + thread color'].filter(Boolean)
         if (!window.confirm(`Switching to Embroidery will ${bits.join(' and ')}. Continue?`)) return
-        if (uploads.length) {
-          uploads.forEach((o: any) => canvas?.remove(o))
-          frontObjectsRef.current = frontObjectsRef.current.filter((o: any) => !o._uploadSrc)
-          backObjectsRef.current = backObjectsRef.current.filter((o: any) => !o._uploadSrc)
+        if (uploads.length || clipart.length) {
+          all.filter(isRemovable).forEach((o: any) => canvas?.remove(o))
+          frontObjectsRef.current = frontObjectsRef.current.filter((o: any) => !isRemovable(o))
+          backObjectsRef.current = backObjectsRef.current.filter((o: any) => !isRemovable(o))
           markDirty() // the removal is a design change even when there's no text to restyle (#autodraft)
         }
         if (hasText) pendingEmbConvertRef.current = true // text re-styled once embroidery config loads
