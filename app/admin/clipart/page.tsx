@@ -14,6 +14,7 @@ export default function ClipartAdmin() {
   const [saving, setSaving] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')
+  const [newCategoryMethod, setNewCategoryMethod] = useState('screen_print')
   const [showNewCategory, setShowNewCategory] = useState(false)
   const [tagInputs, setTagInputs] = useState<Record<string, string>>({})
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
@@ -145,13 +146,14 @@ export default function ClipartAdmin() {
     if (!newCategoryName.trim()) return
     const { data, error } = await supabase
       .from('clipart_categories')
-      .insert({ name: newCategoryName.trim(), print_method_key: 'screen_print', is_active: true, sort_order: categories.length + 1 })
+      .insert({ name: newCategoryName.trim(), print_method_key: newCategoryMethod, is_active: true, sort_order: categories.length + 1 })
       .select()
       .single()
     if (error) { showMessage('Error: ' + error.message, 'error'); return }
     setCategories(prev => [...prev, data])
     setSelectedCategory(data.id)
     setNewCategoryName('')
+    setNewCategoryMethod('screen_print')
     setShowNewCategory(false)
     showMessage('Category created!')
   }
@@ -183,18 +185,30 @@ export default function ClipartAdmin() {
             </div>
 
             {showNewCategory && (
-              <div className="mb-3 flex gap-1">
-                <input
-                  value={newCategoryName}
-                  onChange={e => setNewCategoryName(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && createCategory()}
-                  placeholder="Category name..."
-                  className="flex-1 bg-white border border-[#dd3333] rounded px-2 py-1 text-xs text-black outline-none font-mono"
-                />
-                <button onClick={createCategory}
-                  className="px-2 py-1 bg-[#dd3333] text-white rounded text-xs font-mono font-bold hover:bg-red-700 transition-all">
-                  Add
-                </button>
+              <div className="mb-3 flex flex-col gap-1">
+                <div className="flex gap-1">
+                  <input
+                    value={newCategoryName}
+                    onChange={e => setNewCategoryName(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && createCategory()}
+                    placeholder="Category name..."
+                    className="flex-1 bg-white border border-[#dd3333] rounded px-2 py-1 text-xs text-black outline-none font-mono"
+                  />
+                  <button onClick={createCategory}
+                    className="px-2 py-1 bg-[#dd3333] text-white rounded text-xs font-mono font-bold hover:bg-red-700 transition-all">
+                    Add
+                  </button>
+                </div>
+                {/* Which print method this category's clipart is for — the designer only shows a category's
+                    items when its method matches the product's active method (embroidery vs print). */}
+                <select
+                  value={newCategoryMethod}
+                  onChange={e => setNewCategoryMethod(e.target.value)}
+                  className="bg-white border border-gray-300 rounded px-2 py-1 text-xs text-black outline-none font-mono"
+                >
+                  <option value="screen_print">Print</option>
+                  <option value="embroidery">Embroidery</option>
+                </select>
               </div>
             )}
 
@@ -207,6 +221,11 @@ export default function ClipartAdmin() {
                       : 'bg-gray-100 text-black hover:bg-gray-200'
                   }`}>
                   {cat.name}
+                  {cat.print_method_key === 'embroidery' && (
+                    <span className={`ml-1.5 rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide ${selectedCategory === cat.id ? 'bg-white/25 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
+                      Emb
+                    </span>
+                  )}
                   <span className={`float-right font-normal ${selectedCategory === cat.id ? 'text-white/80' : 'text-gray-500'}`}>
                     {selectedCategory === cat.id ? items.length : ''}
                   </span>
