@@ -8,6 +8,7 @@ import CanvasStage from './CanvasStage'
 import { getProduct } from '../lib/shopify'
 import { buildColorImageMap, getColorImages } from '../lib/productImages'
 import { AUTODRAFT_KEY, buildEnvelope, parseEnvelope, shouldRestore } from '../lib/autodraft'
+import { placedInches, lowResTier } from '../lib/lowRes'
 import NamesNumbersPanel from './NamesNumbersPanel'
 import { type RosterEntry, type NnRole, NN_ROLE_PROP, entryHasContent, condensedScaleX, rosterShirtCount, rosterSizeQuantities, rosterValue, jerseyStackLayout } from '../lib/namesNumbers'
 import { renderCurvedArc } from '../lib/curvedArc'
@@ -87,6 +88,13 @@ const MAX_UPLOAD_MB = 10
 // language editor (not built yet); until it exists, tune the wording here. The size interpolates
 // MAX_UPLOAD_MB so it ALWAYS matches the real limit (shows 10 MB now, 20 MB after the launch bump).
 const UPLOAD_GUIDANCE = `Vector or high-resolution artwork (300 DPI or more) will look best. Max size ${MAX_UPLOAD_MB} MB.`
+// Low-resolution WARNING (never blocks — a quality nudge, unlike the hard MAX_UPLOAD_MB cap). Two tiers,
+// two tailored messages (Denise 2026-08-06). The tier MATH + thresholds live in ../lib/lowRes (shared
+// with the OrderInfo.txt bench flag so they can't disagree); only these EDITABLE customer STRINGS live
+// here (destined for the labels-as-data / language editor). Applies to RASTER uploads only (SVG clipart
+// is vector → never low-res). See project_lowres_warning.
+const LOWRES_MSG_SMALL = '⚠ This image is low-resolution and may print blurry. For the sharpest print use 300 DPI or higher — or email us your original file.'
+const LOWRES_MSG_PLACED = '⚠ Low resolution at this size — may print blurry. Try making it smaller, use a higher-resolution image, or email us your original.'
 // Customer-facing address for the "email us the big file" valve. Shown in the reject
 // message so an oversize file still reaches the shop.
 const SUPPORT_EMAIL = 'orders@tshirtdeli.com' // TODO(Denise): confirm the real address
@@ -157,6 +165,7 @@ const CANVAS_CUSTOM_PROPS = ['_isSvg', '_originalText', '_currentColor', '_isCur
   // Bake params for a curved-text image, so selecting it reflects the curve
   // slider + font/size/color and adjusting the curve re-bakes from its OWN values.
   '_curveAmount', '_curveFontFamily', '_curveFontSize', '_curveFill', '_curveBold', '_curveItalic',
+  '_isVectorUpload', // an uploaded SVG (vector) — excluded from the low-res warning (client + bench)
   '_nnRole'] // Names & Numbers placeholder role ('name'|'number') — the substitution + cut-file split key
 
 // Fallback size list ONLY — real sizes come per-product from the Shopify Size
@@ -256,6 +265,10 @@ export default function DesignerCanvas({
   const [curveAmount, setCurveAmount] = useState(0)
   const [selectedTextPreview, setSelectedTextPreview] = useState<string>('')
   const [selectedObjectType, setSelectedObjectType] = useState<'text' | 'image' | 'svg' | null>(null)
+  // Low-resolution warning for the SELECTED raster upload (null = fine / not an upload). Recomputed on
+  // select + live while scaling — a bigger placement lowers effective DPI. Never blocks. See the
+  // LOWRES_* constants + lowResMessageFor.
+  const [lowResWarning, setLowResWarning] = useState<string | null>(null)
   // Upload-image editing (Phase 5): eyedropper mode for Remove-a-Color, its tolerance, a busy
   // flag so the tool buttons disable while a pixel op + re-upload runs, a LIVE-PREVIEW state
   // (pick a color -> preview while dragging tolerance -> Apply/Cancel), and a tick to re-evaluate
@@ -849,6 +862,11 @@ export default function DesignerCanvas({
   const isUppercaseRef = useRef(isUppercase)
   useEffect(() => { fontSizeRef.current = fontSize }, [fontSize])
   useEffect(() => { isUppercaseRef.current = isUppercase }, [isUppercase])
+  // Current side, mirrored to a ref: the low-res check reads it from canvas handlers that are
+  // registered ONCE at mount (onReady), so the `shirtView` STATE would be frozen at 'front' there —
+  // the ref stays live so the back side's own print-area inches are used (not the front's).
+  const shirtViewRef = useRef(shirtView)
+  useEffect(() => { shirtViewRef.current = shirtView }, [shirtView])
 
   // Pull-on-select guard. The panel is otherwise PUSH-only: the style/size/
   // dirty/curve effects below watch the knob states and WRITE them onto the
@@ -1423,6 +1441,9 @@ export default function DesignerCanvas({
         if (!obj) return
         // Remember a curved text is being SCALE-dragged, so object:modified re-bakes it (and only it).
         if (obj._isCurvedText) curvedScaleGestureRef.current = obj
+        // Live low-res: scaling a raster upload UP lowers its effective DPI — refresh the warning as
+        // the customer drags so it appears/disappears in real time (no-op for non-raster objects).
+        refreshLowRes(obj)
         const bounds = getLiveBounds()
         if (!bounds) return
 
@@ -1460,7 +1481,7 @@ export default function DesignerCanvas({
         // A curve re-bake swaps the object under us — keep the refs, but don't
         // re-run the tab-switch/reflect on every frame (that was the "shake").
         if (curveBakingRef.current) return
-        if (obj) { setActiveTab(sectionForObject(obj)); setSelectedNnRole(obj[NN_ROLE_PROP] ?? null) }
+        if (obj) { setActiveTab(sectionForObject(obj)); setSelectedNnRole(obj[NN_ROLE_PROP] ?? null); refreshLowRes(obj) }
         if (obj && (obj.type === 'i-text' || obj.type === 'textbox' || (obj as any)._isCurvedText)) {
           const raw = ((obj as any)._originalText || obj.text || '').replace(/\n/g, ' ')
           setSelectedTextPreview(raw.trim())
@@ -1488,7 +1509,7 @@ export default function DesignerCanvas({
         // A curve re-bake swaps the object under us — keep the refs, but don't
         // re-run the tab-switch/reflect on every frame (that was the "shake").
         if (curveBakingRef.current) return
-        if (obj) { setActiveTab(sectionForObject(obj)); setSelectedNnRole(obj[NN_ROLE_PROP] ?? null) }
+        if (obj) { setActiveTab(sectionForObject(obj)); setSelectedNnRole(obj[NN_ROLE_PROP] ?? null); refreshLowRes(obj) }
         if (obj && (obj.type === 'i-text' || obj.type === 'textbox' || (obj as any)._isCurvedText)) {
           const raw = ((obj as any)._originalText || obj.text || '').replace(/\n/g, ' ')
           setSelectedTextPreview(raw.trim())
@@ -1510,13 +1531,13 @@ export default function DesignerCanvas({
           setTextInput('')
         } else {
           setSelectedTextPreview('')
-          setSelectedObjectType(null)
+          setSelectedObjectType(null); setLowResWarning(null)
           setTextInput('')
         }
       })
       canvas.on('selection:cleared', () => {
         setSelectedTextPreview('')
-        setSelectedObjectType(null)
+        setSelectedObjectType(null); setLowResWarning(null)
         setSelectedNnRole(null)
         setTextInput('')
         // Tapping empty shirt space (deselect) = "I'm done with tools" → collapse the
@@ -1562,6 +1583,7 @@ export default function DesignerCanvas({
         }
         const bounds = getLiveBounds()
         if (obj && bounds) constrainObject(obj, bounds)
+        refreshLowRes(obj) // reflect the settled size (a clamp may have shrunk it back under the box)
         markDirty()
       })
 
@@ -2044,6 +2066,30 @@ export default function DesignerCanvas({
     }
   }
 
+  // Low-resolution check for a RASTER upload. Tier 1: the file itself is tiny (longest side < 300px).
+  // Tier 2: effective DPI at the PLACED size = source px ÷ placed inches, where placed inches come from
+  // the same canvas-px→inch mapping the cut engine uses (placed px / print-box px × print-area inches;
+  // inches from product_template_print_areas.width_in/height_in, side-specific). Returns the tailored
+  // message or null. Skips vector clipart, curved-text bakes, and N&N placeholders. Never blocks — this
+  // only drives a panel nudge. `obj.width` is the CURRENT element's natural px (post crop / bg-removal,
+  // which correctly lowers the DPI).
+  const lowResMessageFor = (obj: any): string | null => {
+    if (!obj || obj.type !== 'image') return null
+    if (obj._isSvg || obj._isVectorUpload || obj._isCurvedText || obj[NN_ROLE_PROP]) return null
+    const srcW = Number(obj.width) || 0, srcH = Number(obj.height) || 0
+    // Placed inches from the live print box (px) + its physical inches. If the box/inches aren't
+    // available the placed-DPI check is skipped, but the tiny-FILE (Tier 1) check still fires. Read the
+    // side from the REF — this runs from mount-time canvas handlers where `shirtView` state is stale.
+    const bounds = getPrintAreaBounds()
+    const snap = shirtViewRef.current === 'back' ? printAreaBackSnapRef.current : printAreaFrontSnapRef.current
+    const boxW = bounds ? bounds.right - bounds.left : 0, boxH = bounds ? bounds.bottom - bounds.top : 0
+    const placedInW = placedInches(obj.getScaledWidth?.() || 0, boxW, Number(snap?.width_in) || 0)
+    const placedInH = placedInches(obj.getScaledHeight?.() || 0, boxH, Number(snap?.height_in) || 0)
+    const tier = lowResTier(srcW, srcH, placedInW, placedInH)
+    return tier === 'small' ? LOWRES_MSG_SMALL : tier === 'placed' ? LOWRES_MSG_PLACED : null
+  }
+  const refreshLowRes = (obj: any) => setLowResWarning(lowResMessageFor(obj))
+
   // THE single enforcement point for the print-area contract.
   //
   // Two separate mechanisms keep text in the box and both are required:
@@ -2110,7 +2156,7 @@ export default function DesignerCanvas({
     }
     setTextInput('')
     setSelectedTextPreview('')
-    setSelectedObjectType(null)
+    setSelectedObjectType(null); setLowResWarning(null)
     textInputRef.current?.focus()
   }
 
@@ -2504,7 +2550,7 @@ export default function DesignerCanvas({
     // design content) would both be wrong. Typing again spawns a fresh one.
     if (!value.trim()) {
       canvas.remove(active)
-      setSelectedObjectType(null)
+      setSelectedObjectType(null); setLowResWarning(null)
       setSelectedTextPreview('')
       canvas.renderAll()
       return
@@ -2633,6 +2679,10 @@ export default function DesignerCanvas({
       const { FabricImage } = await import('fabric')
       const img = await FabricImage.fromURL(item.url, { crossOrigin: 'anonymous' })
       ;(img as any)._uploadSrc = item.url
+      // Same vector guard as a fresh upload — a re-added SVG must not draw a false low-res warning.
+      if (item.fileType === 'image/svg+xml' || item.url.toLowerCase().split('?')[0].endsWith('.svg')) {
+        (img as any)._isVectorUpload = true
+      }
       await placeImageOnCanvas(img, fabricCanvas)
       markDirty()
       uploadedFilesRef.current = [
@@ -2780,11 +2830,16 @@ export default function DesignerCanvas({
     }
 
     // SVG, PNG, JPEG, JPG, WEBP - direct load
+    const isVector = ext === 'svg' || file.type === 'image/svg+xml'
     const reader = new FileReader()
     reader.onload = async (event) => {
       const dataUrl = event.target?.result as string
       const { FabricImage } = await import('fabric')
       const img = await FabricImage.fromURL(dataUrl)
+      // An uploaded SVG is VECTOR — never judge it as low-resolution (it's a raster FabricImage but
+      // prints crisp at any size). Flagged separately from clipart's `_isSvg` so it stays in the Upload
+      // section (routing keys off _isSvg) but is skipped by the low-res check on both client and bench.
+      if (isVector) (img as any)._isVectorUpload = true
       await placeImageOnCanvas(img, fabricCanvas)
       // Track uploaded file for order storage. Provisionally the data URL —
       // swapped for the Cloudinary URL below once it resolves.
@@ -3810,7 +3865,7 @@ export default function DesignerCanvas({
       dbColors={dbColors}
       deleteSelected={deleteSelected}
       text={textProps}
-      upload={{ handleImageUpload, handleImageDrop, uploadGuidance: UPLOAD_GUIDANCE, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload, removeWhite: removeWhiteFromSelected, removeBackground: removeBackgroundFromSelected, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy, colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop: cleanupCrop }}
+      upload={{ handleImageUpload, handleImageDrop, uploadGuidance: UPLOAD_GUIDANCE, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload, removeWhite: removeWhiteFromSelected, removeBackground: removeBackgroundFromSelected, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy, colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop: cleanupCrop, lowResWarning }}
       clipart={{ printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor }}
     />
   )
@@ -3873,6 +3928,7 @@ export default function DesignerCanvas({
         cropMode={cropMode}
         applyCrop={applyCrop}
         cancelCrop={cleanupCrop}
+        lowResWarning={lowResWarning}
       />
     )
     : activeTab === 'clipart' ? (

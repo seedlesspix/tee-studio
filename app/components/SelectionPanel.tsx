@@ -86,6 +86,8 @@ type SelectionPanelProps = {
     cropMode: boolean
     applyCrop: () => void
     cancelCrop: () => void
+    // Low-res nudge for the selected raster upload (null = fine). Never blocks. See LOWRES_* in DesignerCanvas.
+    lowResWarning?: string | null
   }
   clipart: {
     printMethod: string
@@ -114,7 +116,7 @@ export default function SelectionPanel({
   } = text
   const { handleImageUpload, handleImageDrop, uploadGuidance, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload,
     removeWhite, removeBackground, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy,
-    colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop } = upload
+    colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop, lowResWarning } = upload
   const { printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor } = clipart
   // A selected CURVED text is a baked image: only font/size/color/bold/italic
   // re-bake (they're the curve effect's deps). Letter-spacing, uppercase (AA),
@@ -356,6 +358,11 @@ export default function SelectionPanel({
                 {selectedObjectType === 'image' && (
                   <div className="mt-3 flex flex-col gap-2">
                     <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Edit Image</label>
+                    {lowResWarning && (
+                      <p className="rounded border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11px] leading-snug text-amber-800">
+                        {lowResWarning}
+                      </p>
+                    )}
                     {cropMode ? (
                       /* Manual crop — the drag-box lives on the shirt; commit here. */
                       <div className="border border-gray-300 rounded p-2 flex flex-col gap-2">

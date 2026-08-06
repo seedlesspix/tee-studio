@@ -33,6 +33,7 @@ export default function MobileUploadBand({
   cropMode,
   applyCrop,
   cancelCrop,
+  lowResWarning,
 }: {
   handleImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
   uploadGuidance: string
@@ -57,10 +58,16 @@ export default function MobileUploadBand({
   cropMode: boolean
   applyCrop: () => void
   cancelCrop: () => void
+  lowResWarning?: string | null
 }) {
   if (selectedObjectType === 'image') {
     return (
       <div className="flex h-full flex-col justify-center gap-2 overflow-y-auto px-3">
+        {lowResWarning && (
+          <p className="rounded border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11px] leading-snug text-amber-800">
+            {lowResWarning}
+          </p>
+        )}
         {cropMode ? (
           <div className="flex gap-2">
             <button onClick={applyCrop} disabled={imageEditBusy}

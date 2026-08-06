@@ -8,6 +8,7 @@ import * as opentype from 'opentype.js'
 import type { CanvasBox } from './cutFileGeometry'
 import type { PhysBox } from './cutFileEngine'
 import { prepareSide, isRasterObj, isTextObj, isCurvedObj, isClipartObj, outlineVectorObject } from './generateCutFile'
+import { placedInches, lowResTier, effectiveDpi } from '../lowRes'
 
 export type LayoutResult =
   | { ok: true; svg: string; failures: string[] }
@@ -76,6 +77,32 @@ async function rasterFragment(t: Record<string, unknown>, canvasBox: CanvasBox, 
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
+// Readable filename for the bench note (skip data: URIs + query strings; clamp length).
+function imgName(t: Record<string, unknown>): string {
+  const src = String(t._uploadSrc || t.src || '')
+  if (!src || src.startsWith('data:')) return 'image'
+  const base = src.split('/').pop()?.split('?')[0] || 'image'
+  return base.length > 40 ? base.slice(0, 37) + '…' : base
+}
+
+// Bench resolution flag for one raster: tiny source, or low effective DPI at the PLACED size. Uses the
+// SAME shared lowRes core (placedInches/lowResTier/effectiveDpi) as the designer's live customer warning,
+// so the two can't disagree on what's at-risk. Returns a note for OrderInfo.txt (with the DPI number for
+// the bench), or null if fine.
+function rasterDpiNote(t: Record<string, unknown>, canvasBox: CanvasBox, phys: PhysBox): string | null {
+  if (t._isVectorUpload) return null // uploaded SVG = vector, prints crisp at any size (matches the client)
+  const natW = Number(t.width ?? 0), natH = Number(t.height ?? 0)
+  if (!natW || !natH) return null
+  const name = imgName(t)
+  const sx = Number(t.scaleX ?? 1) || 1, sy = Number(t.scaleY ?? 1) || 1
+  const placedInW = placedInches(natW * sx, canvasBox.width, phys.width_in)
+  const placedInH = placedInches(natH * sy, canvasBox.height, phys.height_in)
+  const tier = lowResTier(natW, natH, placedInW, placedInH)
+  if (tier === 'small') return `image ${name} is low-resolution (${natW}×${natH}px) — may print blurry`
+  if (tier === 'placed') return `image ${name} ~${Math.round(effectiveDpi(natW, natH, placedInW, placedInH))} DPI at placed size — LOW (may print blurry; 300+ ideal)`
+  return null
+}
+
 function assembleLayoutSvg(fragments: string[], phys: PhysBox, dpi = 300): string {
   const viewW = Math.round(phys.width_in * dpi), viewH = Math.round(phys.height_in * dpi)
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -99,6 +126,9 @@ export async function generateLayoutSvgForSide(
   // Iterate in draw order so a photo behind text stacks correctly on the sheet.
   for (const t of objects) {
     if (isRasterObj(t)) {
+      // Bench resolution flag (independent of embed success) so at-risk art is visible before printing.
+      const dpiNote = rasterDpiNote(t, canvasBox, phys)
+      if (dpiNote) failures.push(dpiNote)
       try {
         const frag = await rasterFragment(t, canvasBox, phys)
         if (frag) fragments.push(frag)
