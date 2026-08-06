@@ -13,12 +13,12 @@ import { Shirt, Type, Upload, Shapes, Hash } from 'lucide-react'
 // non-red treatment — raised white surface + a neutral left marker bar + bolder
 // text — NOT the old red fill. Red never appears in the rail.
 //
-// WIRED vs PLACEHOLDER: Text/Upload/Art map to the existing tabs (Art is a
+// WIRED vs PLACEHOLDER: Text/Upload/Art/Names map to the existing tabs (Art is a
 // label-only rename of the `clipart` tab — internal key unchanged, same trick as
-// screen_print→"Print"). Products (= Design Portability) and Names & Numbers are
-// their own future builds, so they're shown-but-not-wired: dimmed, non-clickable,
-// tagged "Soon" — visible so the rail reads complete, honest that they don't work
-// yet. Layers is deliberately NOT a rail item (separate desktop-only surface).
+// screen_print→"Print"). Products (= Design Portability, D2.5) is an ACTION item,
+// not a tab: it opens the switch-garment picker via onProducts instead of driving
+// activeTab. It's enabled only when onProducts is supplied (else it falls back to
+// the dimmed "Soon" placeholder). Layers is deliberately NOT a rail item.
 //
 // Phase 2 next visual sub-pass (logged, NOT here): the PANEL red-sweep — flip the
 // SelectionPanel's remaining red-for-selection states to quiet (selected-font
@@ -30,10 +30,11 @@ type RailItem = {
   label: string
   Icon: typeof Shirt
   wired: boolean
+  action?: boolean // fires a callback (Products = switch garment) instead of driving activeTab
 }
 
 const ITEMS: RailItem[] = [
-  { key: 'products', label: 'Products',        Icon: Shirt,  wired: false },
+  { key: 'products', label: 'Products',        Icon: Shirt,  wired: true, action: true },
   { key: 'text',     label: 'Text',            Icon: Type,   wired: true  },
   { key: 'upload',   label: 'Upload',          Icon: Upload, wired: true  },
   { key: 'clipart',  label: 'Art',             Icon: Shapes, wired: true  },
@@ -43,10 +44,14 @@ const ITEMS: RailItem[] = [
 export default function Rail({
   activeTab,
   onSelectTab,
+  onProducts,
   orientation = 'vertical',
 }: {
   activeTab: string
   onSelectTab: (tab: Tab) => void
+  // D2.5 switch-garment: opens the product picker. When omitted, Products falls back to a
+  // dimmed "Soon" placeholder (keeps the rail honest if the feature isn't wired on a surface).
+  onProducts?: () => void
   // 'vertical' = the desktop side-strip (default, unchanged). 'horizontal' = the
   // mobile bottom-sheet tab bar (same items; active marker moves to the bottom).
   orientation?: 'vertical' | 'horizontal'
@@ -57,18 +62,22 @@ export default function Rail({
     <nav className={horizontal
       ? 'flex flex-row items-stretch bg-gray-50 border-b border-gray-200'
       : 'w-[76px] shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col py-2'}>
-      {ITEMS.map(({ key, label, Icon, wired }) => {
-        const active = wired && activeTab === key
+      {ITEMS.map(({ key, label, Icon, wired, action }) => {
+        // Action items (Products) are enabled only when their handler is supplied; they never
+        // read as the persistent "active" tab. Other items are the usual activeTab drivers.
+        const enabled = action ? !!onProducts : wired
+        const active = !action && wired && activeTab === key
+        const handleClick = action ? onProducts : () => onSelectTab(key as Tab)
         return (
           <button
             key={key}
             type="button"
-            disabled={!wired}
-            onClick={wired ? () => onSelectTab(key as Tab) : undefined}
+            disabled={!enabled}
+            onClick={enabled ? handleClick : undefined}
             aria-current={active ? 'page' : undefined}
-            title={wired ? label : `${label} — coming soon`}
+            title={enabled ? label : `${label} — coming soon`}
             className={`relative flex flex-col items-center gap-1 px-1 py-2.5 text-center transition-colors ${horizontal ? 'flex-1' : ''} ${
-              !wired
+              !enabled
                 ? 'text-gray-300 cursor-default'
                 : active
                   ? `bg-white text-gray-900 font-semibold ${marker} border-gray-900`
@@ -77,7 +86,7 @@ export default function Rail({
           >
             <Icon size={20} strokeWidth={1.75} />
             <span className="text-[10px] leading-tight">{label}</span>
-            {!wired && (
+            {!enabled && (
               <span className="text-[8px] uppercase tracking-wide text-gray-400 font-mono">Soon</span>
             )}
           </button>

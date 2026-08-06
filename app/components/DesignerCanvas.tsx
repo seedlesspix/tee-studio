@@ -422,6 +422,9 @@ export default function DesignerCanvas({
   // break under a sort). Falls back to module SIZES only if a product has no
   // Size option.
   const [productSizes, setProductSizes] = useState<string[]>([])
+  // Mirror of productSizes for effects that run without it in their dep list (the D2 refit branch reads
+  // the target's sizes to reconcile carried quantities, and it can't take productSizes as a dep).
+  const productSizesRef = useRef<string[]>([])
 
   // Fetch fonts and colors from Supabase based on print method
   const fetchDesignerConfig = useCallback(async (method: string) => {
@@ -497,6 +500,7 @@ export default function DesignerCanvas({
             print_area_back: unknown
             uploaded_files: unknown
             roster: unknown
+            quantities: unknown
           } | undefined
           if (!data) return
           try {
@@ -556,6 +560,16 @@ export default function DesignerCanvas({
             // Names & Numbers: placeholders ride back on the canvas JSON, but the ROSTER (the player
             // list) is separate state — restore it or a 15-name list is silently lost.
             if (Array.isArray(data.roster)) setRoster(data.roster as RosterEntry[])
+            // Size reconcile (D2 port/switch): the customer's picked quantities were for the SOURCE
+            // garment. Carry the counts for sizes the TARGET also offers (exact name), drop the rest —
+            // tee→triblend (both S–3XL) keeps the order; tee→onesie (adult→baby) resets to 0. Product-load
+            // already zeroed quantities for the target's sizes; this overlays the surviving counts. N&N
+            // orders derive quantities from the roster, so this is a no-op for them.
+            if (refit && data.quantities && typeof data.quantities === 'object' && productSizesRef.current.length) {
+              const carried = data.quantities as Record<string, number>
+              setQuantities(productSizesRef.current.reduce(
+                (acc: Record<string, number>, s: string) => ({ ...acc, [s]: Number(carried[s]) || 0 }), {}))
+            }
             canvas.discardActiveObject()
             canvas.renderAll()
           } catch (e) { /* ignore restore errors */ }
@@ -980,6 +994,9 @@ export default function DesignerCanvas({
   // Opening the picker while it's set; on pick we navigate to the designer for the target product
   // with the same design_id + refit=1 (the design_orders row carries the frozen source print box).
   const [portDesign, setPortDesign] = useState<SavedDesign | null>(null)
+  // D2.5 switch-garment: the Products rail opens the picker; on pick we snapshot the CURRENT draft and
+  // re-open it on the chosen product via the same design_id+refit path (switch = quick re-open).
+  const [switchOpen, setSwitchOpen] = useState(false)
   // The design currently being edited (set on restore, and after a save) so
   // re-saving updates it in place instead of forking a copy.
   const currentDesignIdRef = useRef<string | null>(null)
@@ -1188,6 +1205,7 @@ export default function DesignerCanvas({
           const sizeValues: string[] = data.options?.find((o: any) => o.name === 'Size')?.values || []
           const resolvedSizes = sizeValues.length ? sizeValues : SIZES
           setProductSizes(resolvedSizes)
+          productSizesRef.current = resolvedSizes
           setQuantities(prev => resolvedSizes.reduce(
             (acc: Record<string, number>, s: string) => ({ ...acc, [s]: prev[s] ?? 0 }), {}))
           // Check raw image URLs for actual _back files
@@ -3585,6 +3603,38 @@ export default function DesignerCanvas({
     }
   }
 
+  // D2.5 switch-garment mid-design: snapshot the CURRENT draft (its canvas + frozen print box) to a
+  // design_orders row, then re-open it on the chosen product through the SAME re-fit path as "Use on
+  // another product" (design_id + refit=1 + carried color). "Quick re-open," not a seamless in-place
+  // swap (that's a later upgrade). An empty canvas just opens the new product fresh.
+  const switchToProduct = async (target: TemplateProduct) => {
+    setSwitchOpen(false)
+    const bare = target.shopify_product_id.split('/').pop() || ''
+    const params = new URLSearchParams()
+    params.set('product_id', bare)
+    params.set('title', target.name)
+    const state = snapshotDesignState()
+    if (state) {
+      let draftId: string | null = null
+      try {
+        const res = await fetch('/api/designs/draft', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(state),
+        })
+        const body = res.ok ? await res.json() : null
+        draftId = body?.draftId ?? null
+      } catch (err) { console.error('[designer] switch snapshot failed:', err) }
+      // If we couldn't snapshot the in-progress design, DON'T navigate away — that would silently lose
+      // the customer's work. Keep them on the current garment and let them retry.
+      if (!draftId) { alert("Couldn't switch products just now — please try again."); return }
+      params.set('design_id', draftId)
+      params.set('refit', '1')
+      if (selectedColor) params.set('color', selectedColor)
+    }
+    window.location.href = `/designer?${params.toString()}`
+  }
+
   // Composite a thumbnail for the My Designs tile. Prefers the front side, and
   // falls back to the back for a back-only design so the tile is never blank.
   // Mutates the live canvas to render the chosen side, then puts it back —
@@ -3886,7 +3936,7 @@ export default function DesignerCanvas({
             exactly as before → parity-safe. */}
         {!isMobile && (
           <aside className="w-[400px] bg-white border-r border-gray-200 flex overflow-hidden shrink-0">
-            <Rail activeTab={activeTab} onSelectTab={handleSelectTab} />
+            <Rail activeTab={activeTab} onSelectTab={handleSelectTab} onProducts={() => setSwitchOpen(true)} />
             <div className="flex-1 min-w-0 overflow-y-auto pt-3">
               {activeTab === 'names' ? namesPanel : selectionPanel}
             </div>
@@ -4144,7 +4194,7 @@ export default function DesignerCanvas({
           of the column (never overlays the shirt). Mounted only on mobile, so it
           owns the single SelectionPanel. */}
       {isMobile && (
-        <MobileToolBand open={bandOpen} activeTab={activeTab} onSelectTab={bandSelectTab}>
+        <MobileToolBand open={bandOpen} activeTab={activeTab} onSelectTab={bandSelectTab} onProducts={() => setSwitchOpen(true)}>
           {mobileBandContent}
         </MobileToolBand>
       )}
@@ -4165,6 +4215,16 @@ export default function DesignerCanvas({
         excludeProductId={portDesign?.productId ?? null}
         subtitle={portDesign ? `Re-fit "${portDesign.name || portDesign.productTitle || 'your design'}" onto:` : undefined}
         onPick={(target) => { if (portDesign) openSavedOnProduct(portDesign, target) }}
+      />
+
+      {/* D2.5 switch-garment: the Products rail opens this on the CURRENT design; picking re-fits it
+          onto the new garment (excludes the product you're already on). */}
+      <ProductPickerModal
+        open={switchOpen}
+        onClose={() => setSwitchOpen(false)}
+        excludeProductId={product?.id ?? null}
+        subtitle="Switch this design to another garment — it re-fits onto:"
+        onPick={(target) => { void switchToProduct(target) }}
       />
     </div>
   )

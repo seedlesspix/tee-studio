@@ -29,11 +29,13 @@ export default function MobileToolBand({
   open,
   activeTab,
   onSelectTab,
+  onProducts,
   children,
 }: {
   open: boolean
   activeTab: string
   onSelectTab: (tab: Tab) => void
+  onProducts?: () => void
   children: ReactNode
 }) {
   return (
@@ -50,7 +52,7 @@ export default function MobileToolBand({
         </div>
       )}
       {/* Bottom icon strip — tool categories */}
-      <Rail orientation="horizontal" activeTab={activeTab} onSelectTab={onSelectTab} />
+      <Rail orientation="horizontal" activeTab={activeTab} onSelectTab={onSelectTab} onProducts={onProducts} />
       {/* Home-indicator safe area so the strip clears the gesture bar */}
       <div style={{ height: 'env(safe-area-inset-bottom)' }} />
     </div>
