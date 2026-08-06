@@ -30,12 +30,18 @@ export default function MobileToolBand({
   activeTab,
   onSelectTab,
   onProducts,
+  hiddenKeys,
+  methodToggle,
   children,
 }: {
   open: boolean
   activeTab: string
   onSelectTab: (tab: Tab) => void
   onProducts?: () => void
+  hiddenKeys?: string[]
+  // Print/Embroidery segmented control (embroidery mode) — shown above the rail strip so the method is
+  // switchable on phones too (null when the product supports a single method).
+  methodToggle?: ReactNode
   children: ReactNode
 }) {
   return (
@@ -52,7 +58,8 @@ export default function MobileToolBand({
         </div>
       )}
       {/* Bottom icon strip — tool categories */}
-      <Rail orientation="horizontal" activeTab={activeTab} onSelectTab={onSelectTab} onProducts={onProducts} />
+      {methodToggle && <div className="border-t border-gray-200 px-3 py-2">{methodToggle}</div>}
+      <Rail orientation="horizontal" activeTab={activeTab} onSelectTab={onSelectTab} onProducts={onProducts} hiddenKeys={hiddenKeys} />
       {/* Home-indicator safe area so the strip clears the gesture bar */}
       <div style={{ height: 'env(safe-area-inset-bottom)' }} />
     </div>

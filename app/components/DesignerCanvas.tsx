@@ -96,6 +96,14 @@ const UPLOAD_GUIDANCE = `Vector or high-resolution artwork (300 DPI or more) wil
 // is vector → never low-res). See project_lowres_warning.
 const LOWRES_MSG_SMALL = '⚠ This image is low-resolution and may print blurry. For the sharpest print use 300 DPI or higher — or email us your original file.'
 const LOWRES_MSG_PLACED = '⚠ Low resolution at this size — may print blurry. Try making it smaller, use a higher-resolution image, or email us your original.'
+// Customer-facing method labels (Denise: the site says "Print", never "Screen Print"). Editable /
+// labels-as-data-ready; the internal keys (screen_print/embroidery) are load-bearing and never change.
+const METHOD_LABELS: Record<string, string> = { screen_print: 'Print', embroidery: 'Embroidery' }
+const methodLabel = (m: string) => METHOD_LABELS[m] || m
+// Rail tools that don't apply to embroidery — hidden entirely in embroidery mode (Denise). Upload =
+// raster (can't be embroidered); names = the print cut-file N&N (embroidered N&N needs stitch files,
+// a future thread). Keep Text (embroidery fonts) · Thread colors · Art (embroidery clipart) · Curve.
+const HIDDEN_FOR_EMBROIDERY = ['upload', 'names']
 // Customer-facing address for the "email us the big file" valve. Shown in the reject
 // message so an oversize file still reaches the shop.
 const SUPPORT_EMAIL = 'orders@tshirtdeli.com' // TODO(Denise): confirm the real address
@@ -256,11 +264,34 @@ export default function DesignerCanvas({
   const [textColor, setTextColor] = useState('#ffffff')
   const [fontSize, setFontSize] = useState(36)
   const [printMethod, setPrintMethod] = useState<string>('')
+  // Embroidery mode (2026-08-06): a product's template can support MULTIPLE print methods (e.g. a hat =
+  // print OR embroidery). supportedMethods drives the in-designer Print/Embroidery toggle; a single
+  // supported method locks with no toggle. printMethod is the active one. The template is the source of
+  // truth (default_print_method); the legacy Shopify metafield is a fallback for non-templated products.
+  const [supportedMethods, setSupportedMethods] = useState<string[]>([])
+  // Cached so a method toggle can re-pick this product's per-method print area without re-fetching.
+  const loadedTemplateRef = useRef<any>(null)
+  const mockupNaturalRef = useRef<{ w: number; h: number } | null>(null)
+  // Set when a switch TO embroidery is confirmed: existing text is reset to the default embroidery font
+  // + thread color once that config finishes loading (it loads async after setPrintMethod). See the
+  // conversion effect near fetchDesignerConfig.
+  const pendingEmbConvertRef = useRef(false)
+  // True once the customer has used the method toggle, so the (async) product-load resolution can't
+  // clobber their choice if they toggle during the load window.
+  const userToggledMethodRef = useRef(false)
   const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center')
   const [selectedSvgColor, setSelectedSvgColor] = useState<string>('#000000')
   const [printPricing, setPrintPricing] = useState<Record<number, number>>({1: 12, 2: 20})
   const [dbFonts, setDbFonts] = useState<{ label: string; value: string }[]>([])
   const [dbColors, setDbColors] = useState<{ label: string; hex: string }[]>([])
+  // The method dbFonts/dbColors were loaded FOR. Both methods have non-empty sets, so "is the embroidery
+  // palette loaded yet?" can't be answered by length — the warn+convert restyle must wait until this
+  // equals the target method, or it would restyle text to the STALE (print) palette then lock itself out.
+  const [configMethod, setConfigMethod] = useState('')
+  // Bumped once the product's template + mockup size are cached, so the print-area effect re-picks the
+  // area on template-load (not just on method change) — needed when the resolved method equals the
+  // initial one (setPrintMethod is then a no-op and wouldn't otherwise fire the effect).
+  const [templateReadyTick, setTemplateReadyTick] = useState(0)
   const [letterSpacing, setLetterSpacing] = useState(0)
   const [isBold, setIsBold] = useState(false)
   const [isItalic, setIsItalic] = useState(false)
@@ -470,6 +501,7 @@ export default function DesignerCanvas({
       setDbColors(colorData)
       setTextColor(colorData.find((c: any) => c.label === 'Black')?.hex || colorData[0].hex)
     }
+    setConfigMethod(method)
   }, [])
 
   useEffect(() => {
@@ -1035,6 +1067,71 @@ export default function DesignerCanvas({
   // 1b: replaces the window._printAreaData bridge — front/back print-area %s,
   // written at product load, read by the Front/Back toggle. In-component ref.
   const printAreaDataRef = useRef<{ front: PrintAreaPct | null; back: PrintAreaPct | null } | null>(null)
+
+  // Compute + apply THIS product's print area for a given print METHOD. A hat can carry a different
+  // print area per method (embroidery vs screen-print), so a method toggle must re-pick. Reads the
+  // cached template + mockup natural size (no refetch). Logic lifted VERBATIM from the product-load
+  // block, so single-method products are unaffected; the method-reactive effect below re-invokes it.
+  // Returns true if an area was applied (false → no area for that method; caller keeps the fallback).
+  const applyTemplateAreaForMethod = useCallback((m: string): boolean => {
+    const tpl = loadedTemplateRef.current
+    const natural = mockupNaturalRef.current
+    if (!tpl || !natural) return false
+    const areas = (tpl.product_template_print_areas || []) as any[]
+    const forMethod = areas.filter(a => a.print_method === m)
+    const pickSide = (side: string) =>
+      forMethod.filter(a => a.side === side).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))[0] || null
+    const toPct = (a: any) => (a ? toPctContain(a, natural.w, natural.h, 680, 850) : null)
+    const frontArea = pickSide('front')
+    const backArea = pickSide('back')
+    const pa = { front: toPct(frontArea), back: toPct(backArea) }
+    if (pa.front || pa.back) {
+      printAreaDataRef.current = pa
+      setPrintArea(pa.front || pa.back)
+      templateIdRef.current = tpl.id
+      printAreaFrontIdRef.current = frontArea?.id ?? null
+      printAreaBackIdRef.current = backArea?.id ?? null
+      printAreaFrontSnapRef.current = frontArea ?? null
+      printAreaBackSnapRef.current = backArea ?? null
+      return true
+    }
+    return false
+  }, [])
+
+  // Re-pick the print area for the CURRENT method — fires both when the customer toggles the method AND
+  // when the template finishes loading (templateReadyTick). The latter matters when the resolved method
+  // equals the initial one (setPrintMethod is then a no-op). This is the SINGLE place the templated
+  // print area is applied, so it always matches the live printMethod even if a toggle raced the load.
+  // No-op for non-templated products or before the template loads (applyTemplateAreaForMethod → false).
+  useEffect(() => {
+    if (printMethod) applyTemplateAreaForMethod(printMethod)
+  }, [printMethod, templateReadyTick, applyTemplateAreaForMethod])
+
+  // Warn+convert follow-through: after a confirmed switch to embroidery, restyle existing text to the
+  // now-loaded embroidery font + thread color. The embroidery fonts/colors load ASYNC after setPrintMethod,
+  // so this MUST wait until configMethod === 'embroidery' (both palettes are non-empty, so length can't
+  // tell them apart — gating on length restyled text to the stale PRINT font, then locked itself out).
+  // Skips N&N placeholders (their own font system) and curved-text bakes (not i-text).
+  useEffect(() => {
+    if (printMethod !== 'embroidery' || !pendingEmbConvertRef.current) return
+    if (configMethod !== 'embroidery' || !dbFonts.length) return // embroidery palette not loaded yet
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    const font = dbFonts[0]?.value
+    const thread = dbColors.find((c: any) => c.label === 'Black')?.hex || dbColors[0]?.hex
+    const restyle = (o: any) => {
+      if (!o || o[NN_ROLE_PROP] || (o.type !== 'i-text' && o.type !== 'textbox')) return
+      if (font) o.set({ fontFamily: font })
+      if (thread) o.set({ fill: thread })
+      o.initDimensions?.(); o.setCoords?.()
+    }
+    ;[...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current].forEach(restyle)
+    canvas.renderAll()
+    pendingEmbConvertRef.current = false
+    markDirty()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [printMethod, configMethod, dbFonts, dbColors])
+
   useEffect(() => {
     fabricCanvasRef.current = fabricCanvas
   }, [fabricCanvas])
@@ -1238,26 +1335,12 @@ export default function DesignerCanvas({
           )
           setHasBackImages(anyBack)
           // Parse print method
-          // Set print method from metafield or default to screen_print
+          // Initial print method from the metafield (default screen_print); the template can override it
+          // below. setPrintMethod drives the fetchDesignerConfig effect, which loads fonts/colors/pricing
+          // for the method AND tags configMethod — so there's no separate inline fetch to keep in sync
+          // (removing it also kills the old double-fetch race when template method ≠ metafield method).
           const method = data.printMethod?.value || 'screen_print'
           setPrintMethod(method)
-          // Directly fetch fonts and colors for this method
-          ;(async () => {
-          const [{ data: fontData }, { data: colorData }] = await Promise.all([
-            supabase.from('designer_fonts').select('label, value')
-              .eq('print_method_key', method).eq('is_active', true).order('sort_order'),
-            supabase.from('designer_colors').select('label, hex')
-              .eq('print_method_key', method).eq('is_active', true).order('sort_order'),
-          ])
-          if (fontData && fontData.length > 0) {
-            setDbFonts(fontData)
-            setSelectedFont(fontData[0].value)
-          }
-          if (colorData && colorData.length > 0) {
-            setDbColors(colorData)
-            setTextColor(colorData.find((c: any) => c.label === 'Black')?.hex || colorData[0].hex)
-          }
-          })()
 
           // Print area: prefer admin-managed product_templates; fall back to the
           // legacy Shopify metafield for products without a template row.
@@ -1266,7 +1349,7 @@ export default function DesignerCanvas({
               const { supabase } = await import('../lib/supabase')
               const { data: tpl } = await supabase
                 .from('product_templates')
-                .select('id, default_print_method, product_template_print_areas(*), product_template_colors(*)')
+                .select('id, default_print_method, supported_print_methods, product_template_print_areas(*), product_template_colors(*)')
                 .eq('shopify_product_id', data.id)
                 .eq('is_active', true)
                 .maybeSingle()
@@ -1281,56 +1364,34 @@ export default function DesignerCanvas({
               }
 
               const areas = (tpl?.product_template_print_areas || []) as any[]
-              if (tpl && areas.length > 0) {
-                // Print-area px are stored in the mockup's NATURAL pixel space.
-                // Convert to the percentages the overlay renders, deriving the
-                // reference natural size from a loaded product image (all color
-                // mockups share aspect). See CLAUDE.md "pixels vs. percentages".
-                // Derive the mockup's natural size from the FIRST image that actually loads — not
-                // just allImages[0], which can be a broken/renamed URL (the onesie's naming history),
-                // silently discarding a template with perfectly good print areas and leaving N&N (and
-                // the print-box overlay) with no box at all.
-                let natural: { w: number; h: number } | null = null
-                for (const img of allImages) {
-                  natural = await getImageNaturalSize(img.url)
-                  if (natural) break
-                }
-                if (natural) {
-                  const forMethod = areas.filter(a => a.print_method === method)
-                  // Single area per side for Phase 3: the first by sort_order.
-                  const pickSide = (side: string) =>
-                    forMethod.filter(a => a.side === side)
-                      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))[0] || null
-                  // Containment-aware px -> %. The area px are relative to the
-                  // mockup's natural box (natural.w x natural.h), but the shirt
-                  // image is rendered with objectFit: contain inside a fixed
-                  // CONTAINER_W x CONTAINER_H box. When the image aspect differs
-                  // from the container aspect, `contain` letterboxes (fills width,
-                  // bars top/bottom) or pillarboxes (fills height, bars L/R) the
-                  // image — so we must place the area inside the image's *rendered*
-                  // box (scaled + offset), then express that as a % of the
-                  // container. Ignoring this stretched the box on the boxed axis
-                  // and shifted it by the missing offset.
-                  // Containment transform now lives in ../lib/printAreaGeometry
-                  // (shared + unit-tested at synthetic aspect ratios; pinned so
-                  // the CanvasStage extraction can't silently shift it). Same
-                  // math as before, verbatim.
-                  const toPct = (a: any) =>
-                    a ? toPctContain(a, natural.w, natural.h, 680, 850) : null
-                  const frontArea = pickSide('front')
-                  const backArea = pickSide('back')
-                  const pa = { front: toPct(frontArea), back: toPct(backArea) }
-                  if (pa.front || pa.back) {
-                    printAreaDataRef.current = pa
-                    setPrintArea(pa.front || pa.back)
-                    templateIdRef.current = tpl.id
-                    printAreaFrontIdRef.current = frontArea?.id ?? null
-                    printAreaBackIdRef.current = backArea?.id ?? null
-                    printAreaFrontSnapRef.current = frontArea ?? null
-                    printAreaBackSnapRef.current = backArea ?? null
-                    return
+              if (tpl) {
+                // The TEMPLATE is the source of truth for the print method (embroidery mode). Keep the
+                // metafield method when the template supports it, else fall to the template default;
+                // expose the supported set so the designer shows a Print/Embroidery toggle when >1.
+                loadedTemplateRef.current = tpl
+                const supported = (tpl.supported_print_methods as string[] | null) || []
+                setSupportedMethods(supported)
+                const resolved = supported.includes(method) ? method : (tpl.default_print_method || method)
+                if (areas.length > 0) {
+                  // Derive the mockup's natural size from the FIRST image that actually loads (not just
+                  // allImages[0] — the onesie's renamed URLs could be broken) and CACHE it so a toggle
+                  // can re-pick the per-method area without a refetch.
+                  let natural: { w: number; h: number } | null = null
+                  for (const img of allImages) {
+                    natural = await getImageNaturalSize(img.url)
+                    if (natural) break
                   }
+                  mockupNaturalRef.current = natural
                 }
+                // Set the resolved method UNLESS the customer already toggled during this async load (don't
+                // clobber their choice). React dedupes a same-value set; the templateReadyTick bump below
+                // fires the print-area effect either way, so the area is applied for the LIVE method — a
+                // toggle-during-load can't strand an embroidery method on the print box.
+                if (!userToggledMethodRef.current) setPrintMethod(resolved)
+                setTemplateReadyTick(t => t + 1)
+                return // templated products use the template area (via the effect), never the metafield
+              } else {
+                setSupportedMethods([])
               }
             } catch (e) {
               console.error('Template print-area read failed, falling back to metafield:', e)
@@ -2466,6 +2527,39 @@ export default function DesignerCanvas({
       canvas.renderAll()
     }
     setActiveTab(tab)
+  }
+
+  // Print/Embroidery toggle (embroidery mode). Changing the method re-swaps fonts/colors/pricing/print
+  // area (via the printMethod effects) and hides/shows print-only tools. Step 3 wraps this with a
+  // warn+convert guard when the switch would strip incompatible content (uploads, print-only text).
+  const handleMethodSwitch = (m: string) => {
+    if (!m || m === printMethod) return
+    userToggledMethodRef.current = true // an in-flight product load must not clobber this choice
+    const canvas = fabricCanvasRef.current
+    if (m === 'embroidery') {
+      // Warn + convert: uploaded images can't be embroidered (removed), and existing text moves to an
+      // embroidery font + thread color. Only prompt when there's something to convert; a blank or
+      // already-compatible (clipart/text-free) canvas switches silently.
+      const all = canvas ? [...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current] : []
+      const uploads = all.filter((o: any) => o && o._uploadSrc)
+      const hasText = all.some((o: any) => o && (o.type === 'i-text' || o.type === 'textbox') && !o[NN_ROLE_PROP])
+      if (uploads.length || hasText) {
+        const bits = [uploads.length ? 'remove uploaded images' : '', hasText ? 'set your text to an embroidery font + thread color' : ''].filter(Boolean)
+        if (!window.confirm(`Switching to Embroidery will ${bits.join(' and ')}. Continue?`)) return
+        if (uploads.length) {
+          uploads.forEach((o: any) => canvas?.remove(o))
+          frontObjectsRef.current = frontObjectsRef.current.filter((o: any) => !o._uploadSrc)
+          backObjectsRef.current = backObjectsRef.current.filter((o: any) => !o._uploadSrc)
+          markDirty() // the removal is a design change even when there's no text to restyle (#autodraft)
+        }
+        if (hasText) pendingEmbConvertRef.current = true // text re-styled once embroidery config loads
+      }
+      // Land on a still-visible tool (Upload/Names are hidden in embroidery).
+      if (HIDDEN_FOR_EMBROIDERY.includes(activeTab)) setActiveTab('text')
+    }
+    canvas?.discardActiveObject(); canvas?.renderAll()
+    setLowResWarning(null)
+    setPrintMethod(m)
   }
 
   // Mobile band tab tap: switch tool AND open the band; tapping the ALREADY-active
@@ -3908,6 +4002,30 @@ export default function DesignerCanvas({
       }}
     />
   )
+  // Print/Embroidery segmented control (embroidery mode) — shared by the desktop aside header AND the
+  // mobile band so BOTH surfaces can switch method. Only when the product supports >1. Active = quiet
+  // dark (red-vocab: red is action-only, never selected-state).
+  const methodToggle = supportedMethods.length > 1 ? (
+    <div className="flex gap-1.5">
+      {supportedMethods.map(m => {
+        const active = printMethod === m
+        return (
+          <button
+            key={m}
+            type="button"
+            onClick={() => handleMethodSwitch(m)}
+            aria-pressed={active}
+            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+              active ? 'bg-gray-900 text-white' : 'border border-gray-300 text-gray-700 hover:border-gray-400'
+            }`}
+          >
+            {methodLabel(m)}
+          </button>
+        )
+      })}
+    </div>
+  ) : null
+
   // On mobile every tool gets a purpose-built compact band (horizontal rows), all
   // mobile-only so the desktop vertical SelectionPanel stays untouched.
   const mobileBandContent =
@@ -4000,10 +4118,15 @@ export default function DesignerCanvas({
             is mounted → one textInputRef, one textarea. Desktop uses `flex`
             exactly as before → parity-safe. */}
         {!isMobile && (
-          <aside className="w-[400px] bg-white border-r border-gray-200 flex overflow-hidden shrink-0">
-            <Rail activeTab={activeTab} onSelectTab={handleSelectTab} onProducts={() => setSwitchOpen(true)} />
-            <div className="flex-1 min-w-0 overflow-y-auto pt-3">
-              {activeTab === 'names' ? namesPanel : selectionPanel}
+          <aside className="w-[400px] bg-white border-r border-gray-200 flex flex-col overflow-hidden shrink-0">
+            {/* Embroidery mode: Print/Embroidery toggle, only when the product supports BOTH. */}
+            {methodToggle && <div className="border-b border-gray-200 p-2 shrink-0">{methodToggle}</div>}
+            <div className="flex flex-1 min-h-0 overflow-hidden">
+              <Rail activeTab={activeTab} onSelectTab={handleSelectTab} onProducts={() => setSwitchOpen(true)}
+                hiddenKeys={printMethod === 'embroidery' ? HIDDEN_FOR_EMBROIDERY : undefined} />
+              <div className="flex-1 min-w-0 overflow-y-auto pt-3">
+                {activeTab === 'names' ? namesPanel : selectionPanel}
+              </div>
             </div>
           </aside>
         )}
@@ -4259,7 +4382,7 @@ export default function DesignerCanvas({
           of the column (never overlays the shirt). Mounted only on mobile, so it
           owns the single SelectionPanel. */}
       {isMobile && (
-        <MobileToolBand open={bandOpen} activeTab={activeTab} onSelectTab={bandSelectTab} onProducts={() => setSwitchOpen(true)}>
+        <MobileToolBand open={bandOpen} activeTab={activeTab} onSelectTab={bandSelectTab} onProducts={() => setSwitchOpen(true)} hiddenKeys={printMethod === 'embroidery' ? HIDDEN_FOR_EMBROIDERY : undefined} methodToggle={methodToggle}>
           {mobileBandContent}
         </MobileToolBand>
       )}

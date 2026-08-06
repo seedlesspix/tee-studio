@@ -45,6 +45,7 @@ export default function Rail({
   activeTab,
   onSelectTab,
   onProducts,
+  hiddenKeys,
   orientation = 'vertical',
 }: {
   activeTab: string
@@ -52,17 +53,21 @@ export default function Rail({
   // D2.5 switch-garment: opens the product picker. When omitted, Products falls back to a
   // dimmed "Soon" placeholder (keeps the rail honest if the feature isn't wired on a surface).
   onProducts?: () => void
+  // Embroidery mode: rail item keys to OMIT entirely (e.g. ['upload','names'] — raster uploads and the
+  // print cut-file N&N don't apply to embroidery). Hidden, not greyed (Denise's call).
+  hiddenKeys?: string[]
   // 'vertical' = the desktop side-strip (default, unchanged). 'horizontal' = the
   // mobile bottom-sheet tab bar (same items; active marker moves to the bottom).
   orientation?: 'vertical' | 'horizontal'
 }) {
   const horizontal = orientation === 'horizontal'
   const marker = horizontal ? 'border-b-2' : 'border-l-2'
+  const items = hiddenKeys?.length ? ITEMS.filter(i => !hiddenKeys.includes(i.key)) : ITEMS
   return (
     <nav className={horizontal
       ? 'flex flex-row items-stretch bg-gray-50 border-b border-gray-200'
       : 'w-[76px] shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col py-2'}>
-      {ITEMS.map(({ key, label, Icon, wired, action }) => {
+      {items.map(({ key, label, Icon, wired, action }) => {
         // Action items (Products) are enabled only when their handler is supplied; they never
         // read as the persistent "active" tab. Other items are the usual activeTab drivers.
         const enabled = action ? !!onProducts : wired
