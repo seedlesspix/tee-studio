@@ -178,15 +178,20 @@ const SIZES = ['S', 'M', 'L', 'XL', '2XL', '3XL']
 
 // Constrain a Fabric object to stay within the print area bounds
 function constrainObject(obj: any, bounds: { left: number; top: number; right: number; bottom: number }) {
-  // Use aCoords for accurate canvas-relative bounding box
+  // Use aCoords for accurate canvas-relative bounding box. Take min/max across ALL FOUR corners — for a
+  // ROTATED object any corner can be the extreme on a given axis, so the old two-corners-per-edge form
+  // (min(tl,bl) etc., correct only when axis-aligned) computed a too-small box and a rotated object
+  // could be dragged out of the print area. (Pre-existing since the initial commit.)
   obj.setCoords()
   const coords = obj.aCoords
   if (!coords) return
 
-  const objLeft   = Math.min(coords.tl.x, coords.bl.x)
-  const objTop    = Math.min(coords.tl.y, coords.tr.y)
-  const objRight  = Math.max(coords.tr.x, coords.br.x)
-  const objBottom = Math.max(coords.bl.y, coords.br.y)
+  const xs = [coords.tl.x, coords.tr.x, coords.bl.x, coords.br.x]
+  const ys = [coords.tl.y, coords.tr.y, coords.bl.y, coords.br.y]
+  const objLeft   = Math.min(...xs)
+  const objRight  = Math.max(...xs)
+  const objTop    = Math.min(...ys)
+  const objBottom = Math.max(...ys)
 
   let newLeft = obj.left
   let newTop  = obj.top
