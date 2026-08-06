@@ -219,7 +219,7 @@ export default function SelectionPanel({
                   </div>
                   {dbColors.length > 0 && (
                     <p className="text-xs text-gray-800 mt-1 font-mono">
-                      {dbColors.find(c => c.hex === textColor)?.label || 'Custom'}
+                      {dbColors.find(c => c.hex?.toLowerCase() === textColor?.toLowerCase())?.label || 'Custom'}
                     </p>
                   )}
                 </div>
@@ -456,7 +456,7 @@ export default function SelectionPanel({
                       ))}
                     </div>
                     <p className="text-xs text-gray-800 mt-1 font-mono">
-                      {(dbColors.length > 0 ? dbColors : [{ label: 'Black', hex: '#000000' }, { label: 'White', hex: '#ffffff' }]).find(c => c.hex === selectedSvgColor)?.label || selectedSvgColor || 'Black'}
+                      {(dbColors.length > 0 ? dbColors : [{ label: 'Black', hex: '#000000' }, { label: 'White', hex: '#ffffff' }]).find(c => c.hex?.toLowerCase() === selectedSvgColor?.toLowerCase())?.label || selectedSvgColor || 'Black'}
                     </p>
                   </div>
                 )}
