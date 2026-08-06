@@ -212,14 +212,18 @@ export default function SelectionPanel({
                         }`}
                       />
                     ))}
-                    <input type="color" value={textColor}
-                      onChange={e => setTextColor(e.target.value)}
-                      className="w-8 h-8 rounded-full cursor-pointer overflow-hidden"
-                      title="Custom color" />
+                    {/* Embroidery = thread colors ONLY (Denise): no custom/off-palette color, since it
+                        can't be matched to a thread. Print keeps the free color picker. */}
+                    {printMethod !== 'embroidery' && (
+                      <input type="color" value={textColor}
+                        onChange={e => setTextColor(e.target.value)}
+                        className="w-8 h-8 rounded-full cursor-pointer overflow-hidden"
+                        title="Custom color" />
+                    )}
                   </div>
                   {dbColors.length > 0 && (
                     <p className="text-xs text-gray-800 mt-1 font-mono">
-                      {dbColors.find(c => c.hex?.toLowerCase() === textColor?.toLowerCase())?.label || 'Custom'}
+                      {dbColors.find(c => c.hex?.toLowerCase() === textColor?.toLowerCase())?.label || textColor || 'Custom'}
                     </p>
                   )}
                 </div>
