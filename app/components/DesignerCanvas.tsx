@@ -10,6 +10,7 @@ import { buildColorImageMap, getColorImages } from '../lib/productImages'
 import { AUTODRAFT_KEY, buildEnvelope, parseEnvelope, shouldRestore } from '../lib/autodraft'
 import NamesNumbersPanel from './NamesNumbersPanel'
 import { type RosterEntry, type NnRole, NN_ROLE_PROP, entryHasContent, condensedScaleX, rosterShirtCount, rosterSizeQuantities, rosterValue, jerseyStackLayout } from '../lib/namesNumbers'
+import { renderCurvedArc } from '../lib/curvedArc'
 
 // Locked jersey placeholders can't be moved/resized/rotated by the customer (geometry is canonical;
 // only font + color are theirs). These locks ENFORCE that on desktop AND mobile regardless of which
@@ -1671,6 +1672,42 @@ export default function DesignerCanvas({
 
   const colors = product?.options.find(o => o.name === 'Color')?.values || []
 
+  // Headless curved-text bake: rasterize the arc (renderCurvedArc — the SAME pixel code the slider
+  // path uses, now shared) then wrap it in a stamped, placed, print-area-constrained FabricImage. No
+  // active-object / React-state reads — the curve slider effect calls it for the selected object; the
+  // D2 re-fit path calls it per _isCurvedText object to re-curve onto the target garment.
+  const bakeCurvedArc = async (
+    rawText: string,
+    p: { curveAmount: number; fontSize: number; fontFamily: string; fill: string; bold: boolean; italic: boolean },
+    left: number, top: number,
+    bounds: { left: number; top: number; right: number; bottom: number } | null,
+  ): Promise<any> => {
+    const { dataUrl } = renderCurvedArc(rawText, p)
+    const { FabricImage } = await import('fabric')
+    const img: any = await FabricImage.fromURL(dataUrl)
+    img.set({ left, top, originX: 'center', originY: 'center' })
+    img._isCurvedText = true
+    img._originalText = rawText
+    // Stamp the exact params this was baked with, so selecting the curved text reflects them and
+    // adjusting re-bakes from its OWN font/size/color.
+    img._curveAmount = p.curveAmount
+    img._curveFontFamily = p.fontFamily
+    img._curveFontSize = p.fontSize
+    img._curveFill = p.fill
+    img._curveBold = p.bold
+    img._curveItalic = p.italic
+    // Keep the baked curved text inside the print area (Issue-2).
+    if (bounds) {
+      const maxScale = Math.min(
+        (bounds.right - bounds.left) / (img.width || 1),
+        (bounds.bottom - bounds.top) / (img.height || 1),
+      )
+      if (maxScale < 1) img.set({ scaleX: maxScale, scaleY: maxScale })
+      constrainObject(img, bounds)
+    }
+    return img
+  }
+
   // Re-render curved text when curveAmount (or the baked font/size/color) changes.
   // Bug #1 fix: this used to rasterize + remove/add + re-select on EVERY slider
   // tick, so dragging shook the tool. Now the bake is COALESCED to one per
@@ -1733,95 +1770,14 @@ export default function DesignerCanvas({
         return
       }
 
-      // curve !== 0 → bake the arc to an image
-      const direction = cAmount > 0 ? 'curve-up' : 'curve-down'
-      const absAmount = Math.abs(cAmount)
-      const fSize = cSize
-      const radius = Math.max(fSize * 1.5, 800 - absAmount * 7.5)
-
-      const tmpCanvas = document.createElement('canvas')
-      const tmpCtx = tmpCanvas.getContext('2d')!
-      tmpCtx.font = `${cItalic ? 'italic' : 'normal'} ${cBold ? 'bold' : 'normal'} ${fSize}px ${cFont}`
-      const chars = rawText.split('')
-      const charWidths = chars.map((ch: string) => tmpCtx.measureText(ch).width)
-      const totalWidth = charWidths.reduce((a: number, b: number) => a + b, 0)
-      const padding = fSize * 2
-      const size = Math.min(Math.max(totalWidth + padding * 2, radius * 2 + padding * 2), 1200)
-      const offCanvas = document.createElement('canvas')
-      offCanvas.width = size
-      offCanvas.height = size
-      const ctx = offCanvas.getContext('2d')!
-      ctx.font = `${cItalic ? 'italic' : 'normal'} ${cBold ? 'bold' : 'normal'} ${fSize}px ${cFont}`
-      ctx.fillStyle = cFill
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-
-      const totalAngle = totalWidth / radius
-      const isDown = direction === 'curve-down'
-      const orderedChars = isDown ? [...chars].reverse() : chars
-      const orderedWidths = isDown ? [...charWidths].reverse() : charWidths
-      let currentAngle = -totalAngle / 2
-      const cx = size / 2
-      const cy = direction === 'curve-up' ? size * 0.72 : size * 0.28
-
-      orderedChars.forEach((ch: string, idx: number) => {
-        const charAngle = currentAngle + orderedWidths[idx] / radius / 2
-        ctx.save()
-        ctx.translate(cx, cy)
-        ctx.rotate(charAngle)
-        ctx.translate(0, direction === 'curve-up' ? -radius : radius)
-        ctx.fillText(ch, 0, 0)
-        ctx.restore()
-        currentAngle += orderedWidths[idx] / radius
-      })
-
-      // Crop to actual text pixels
-      const cropCanvas = document.createElement('canvas')
-      const cropCtx = cropCanvas.getContext('2d')!
-      const imgData = ctx.getImageData(0, 0, offCanvas.width, offCanvas.height)
-      const pixels = imgData.data
-      let minX = offCanvas.width, minY = offCanvas.height, maxX = 0, maxY = 0
-      for (let y = 0; y < offCanvas.height; y++) {
-        for (let x = 0; x < offCanvas.width; x++) {
-          if (pixels[(y * offCanvas.width + x) * 4 + 3] > 10) {
-            minX = Math.min(minX, x); minY = Math.min(minY, y)
-            maxX = Math.max(maxX, x); maxY = Math.max(maxY, y)
-          }
-        }
-      }
-      const pad = Math.ceil(fSize * 0.3)
-      minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad)
-      maxX = Math.min(offCanvas.width - 1, maxX + pad)
-      maxY = Math.min(offCanvas.height - 1, maxY + pad)
-      cropCanvas.width = Math.max(1, maxX - minX)
-      cropCanvas.height = Math.max(1, maxY - minY)
-      cropCtx.drawImage(offCanvas, minX, minY, cropCanvas.width, cropCanvas.height, 0, 0, cropCanvas.width, cropCanvas.height)
-      const dataUrl = cropCanvas.toDataURL('image/png')
-
-      const { FabricImage } = await import('fabric')
-      const img: any = await FabricImage.fromURL(dataUrl)
-      if (myToken !== curveTokenRef.current) return  // superseded while decoding
-      img.set({ left: spawnX, top: spawnY, originX: 'center', originY: 'center' })
-      img._isCurvedText = true
-      img._originalText = rawText
-      // Stamp the exact params this was baked with, so selecting the curved text
-      // reflects them and adjusting re-bakes from its OWN font/size/color.
-      img._curveAmount = cAmount
-      img._curveFontFamily = cFont
-      img._curveFontSize = fSize
-      img._curveFill = cFill
-      img._curveBold = cBold
-      img._curveItalic = cItalic
-      // Keep the re-baked curved text inside the print area (Issue-2).
-      const cbounds = getPrintAreaBounds()
-      if (cbounds) {
-        const maxScale = Math.min(
-          (cbounds.right - cbounds.left) / (img.width || 1),
-          (cbounds.bottom - cbounds.top) / (img.height || 1),
-        )
-        if (maxScale < 1) img.set({ scaleX: maxScale, scaleY: maxScale })
-        constrainObject(img, cbounds)
-      }
+      // curve !== 0 → bake the arc to a stamped image via the shared headless renderer (renderCurvedArc
+      // inside bakeCurvedArc is the exact pixel code that used to live here).
+      const img = await bakeCurvedArc(
+        rawText,
+        { curveAmount: cAmount, fontSize: cSize, fontFamily: cFont, fill: cFill, bold: cBold, italic: cItalic },
+        spawnX, spawnY, getPrintAreaBounds(),
+      )
+      if (myToken !== curveTokenRef.current) return  // superseded while baking/decoding
       swap(img)
     }
 
