@@ -22,11 +22,21 @@ export type DesignState = {
   back?: unknown
   uploadedFiles?: UploadedFile[]
   roster?: RosterEntry[] // Names & Numbers (Phase 1: auto-draft only; no DB column until Phase 2)
+  // Frozen print-area geometry — the box this design was made against. Persisted so a saved design
+  // carries its OWN source box (D2 Design Portability re-fits FROM it when the design is opened onto a
+  // different product). Without this a saved-design row had NULL print_area_* and the port fell through
+  // to a no-op (no re-fit). The order path already stamps these on design_orders; saves now match it.
+  // printArea* are the product_template_print_areas rows (JSONB) — isSnapshot()-shaped.
+  templateId?: string
+  printAreaFrontId?: string
+  printAreaBackId?: string
+  printAreaFront?: unknown
+  printAreaBack?: unknown
 }
 
 // The columns rowToDesignState needs — keep in lockstep with it.
 export const DESIGN_STATE_COLUMNS =
-  'shopify_product_id, shopify_variant_id, product_title, selected_color, print_method, quantities, roster, uploaded_files, sides_designed, canvas_json_front, canvas_json_back'
+  'shopify_product_id, shopify_variant_id, product_title, selected_color, print_method, quantities, roster, uploaded_files, sides_designed, canvas_json_front, canvas_json_back, template_id, print_area_front_id, print_area_back_id, print_area_front, print_area_back'
 
 export type DesignStateRow = {
   shopify_product_id: string | null
@@ -40,9 +50,26 @@ export type DesignStateRow = {
   sides_designed: number | null
   canvas_json_front: string | null
   canvas_json_back: string | null
+  template_id: string | null
+  print_area_front_id: string | null
+  print_area_back_id: string | null
+  print_area_front: unknown
+  print_area_back: unknown
 }
 
 export function designStateToRow(state: DesignState) {
+  // The frozen print-area box is written ONLY when present. This path also feeds the /api/designs
+  // UPDATE of an owned design, and the box is "sticky": a re-save that can't determine the box (ref
+  // null — saved before the async template load, or a non-templated product) must PRESERVE the stored
+  // box, not overwrite it with null (which would silently revert that design's D2 port to a no-op). On
+  // INSERT the omitted keys fall to the DB default (null). A re-save WITH a box (e.g. after porting to a
+  // new garment) still updates it, because the ref is non-null then.
+  const box: Record<string, unknown> = {}
+  if (state.templateId != null) box.template_id = state.templateId
+  if (state.printAreaFrontId != null) box.print_area_front_id = state.printAreaFrontId
+  if (state.printAreaBackId != null) box.print_area_back_id = state.printAreaBackId
+  if (state.printAreaFront != null) box.print_area_front = state.printAreaFront
+  if (state.printAreaBack != null) box.print_area_back = state.printAreaBack
   return {
     shopify_product_id: state.productId ?? null,
     shopify_variant_id: state.variantId ?? null,
@@ -55,6 +82,7 @@ export function designStateToRow(state: DesignState) {
     sides_designed: state.sidesDesigned ?? null,
     canvas_json_front: state.front ? JSON.stringify(state.front) : null,
     canvas_json_back: state.back ? JSON.stringify(state.back) : null,
+    ...box,
   }
 }
 
@@ -72,6 +100,11 @@ export function rowToDesignState(data: DesignStateRow): DesignState {
     sidesDesigned: data.sides_designed ?? undefined,
     front: data.canvas_json_front ? safeParse(data.canvas_json_front) : undefined,
     back: data.canvas_json_back ? safeParse(data.canvas_json_back) : undefined,
+    templateId: data.template_id ?? undefined,
+    printAreaFrontId: data.print_area_front_id ?? undefined,
+    printAreaBackId: data.print_area_back_id ?? undefined,
+    printAreaFront: data.print_area_front ?? undefined,
+    printAreaBack: data.print_area_back ?? undefined,
   }
 }
 

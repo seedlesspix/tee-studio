@@ -121,6 +121,10 @@ interface Props {
   // artwork onto THIS product's print box on open (proportional scale-to-fit + re-center) instead of a
   // plain edit-restore. Set by the "Use on another product" flow.
   refit?: boolean
+  // D2 color reconcile: the color to prefer on load (?color=), carried from the saved design so a port
+  // lands on the SAME color when the target offers it (exact name match), else the target's first color.
+  // Only used when no variant_id pins a color.
+  initialColor?: string
 }
 
 const COLOR_HEX_MAP: Record<string, string> = {
@@ -200,7 +204,7 @@ function getImageNaturalSize(url: string): Promise<{ w: number; h: number } | nu
 }
 
 export default function DesignerCanvas({
-  productId, variantId, productTitle, productPrice, designId = '', restoreId = '', initialQuantity = '', refit = false
+  productId, variantId, productTitle, productPrice, designId = '', restoreId = '', initialQuantity = '', refit = false, initialColor = ''
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const shirtImgRef = useRef<HTMLImageElement>(null)
@@ -521,11 +525,21 @@ export default function DesignerCanvas({
                 // it's mounted — otherwise a ported jersey keeps its source-box position/size.
                 applyStackLayout()
               }
-              // Back geometry re-fits into the ref; the DOM-coupled follow-ups (re-wrap/re-curve/
-              // re-stack) defer to the first flip to Back, when its print-area overlay mounts.
+              // Back geometry re-fits into the ref. Its DOM-coupled follow-ups (text re-wrap, curved
+              // re-bake) still defer to the first flip to Back (they need the back overlay to measure).
+              // But the N&N stack is PURE geometry — re-stack it EAGERLY onto the back box (derived from
+              // printAreaDataRef %, no DOM) so a jersey ported with its stack on the back is correct even
+              // if the customer saves/orders WITHOUT ever flipping to Back.
               const back = refitJson(data.canvas_json_back, data.print_area_back, printAreaDataRef.current?.back)
-              backObjectsRef.current = back.objs.length ? (await util.enlivenObjects(back.objs)) as any[] : []
-              backRefitPendingRef.current = back.objs.length ? back.scale : null
+              const backObjs = back.objs.length ? (await util.enlivenObjects(back.objs)) as any[] : []
+              backObjectsRef.current = backObjs
+              const backPct = printAreaDataRef.current?.back
+              const backPh = backObjs.filter((o: any) => o[NN_ROLE_PROP])
+              if (backPh.length && backPct) {
+                const bx = boxFromPct(backPct)
+                layoutStackInto(backPh, { left: bx.left, top: bx.top, right: bx.left + bx.width, bottom: bx.top + bx.height })
+              }
+              backRefitPendingRef.current = backObjs.length ? back.scale : null
             } else {
               if (data.canvas_json_front) {
                 const frontJson = JSON.parse(data.canvas_json_front)
@@ -841,6 +855,12 @@ export default function DesignerCanvas({
   const curveRafRef = useRef<number | null>(null)
   const curveTokenRef = useRef(0)
   const curveBakingRef = useRef(false)
+  // Set to a curved-text object while it's being SCALE-dragged (object:scaling), consumed on
+  // object:modified to re-bake it crisp. A bare scaleX≠1 test can't stand in for "was just resized":
+  // bakeCurvedArc fit-clamps oversized arcs to scale<1 and that scale PERSISTS, so a plain move/rotate
+  // of a clamped/restored curved text would otherwise spuriously re-bake. This flag fires only on a real
+  // scale gesture (move→object:moving, rotate→object:rotating never set it).
+  const curvedScaleGestureRef = useRef<any>(null)
 
   // Mirror a selected text object's real properties into the panel knobs, so the
   // panel reflects THAT object (fixes the logged color-swatch gap AND the latent
@@ -1314,7 +1334,10 @@ export default function DesignerCanvas({
             // selectedVariant were hardcoded to firstColor even when a different
             // variant matched — so the picker could say "Gold" while the shirt,
             // price, and saved variant were all the first color.
-            const resolvedColor = matchedColor || firstColor
+            // D2 color reconcile: with no variant pinning a color, prefer the carried ?color= when the
+            // target actually offers it by exact name (a ported design keeps its color), else firstColor.
+            const carriedColor = initialColor && colorOption.values.includes(initialColor) ? initialColor : null
+            const resolvedColor = matchedColor || carriedColor || firstColor
             setSelectedColor(resolvedColor)
             setShirtHex(COLOR_HEX_MAP[resolvedColor] || '#888')
             const imgs = getColorImages(resolvedColor, imgMap)
@@ -1380,6 +1403,8 @@ export default function DesignerCanvas({
       canvas.on('object:scaling', (e: any) => {
         const obj = e.target
         if (!obj) return
+        // Remember a curved text is being SCALE-dragged, so object:modified re-bakes it (and only it).
+        if (obj._isCurvedText) curvedScaleGestureRef.current = obj
         const bounds = getLiveBounds()
         if (!bounds) return
 
@@ -1507,6 +1532,16 @@ export default function DesignerCanvas({
       // nothing is left sitting outside the print area at release.
       canvas.on('object:modified', (e: any) => {
         const obj = e?.target
+        // Curved text baked to a raster: a scale gesture pixelates the bitmap. Re-bake the arc at the
+        // settled size instead of leaving it scaled (rebakeCurvedOnResize does its own fit/constrain).
+        // Gate on the scale-gesture flag (set in object:scaling), NOT on scaleX≠1 — a clamped/restored
+        // curved text carries scale<1 permanently, so a bare scale test would re-bake on plain moves.
+        const wasScaled = curvedScaleGestureRef.current === obj
+        curvedScaleGestureRef.current = null
+        if (obj?._isCurvedText && wasScaled) {
+          void rebakeCurvedOnResize(obj)
+          return
+        }
         const bounds = getLiveBounds()
         if (obj && bounds) constrainObject(obj, bounds)
         markDirty()
@@ -1780,6 +1815,38 @@ export default function DesignerCanvas({
       }
     }
     canvas.renderAll()
+  }
+
+  // Curved text is a baked raster, so a manual corner-drag scales the BITMAP → pixelation. When a
+  // resize gesture settles (object:modified), re-render the arc at the new size so it stays crisp —
+  // the same rebakeCurveParams + bakeCurvedArc the curve slider and the D2 port already use. Reuses
+  // the slider's swap guards (curveTokenRef drops a stale re-bake from rapid resizes; curveBakingRef
+  // suppresses the panel churn on re-select). Rotation is carried across (bakeCurvedArc omits angle);
+  // a non-uniform side-handle drag collapses to scaleX — curved arcs are always fixed-aspect anyway.
+  const rebakeCurvedOnResize = async (obj: any) => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    // Corner drags keep aspect (scaleX==scaleY); a side-handle drag distorts one axis. Either way an
+    // arc is fixed-aspect, so re-bake at the LARGER extent and reset to uniform scale.
+    const k = Math.max(obj.scaleX || 1, obj.scaleY || 1)
+    const p = rebakeCurveParams(Number(obj._curveFontSize) || 36, Number(obj._curveAmount) || 0, k)
+    const myToken = ++curveTokenRef.current
+    const rebaked = await bakeCurvedArc(
+      String(obj._originalText || ''),
+      { curveAmount: p.curveAmount, fontSize: p.curveFontSize, fontFamily: String(obj._curveFontFamily || 'Impact'), fill: String(obj._curveFill || '#000000'), bold: !!obj._curveBold, italic: !!obj._curveItalic },
+      obj.left, obj.top, getPrintAreaBounds(),
+    )
+    if (myToken !== curveTokenRef.current) return // superseded by a newer bake (rapid resize/slider)
+    if (obj.angle) { rebaked.set({ angle: obj.angle }); rebaked.setCoords() }
+    curveBakingRef.current = true
+    canvas.add(rebaked)
+    canvas.setActiveObject(rebaked)
+    curveBakingRef.current = false
+    if (obj !== rebaked) canvas.remove(obj)
+    lastActiveObjectRef.current = rebaked
+    _activeObj = rebaked
+    canvas.renderAll()
+    markDirty()
   }
 
   // Re-render curved text when curveAmount (or the baked font/size/color) changes.
@@ -2070,15 +2137,14 @@ export default function DesignerCanvas({
   // composition. THE single source of truth for stack geometry — called on add/remove, side switch,
   // box change, and restore, so old (movable-regime) designs conform on reopen too. Never runs during
   // preview (which owns the substituted text/scaleX). Style (font/color) is untouched.
-  const applyStackLayout = () => {
-    const canvas = fabricCanvasRef.current
-    if (!canvas || nnPreviewRef.current !== null) return
-    const b = getPrintAreaBounds()
-    if (!b) return
-    const placeholders = (canvas.getObjects() as any[]).filter(o => o[NN_ROLE_PROP])
+  // Position + size a set of N&N placeholders as the locked jersey stack within an explicit box.
+  // PURE geometry (jerseyStackLayout is box-derived, not measurement-derived) and no canvas/DOM read,
+  // so it works on OFF-CANVAS objects too — the back side during a D2 port, whose print-area overlay
+  // isn't mounted yet. The live-canvas applyStackLayout below delegates here.
+  const layoutStackInto = (placeholders: any[], box: { left: number; top: number; right: number; bottom: number }) => {
     if (!placeholders.length) return
     const present = placeholders.map(o => o[NN_ROLE_PROP] as NnRole)
-    const layout = jerseyStackLayout(present, b)
+    const layout = jerseyStackLayout(present, box)
     placeholders.forEach(o => {
       const spot = layout[o[NN_ROLE_PROP] as NnRole]
       if (!spot) return
@@ -2088,6 +2154,14 @@ export default function DesignerCanvas({
       o.initDimensions?.()
       o.setCoords?.()
     })
+  }
+
+  const applyStackLayout = () => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas || nnPreviewRef.current !== null) return
+    const b = getPrintAreaBounds()
+    if (!b) return
+    layoutStackInto((canvas.getObjects() as any[]).filter(o => o[NN_ROLE_PROP]), b)
     canvas.requestRenderAll()
   }
 
@@ -2253,6 +2327,19 @@ export default function DesignerCanvas({
       }
     })()
   }, [shirtView, printArea]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep the garment IMAGE in agreement with the current side + color. switchView sets it imperatively,
+  // but an EFFECT-triggered flip (the N&N auto-show-back below) can run while colorImageMap/selectedColor
+  // are still populating from an async product load — a stale closure that flipped the VIEW to Back while
+  // the image stayed on Front (Bug 3, surfaced porting an N&N-on-back design). This reactive sync is the
+  // backstop: whenever side/color/map settle, the image is re-derived from the CURRENT values, so the
+  // image can never disagree with the buttons regardless of how the flip was triggered.
+  useEffect(() => {
+    const imgs = getColorImages(selectedColor, colorImageMap)
+    const url = (shirtView === 'back' ? imgs?.back : imgs?.front) || firstImageUrlRef.current
+    if (url && shirtImgRef.current) shirtImgRef.current.src = url
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shirtView, selectedColor, colorImageMap])
 
   // Auto-show BACK when the customer opens Names & Numbers — the usual home for a name/number — but
   // only on a FRESH design (no placeholder placed on either side yet), so we never yank a deliberate
@@ -2491,6 +2578,8 @@ export default function DesignerCanvas({
     params.set('design_id', d.designId)
     params.set('title', target.name)
     params.set('refit', '1')
+    // Carry the design's color so the target lands on it when offered (else its first color).
+    if (d.color) params.set('color', d.color)
     window.location.href = `/designer?${params.toString()}`
   }
 
@@ -3452,6 +3541,13 @@ export default function DesignerCanvas({
       back,
       uploadedFiles: uploadedFilesRef.current,
       roster, // Phase 1: carried by the auto-draft snapshot; DB column lands in Phase 2
+      // Freeze the print-area box this design was made against, so a saved design carries its OWN
+      // source box (D2 re-fits FROM it on "Use on another product"). Same refs the order path stamps.
+      templateId: templateIdRef.current ?? undefined,
+      printAreaFrontId: printAreaFrontIdRef.current ?? undefined,
+      printAreaBackId: printAreaBackIdRef.current ?? undefined,
+      printAreaFront: printAreaFrontSnapRef.current ?? undefined,
+      printAreaBack: printAreaBackSnapRef.current ?? undefined,
     }
   }
 

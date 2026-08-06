@@ -18,6 +18,8 @@ function DesignerContent() {
   // D2 Design Portability: the design_id design was made on a DIFFERENT product — re-fit it onto this
   // product on open ("Use on another product") instead of a plain edit-restore.
   const refit = searchParams.get('refit') === '1'
+  // D2 color reconcile: preferred color carried from the ported design (used when no variant pins one).
+  const initialColor = searchParams.get('color') || ''
   
   // Safely decode title - handle any encoding issues
   let title = 'Custom Product'
@@ -39,6 +41,7 @@ function DesignerContent() {
         restoreId={restoreId}
         initialQuantity={quantity}
         refit={refit}
+        initialColor={initialColor}
       />
     </main>
   )
