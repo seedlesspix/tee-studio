@@ -9,6 +9,7 @@ import { getProduct } from '../lib/shopify'
 import { buildColorImageMap, getColorImages } from '../lib/productImages'
 import { AUTODRAFT_KEY, buildEnvelope, parseEnvelope, shouldRestore } from '../lib/autodraft'
 import { placedInches, lowResTier } from '../lib/lowRes'
+import { maxScaleForRotation } from '../lib/rotationFit'
 import NamesNumbersPanel from './NamesNumbersPanel'
 import { type RosterEntry, type NnRole, NN_ROLE_PROP, entryHasContent, condensedScaleX, rosterShirtCount, rosterSizeQuantities, rosterValue, jerseyStackLayout } from '../lib/namesNumbers'
 import { renderCurvedArc } from '../lib/curvedArc'
@@ -1455,10 +1456,11 @@ export default function DesignerCanvas({
         const boundsW = bounds.right  - bounds.left
         const boundsH = bounds.bottom - bounds.top
 
-        // Clamp scale so object never exceeds print area dimensions
-        const maxScaleX = boundsW / (obj.width  || 1)
-        const maxScaleY = boundsH / (obj.height || 1)
-        const maxScale  = Math.min(maxScaleX, maxScaleY)
+        // Clamp scale so the object's ROTATED footprint never exceeds the print area (at angle 0 this is
+        // the plain box/size fit). Keeps a tilted object fully inside so it can't poke out — which the
+        // cut/layout engine would crop. Both scale axes clamp to the same uniform cap (image handles
+        // scale equally; text/clipart at normal sizes are already under the cap so this never bites them).
+        const maxScale = maxScaleForRotation(obj.width || 1, obj.height || 1, obj.angle || 0, boundsW, boundsH)
 
         if (obj.scaleX > maxScale) obj.set({ scaleX: maxScale })
         if (obj.scaleY > maxScale) obj.set({ scaleY: maxScale })
@@ -1467,15 +1469,17 @@ export default function DesignerCanvas({
         constrainObject(obj, bounds)
       })
 
-      // Rotation had NO constraint handler — a rotated object's swung-out corners
-      // could leave the print area. constrainObject uses aCoords, so it already
-      // handles rotated corners; just wire it up (best-effort: it repositions, it
-      // can't shrink an object that's bigger than the box when tilted).
+      // Rotating grows the axis-aligned footprint, so a box-filling object would poke out as it tilts.
+      // Auto-shrink it to the rotated-fit cap (Denise 2026-08-06) so it stays fully inside — normal-sized
+      // art is already under the cap and never shrinks — then re-clamp position.
       canvas.on('object:rotating', (e: any) => {
         const obj = e.target
         if (!obj) return
         const bounds = getLiveBounds()
         if (!bounds) return
+        const maxScale = maxScaleForRotation(obj.width || 1, obj.height || 1, obj.angle || 0, bounds.right - bounds.left, bounds.bottom - bounds.top)
+        if (obj.scaleX > maxScale) obj.set({ scaleX: maxScale })
+        if (obj.scaleY > maxScale) obj.set({ scaleY: maxScale })
         constrainObject(obj, bounds)
       })
 
