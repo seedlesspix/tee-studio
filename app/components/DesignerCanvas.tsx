@@ -2341,29 +2341,14 @@ export default function DesignerCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shirtView, selectedColor, colorImageMap])
 
-  // Auto-show BACK when the customer opens Names & Numbers — the usual home for a name/number — but
-  // only on a FRESH design (no placeholder placed on either side yet), so we never yank a deliberate
-  // front placement, and only when the product actually has a back to design. No back template → stay.
-  useEffect(() => {
-    if (activeTab !== 'names') return
-    const canvas = fabricCanvasRef.current
-    if (!canvas) return
-    // Take the customer to WHERE THE PLACEHOLDERS LIVE. The current side's objects are on the live
-    // canvas; the other side's live in its ref. Rule: already on the side with fields -> stay; fields
-    // on the other side (e.g. Edit-restore lands on front but the jersey stack is on the back) -> go
-    // there; a FRESH design with no fields anywhere -> default to the back (the usual home).
-    const isPh = (o: any) => o && o[NN_ROLE_PROP]
-    const frontObjs = shirtView === 'front' ? (canvas.getObjects() as any[]) : frontObjectsRef.current
-    const backObjs = shirtView === 'back' ? (canvas.getObjects() as any[]) : backObjectsRef.current
-    const frontHas = frontObjs.some(isPh)
-    const backHas = backObjs.some(isPh)
-    const currentHas = shirtView === 'front' ? frontHas : backHas
-    if (currentHas) return
-    if (frontHas) { switchView('front'); return }
-    if (backHas && hasBackImages) { switchView('back'); return }
-    if (!frontHas && !backHas && hasBackImages && shirtView === 'front') switchView('back')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab])
+  // Auto-show-back on the Names tab was REMOVED (Denise, 2026-08-06). An effect-triggered switchView
+  // raced the async product load (colorImageMap not yet populated), flipping the buttons to Back while
+  // the image stayed on Front — most visibly when porting a back-stack N&N design. The whole surface is
+  // simpler without it: N&N opens on the current side and the customer flips manually (which always
+  // shows the right image, backed by the image↔side sync effect above). Restore/port still land on
+  // Front; the jersey stack is re-fit onto the correct side regardless (eager back-N&N re-stack + the
+  // lazy back-refit on first flip). If a default-to-back-on-fresh-N&N is ever wanted again, drive it
+  // from an explicit user action, not a load-time effect.
 
   // Leaving the Names tab must drop the preview (its controls unmount, but the substituted text
   // would otherwise stay on the canvas). Side-swap and every save path guard synchronously at their
