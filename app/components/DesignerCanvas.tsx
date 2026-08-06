@@ -3463,11 +3463,15 @@ export default function DesignerCanvas({
   const sidesCount = (frontHasContent ? 1 : 0) + (backHasContent ? 1 : 0)
 
   // Blank-shirt empty state: on-garment CTAs when the CURRENT side has nothing on
-  // it; the "Let's build it" greeting ONLY on a fully-blank design (front, back
-  // also empty) — a first-impression thing, so once you've started (or you're on
-  // the back) it's CTAs only. Add Text focuses the box (the discoverability fix).
+  // it; the "Let's build it" greeting whenever that blank side is the FRONT. It used
+  // to also require the BACK to be empty ("fully-blank first impression"), but the
+  // back fills in ASYNC on a restore/port — so a back-stack N&N design opened on the
+  // blank front flashed the greeting, then dropped it the instant backObjectsRef
+  // populated (buttons visibly changing while the view stayed on front, Denise
+  // 2026-08-06). Keying only on the current side keeps the front CTAs STABLE until
+  // the customer actually flips to Back. Add Text focuses the box (discoverability).
   const emptyState = canvasObjectCount === 0 ? {
-    showGreeting: shirtView === 'front' && backObjectsRef.current.length === 0,
+    showGreeting: shirtView === 'front',
     // A CTA selects the tool and OPENS the mobile band (no-op on desktop); Add Text
     // also focuses the box once the band has mounted it.
     onAddText: () => { setActiveTab('text'); setBandOpen(true); setTimeout(() => textInputRef.current?.focus(), 0) },
