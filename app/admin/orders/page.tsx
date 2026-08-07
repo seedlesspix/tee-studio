@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { Tables } from '@/types/database'
+import { orderFileStem } from '../../lib/orderFiles'
 
 // The full Shopify address shape as captured verbatim by the webhook (both
 // billing_address and shipping_address). We surface ALL of it for the print
@@ -133,6 +134,7 @@ export default function OrdersAdmin() {
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [downloading, setDownloading] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     supabase
@@ -213,6 +215,27 @@ export default function OrdersAdmin() {
       alert('Download failed. Try again.')
     }
     setDownloading(null)
+  }
+
+  // Delete an entire order group (all designs sharing the order number, or a single draft). Admins are
+  // authorized by the design_orders_admin_all RLS policy. ⚠ design_orders → saved_designs is ON DELETE
+  // CASCADE, so this also removes any customer "My Designs" library entry for these rows — the confirm
+  // spells that out. Drafts especially are safe to clear; completed orders are kept for records unless
+  // deliberately removed.
+  const deleteOrder = async (group: OrderGroup) => {
+    const ids = group.rows.map(r => r.id)
+    const label = group.orderNumber ? `Order #${group.orderNumber}` : 'this draft order'
+    const n = ids.length
+    if (!confirm(
+      `Permanently delete ${label} (${n} design${n > 1 ? 's' : ''})?\n\n` +
+      `This cannot be undone. If a customer saved any of these to "My Designs", that saved entry is removed too.`
+    )) return
+    setDeleting(true)
+    const { error } = await supabase.from('design_orders').delete().in('id', ids)
+    setDeleting(false)
+    if (error) { alert('Delete failed: ' + error.message); return }
+    setOrders(prev => prev.filter(o => !ids.includes(o.id)))
+    setSelectedKey(null)
   }
 
   const orderCounts = {
@@ -379,6 +402,12 @@ export default function OrdersAdmin() {
                       View Cart ↗
                     </a>
                   )}
+                  {/* Delete this order (all its designs). Destructive → a true red action. */}
+                  <button onClick={() => deleteOrder(selected)} disabled={deleting}
+                    title="Delete this order"
+                    className="px-3 py-1.5 rounded-full text-xs font-mono border border-red-300 text-red-600 hover:bg-red-50 hover:border-red-500 transition-all disabled:opacity-40">
+                    {deleting ? 'Deleting…' : '🗑 Delete'}
+                  </button>
                 </div>
               </div>
 
@@ -432,7 +461,7 @@ export default function OrdersAdmin() {
               {/* One section per design */}
               {selected.rows.map((row, i) => {
                 // Distinct download names when an order has several designs
-                const stem = `order-${row.shopify_order_number || row.id.split('-')[0]}${multi ? `-d${i + 1}` : ''}`
+                const stem = `${orderFileStem(row)}${multi ? `-d${i + 1}` : ''}`
                 return (
                   <div key={row.id} className={multi ? 'border border-gray-300 rounded-2xl p-4 flex flex-col gap-4' : 'flex flex-col gap-5'}>
                     {multi && (

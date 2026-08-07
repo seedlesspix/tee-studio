@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '../../../lib/supabase/server'
 import { serviceClient } from '../../../lib/customer-library'
 import { generateCutSvgForSide } from '../../../lib/server/generateCutFile'
+import { orderFileStem } from '../../../lib/orderFiles'
 
 export const runtime = 'nodejs' // trace-includes + fs don't exist on edge
 
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
   // 2. load the order via SERVICE ROLE (admin already authed; covers completed/PII rows)
   const { data: o, error } = await serviceClient()
     .from('design_orders')
-    .select('canvas_json_front,canvas_json_back,print_area_front,print_area_back')
+    .select('id,canvas_json_front,canvas_json_back,print_area_front,print_area_back,shopify_order_number,customer_name,shipping_address,billing_address')
     .eq('id', orderId).maybeSingle()
   if (error || !o) return NextResponse.json({ error: 'order not found' }, { status: 404 })
 
@@ -51,7 +52,7 @@ export async function GET(req: NextRequest) {
     status: 200,
     headers: {
       'Content-Type': 'image/svg+xml; charset=utf-8',
-      'Content-Disposition': `attachment; filename="cut-${orderId.slice(0, 8)}-${side}${mirror ? '-mirrored' : ''}.svg"`,
+      'Content-Disposition': `attachment; filename="${orderFileStem(o)}-${side}${mirror ? '-mirrored' : ''}.svg"`,
       'Cache-Control': 'no-store',
     },
   })

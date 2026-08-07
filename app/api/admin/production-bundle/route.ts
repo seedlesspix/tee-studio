@@ -16,6 +16,7 @@ import sharp from 'sharp'
 import { createClient } from '../../../lib/supabase/server'
 import { serviceClient } from '../../../lib/customer-library'
 import { collectCutPaths } from '../../../lib/server/generateCutFile'
+import { orderFileStem } from '../../../lib/orderFiles'
 import { assembleCutSvgUnioned } from '../../../lib/server/cutBoolean'
 import { generateLayoutSvgForSide } from '../../../lib/server/generateLayout'
 import { autoTraceSvg } from '../../../lib/server/autoTrace'
@@ -131,7 +132,14 @@ export async function GET(req: NextRequest) {
   if (error || !o) return NextResponse.json({ error: 'order not found' }, { status: 404 })
 
   const orderNo = o.shopify_order_number ? String(o.shopify_order_number) : orderId.slice(0, 8)
-  const stem = `order-${orderNo}`
+  // Zip + root folder carry the customer name too (BETA item 7): "<orderNumber>-<LastName>". Inner file
+  // names stay orderNo-based (they already sit inside the named folder/zip).
+  const stem = orderFileStem({
+    id: orderId,
+    shopify_order_number: o.shopify_order_number as string | null,
+    customer_name: o.customer_name as string | null,
+    shipping_address: o.shipping_address,
+  })
   const zip = new JSZip()
   const root = zip.folder(stem)!
 
