@@ -212,25 +212,13 @@ export default function SelectionPanel({
                         }`}
                       />
                     ))}
-                    {/* PRINT only: a round custom-color picker (rainbow = "pick any color", matches the
-                        swatch shape). EMBROIDERY is thread-colors ONLY (Denise) — no custom picker; the
-                        chosen color shows in the indicator row below (consistent in both modes). */}
-                    {printMethod !== 'embroidery' && (
-                      <label
-                        className="relative w-8 h-8 rounded-full overflow-hidden cursor-pointer border border-gray-300"
-                        title="Custom color"
-                        style={{ background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)' }}
-                      >
-                        <input type="color" value={textColor}
-                          onChange={e => setTextColor(e.target.value)}
-                          className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
-                      </label>
-                    )}
+                    {/* NO custom color picker — customers choose ONLY from the admin-set colors (Denise).
+                        Same rule for Print and Embroidery. */}
                   </div>
-                  {/* Chosen-color indicator: a round swatch of the CURRENT color + its name. Same in both
-                      modes, so the embroidery thread color is always clearly shown and named. */}
-                  <div className="mt-2 flex items-center gap-1.5">
-                    <span className="h-4 w-4 shrink-0 rounded-full border border-gray-300"
+                  {/* Chosen-color indicator: a larger SQUARE swatch of the CURRENT color + its name, so it
+                      reads clearly different from the round pickable swatches. Same in both modes. */}
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="h-6 w-6 shrink-0 rounded-md border border-gray-300"
                       style={{ background: textColor }} aria-hidden="true" />
                     <span className="text-xs text-gray-800 font-mono">
                       {(dbColors.length > 0 ? dbColors : [{ label: 'White', hex: '#ffffff' }, { label: 'Black', hex: '#000000' }])
