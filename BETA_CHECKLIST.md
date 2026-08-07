@@ -35,13 +35,14 @@ CLAUDE.md backlog; this file is the "these are NOT optional" promotion of them.
   the long-term embroidery notes as the PREVIEW half; deliberately excluded
   from the current embroidery designer-mode build — needs its own scoping.
   Denise wants it for beta.)*
-- [x] **11. Product picker: ordering + product photos.** ✅ Shipped 2026-08-07.
-  The picker now shows a photo per product (the first template color's uploaded
-  swatch, hex-square fallback) and lists products in admin-controlled order via
-  ▲▼ reorder in /admin/templates (writes product_templates.sort_order, which the
-  picker already sorts by). No Shopify calls added — the photo comes from the
-  same Supabase query. *(Uses the garment swatch images; if a true garment
-  mockup is wanted later, that's a Shopify featuredImage follow-up.)*
+- [x] **11. Product picker: ordering + product photos.** ✅ Shipped 2026-08-07
+  (photo source corrected same day). The picker shows each product's real garment
+  **mockup** — the Shopify featured image, fetched in ONE batched Storefront call
+  (`getFeaturedImages`), object-contain on a white tile so the whole garment
+  shows; hex-square fallback while it loads. (First cut used the color swatches,
+  which looked like little chips — fixed.) Order is admin-controlled via ▲▼
+  reorder in /admin/templates (writes product_templates.sort_order, which the
+  picker sorts by).
 
 - [ ] **12. Text panel cleanup.** The Text "sheet" is clunky — icons, buttons,
   and their order need a tidy-up pass. *(New item; overlaps item 1's

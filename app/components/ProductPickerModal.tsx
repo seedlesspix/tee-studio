@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { getFeaturedImages } from '../lib/shopify'
 
 // D2 Design Portability — pick a target garment to re-fit a saved design onto ("Use on another
 // product"). Lists the active templated products (the only ones the designer + cut pipeline
@@ -32,26 +33,26 @@ export default function ProductPickerModal({
     setLoading(true)
     supabase
       .from('product_templates')
-      .select('id, name, shopify_product_id, product_template_colors(hex, swatch_image_url, sort_order)')
+      .select('id, name, shopify_product_id, product_template_colors(hex, sort_order)')
       .eq('is_active', true)
       .order('sort_order')
       .then(({ data }) => {
         if (!alive) return
-        type ColorRow = { hex: string | null; swatch_image_url: string | null; sort_order: number | null }
+        type ColorRow = { hex: string | null; sort_order: number | null }
         const rows = (data as Array<{ id: string; name: string; shopify_product_id: string; product_template_colors: ColorRow[] | null }> | null) ?? []
-        setProducts(rows.map(r => {
-          // Representative photo = the first template color (by sort order) that has an uploaded swatch;
-          // fall back to the first color's hex as a solid square, so a row is never a blank rectangle.
+        const mapped = rows.map(r => {
+          // hex of the first color = the fallback square until the real photo arrives (or if it can't).
           const colors = [...(r.product_template_colors ?? [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-          return {
-            id: r.id,
-            name: r.name,
-            shopify_product_id: r.shopify_product_id,
-            image: colors.find(c => c.swatch_image_url)?.swatch_image_url ?? null,
-            hex: colors[0]?.hex ?? null,
-          }
-        }))
+          return { id: r.id, name: r.name, shopify_product_id: r.shopify_product_id, image: null as string | null, hex: colors[0]?.hex ?? null }
+        })
+        setProducts(mapped)
         setLoading(false)
+        // Real garment photos: one batched Storefront call for the products' featured images (the color
+        // swatches looked like little chips, not products). Merge in when they arrive; hex square meanwhile.
+        getFeaturedImages(mapped.map(m => m.shopify_product_id)).then(imgByGid => {
+          if (!alive) return
+          setProducts(prev => prev.map(p => ({ ...p, image: imgByGid[p.shopify_product_id] ?? p.image })))
+        })
       })
     return () => { alive = false }
   }, [open])
@@ -90,10 +91,12 @@ export default function ProductPickerModal({
                     className="flex w-full items-center gap-3 rounded-lg border border-gray-200 px-3 py-2 text-left text-sm font-medium text-gray-900 transition-colors hover:border-[#dd3333] hover:bg-gray-50"
                   >
                     {p.image ? (
+                      // Garment mockups are portrait — object-contain on a white tile shows the WHOLE
+                      // product (object-cover cropped them into swatch-like squares).
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={p.image} alt="" className="h-11 w-11 shrink-0 rounded-md border border-gray-200 object-cover" />
+                      <img src={p.image} alt="" className="h-14 w-14 shrink-0 rounded-md border border-gray-200 bg-white object-contain p-0.5" />
                     ) : (
-                      <span className="h-11 w-11 shrink-0 rounded-md border border-gray-200"
+                      <span className="h-14 w-14 shrink-0 rounded-md border border-gray-200"
                         style={{ background: p.hex || '#e5e7eb' }} aria-hidden="true" />
                     )}
                     <span className="min-w-0 truncate">{p.name}</span>

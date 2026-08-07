@@ -63,6 +63,33 @@ export async function getProduct(productId: string) {
   return data?.product
 }
 
+// Batched featured-image lookup for the product picker — ONE Storefront call for all products, so the
+// picker shows the real garment mockup (the product's main photo), not the little color swatches.
+// Returns a map of product GID → image URL. Missing/typed-wrong ids are simply absent from the map.
+export async function getFeaturedImages(gids: string[]): Promise<Record<string, string>> {
+  const ids = gids.filter(Boolean)
+  if (ids.length === 0) return {}
+  const query = `
+    query FeaturedImages($ids: [ID!]!) {
+      nodes(ids: $ids) {
+        ... on Product { id featuredImage { url } }
+      }
+    }
+  `
+  try {
+    const { data, errors } = await shopifyClient.request(query, { variables: { ids } })
+    if (errors) { console.error('Shopify featured-images errors:', errors); return {} }
+    const map: Record<string, string> = {}
+    for (const n of ((data?.nodes ?? []) as Array<{ id?: string; featuredImage?: { url?: string } }>)) {
+      if (n?.id && n.featuredImage?.url) map[n.id] = n.featuredImage.url
+    }
+    return map
+  } catch (e) {
+    console.error('Shopify featured-images request failed:', e)
+    return {}
+  }
+}
+
 // Phase 4 Day 6: the Print Charge line-item machinery that lived here
 // (addItemsToShopifyCart, resolvePrintChargeVariant, /api/cart-add,
 // /api/admin/variant-check) is DELETED, not bypassed. A finished design now
