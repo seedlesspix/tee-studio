@@ -10,7 +10,7 @@ type PrintAreaPct = { xPct: number; yPct: number; widthPct: number; heightPct: n
 type EmptyState = {
   showGreeting: boolean
   onAddText: () => void
-  onUpload: () => void
+  onUpload?: () => void // omitted in embroidery (no uploads) → the Upload CTA is hidden
   onAddArt: () => void
 }
 
@@ -114,7 +114,7 @@ export default function CanvasStage({
             {emptyState.showGreeting && (
               <div>
                 <p className="text-lg font-black tracking-tight text-gray-900">Let&apos;s build it.</p>
-                <p className="mt-1 text-xs leading-relaxed text-gray-500">Add text, upload your art, or browse designs to get started.</p>
+                <p className="mt-1 text-xs leading-relaxed text-gray-500">{emptyState.onUpload ? 'Add text, upload your art, or browse designs to get started.' : 'Add text or browse designs to get started.'}</p>
               </div>
             )}
             <div className="flex w-full flex-col gap-2">
@@ -127,12 +127,14 @@ export default function CanvasStage({
               >
                 <Type size={16} strokeWidth={1.75} /> Add Text
               </button>
-              <button
-                onClick={emptyState.onUpload}
-                className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"
-              >
-                <Upload size={16} strokeWidth={1.75} /> Upload
-              </button>
+              {emptyState.onUpload && (
+                <button
+                  onClick={emptyState.onUpload}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"
+                >
+                  <Upload size={16} strokeWidth={1.75} /> Upload
+                </button>
+              )}
               <button
                 onClick={emptyState.onAddArt}
                 className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"

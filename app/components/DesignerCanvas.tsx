@@ -1138,14 +1138,24 @@ export default function DesignerCanvas({
       if (font) o.set({ fontFamily: font })
       if (thread) o.set({ fill: thread })
       // The embroidery font has different metrics than the print font, so text sized to fill the box
-      // now overflows it. Re-fit + re-constrain to the print area (same path every text mutation uses)
-      // instead of only recomputing dimensions — otherwise the converted text lands outside the box.
+      // now overflows it. Recompute dimensions with the new font, THEN re-fit + re-constrain to the
+      // print area (same path every text mutation uses) — otherwise the converted text lands outside.
+      o.initDimensions?.()
       fitAndConstrain(o)
     }
-    ;[...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current].forEach(restyle)
-    canvas.renderAll()
-    pendingEmbConvertRef.current = false
-    markDirty()
+    const applyConversion = () => {
+      ;[...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current].forEach(restyle)
+      canvas.renderAll()
+      pendingEmbConvertRef.current = false
+      markDirty()
+    }
+    // Measure ONLY after the embroidery font has actually loaded. reWrapText sizes text via
+    // canvas measureText; if the font isn't loaded yet it measures a FALLBACK font (smaller metrics),
+    // then the real font renders larger and the text spills outside the box (the "less drastic but still
+    // outside" case). document.fonts.load resolves immediately if there's nothing to fetch.
+    const fonts = (document as unknown as { fonts?: { load?: (f: string) => Promise<unknown> } }).fonts
+    if (font && fonts?.load) fonts.load(`32px "${font}"`).then(applyConversion).catch(applyConversion)
+    else applyConversion()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [printMethod, configMethod, dbFonts, dbColors])
 
@@ -3716,7 +3726,9 @@ export default function DesignerCanvas({
     // A CTA selects the tool and OPENS the mobile band (no-op on desktop); Add Text
     // also focuses the box once the band has mounted it.
     onAddText: () => { setActiveTab('text'); setBandOpen(true); setTimeout(() => textInputRef.current?.focus(), 0) },
-    onUpload: () => { setActiveTab('upload'); setBandOpen(true) },
+    // Upload isn't offered in embroidery (same rule as the rail's HIDDEN_FOR_EMBROIDERY) — omit the
+    // greeting's Upload CTA so it can't confuse customers with an option that does nothing there.
+    onUpload: printMethod === 'embroidery' ? undefined : () => { setActiveTab('upload'); setBandOpen(true) },
     onAddArt: () => { setActiveTab('clipart'); setBandOpen(true) },
   } : null
   // Per-side surcharge. designer_pricing.sides is a SIDE IDENTITY (1 = Front,
