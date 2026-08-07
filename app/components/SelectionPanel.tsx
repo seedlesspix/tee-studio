@@ -212,29 +212,31 @@ export default function SelectionPanel({
                         }`}
                       />
                     ))}
-                    {/* Chosen-color indicator (shows the current color; its name is the <p> below). In
-                        PRINT it doubles as the free custom-color picker. In EMBROIDERY it's a read-only
-                        swatch — thread colors ONLY (Denise), a custom hue can't map to a thread — but the
-                        box stays so the name below has its anchor. */}
-                    {printMethod === 'embroidery' ? (
-                      <div
-                        className="w-8 h-8 rounded-full border border-gray-300"
-                        style={{ background: textColor }}
-                        title="Selected thread color"
-                        aria-label="Selected thread color"
-                      />
-                    ) : (
-                      <input type="color" value={textColor}
-                        onChange={e => setTextColor(e.target.value)}
-                        className="w-8 h-8 rounded-full cursor-pointer overflow-hidden"
-                        title="Custom color" />
+                    {/* PRINT only: a round custom-color picker (rainbow = "pick any color", matches the
+                        swatch shape). EMBROIDERY is thread-colors ONLY (Denise) — no custom picker; the
+                        chosen color shows in the indicator row below (consistent in both modes). */}
+                    {printMethod !== 'embroidery' && (
+                      <label
+                        className="relative w-8 h-8 rounded-full overflow-hidden cursor-pointer border border-gray-300"
+                        title="Custom color"
+                        style={{ background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)' }}
+                      >
+                        <input type="color" value={textColor}
+                          onChange={e => setTextColor(e.target.value)}
+                          className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+                      </label>
                     )}
                   </div>
-                  {dbColors.length > 0 && (
-                    <p className="text-xs text-gray-800 mt-1 font-mono">
-                      {dbColors.find(c => c.hex?.toLowerCase() === textColor?.toLowerCase())?.label || textColor || 'Custom'}
-                    </p>
-                  )}
+                  {/* Chosen-color indicator: a round swatch of the CURRENT color + its name. Same in both
+                      modes, so the embroidery thread color is always clearly shown and named. */}
+                  <div className="mt-2 flex items-center gap-1.5">
+                    <span className="h-4 w-4 shrink-0 rounded-full border border-gray-300"
+                      style={{ background: textColor }} aria-hidden="true" />
+                    <span className="text-xs text-gray-800 font-mono">
+                      {(dbColors.length > 0 ? dbColors : [{ label: 'White', hex: '#ffffff' }, { label: 'Black', hex: '#000000' }])
+                        .find(c => c.hex?.toLowerCase() === textColor?.toLowerCase())?.label || textColor || 'Custom'}
+                    </span>
+                  </div>
                 </div>
 
                 <div>

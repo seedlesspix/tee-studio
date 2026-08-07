@@ -1380,7 +1380,11 @@ export default function DesignerCanvas({
                 const supported = (tpl.supported_print_methods as string[] | null) || []
                 setSupportedMethods(supported)
                 setNamesNumbersEnabled(tpl.supports_names_numbers !== false) // default ON unless explicitly off
-                const resolved = supported.includes(method) ? method : (tpl.default_print_method || method)
+                // The TEMPLATE's default_print_method is the source of truth for what a product opens on
+                // — NOT the legacy Shopify `designer.printMethod` metafield (a leftover 'embroidery'
+                // metafield must not override a template set to open on Print). Metafield is only the
+                // fallback for products with no template at all.
+                const resolved = tpl.default_print_method || method
                 if (areas.length > 0) {
                   // Derive the mockup's natural size from the FIRST image that actually loads (not just
                   // allImages[0] — the onesie's renamed URLs could be broken) and CACHE it so a toggle
