@@ -212,9 +212,18 @@ export default function SelectionPanel({
                         }`}
                       />
                     ))}
-                    {/* Embroidery = thread colors ONLY (Denise): no custom/off-palette color, since it
-                        can't be matched to a thread. Print keeps the free color picker. */}
-                    {printMethod !== 'embroidery' && (
+                    {/* Chosen-color indicator (shows the current color; its name is the <p> below). In
+                        PRINT it doubles as the free custom-color picker. In EMBROIDERY it's a read-only
+                        swatch — thread colors ONLY (Denise), a custom hue can't map to a thread — but the
+                        box stays so the name below has its anchor. */}
+                    {printMethod === 'embroidery' ? (
+                      <div
+                        className="w-8 h-8 rounded-full border border-gray-300"
+                        style={{ background: textColor }}
+                        title="Selected thread color"
+                        aria-label="Selected thread color"
+                      />
+                    ) : (
                       <input type="color" value={textColor}
                         onChange={e => setTextColor(e.target.value)}
                         className="w-8 h-8 rounded-full cursor-pointer overflow-hidden"
