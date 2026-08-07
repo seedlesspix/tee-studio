@@ -48,6 +48,8 @@ type SelectionPanelProps = {
     setFontSize: Dispatch<SetStateAction<number>>
     letterSpacing: number
     setLetterSpacing: Dispatch<SetStateAction<number>>
+    lineHeight: number
+    setLineHeight: Dispatch<SetStateAction<number>>
     textColor: string
     setTextColor: Dispatch<SetStateAction<string>>
     textDirection: string
@@ -109,7 +111,7 @@ export default function SelectionPanel({
   const {
     textInput, textInputRef, handleTextInputChange, selectedObjectType, startNewText,
     dbFonts, fonts, selectedFont, setSelectedFont, selectedTextPreview,
-    fontSize, setFontSize, letterSpacing, setLetterSpacing, textColor, setTextColor,
+    fontSize, setFontSize, letterSpacing, setLetterSpacing, lineHeight, setLineHeight, textColor, setTextColor,
     textDirection, setTextDirection, curveAmount, setCurveAmount, textIsMultiline,
     textAlign, handleTextAlign, isBold, setIsBold, isItalic, setIsItalic,
     isUppercase, setIsUppercase,
@@ -189,9 +191,21 @@ export default function SelectionPanel({
                   </div>
                   <input type="range" min={-5} max={30} value={letterSpacing}
                     onChange={e => setLetterSpacing(Number(e.target.value))}
-                    disabled={selectedIsCurved}
-                    className="w-full mt-1 accent-[#dd3333] disabled:opacity-40" />
+                    className="w-full mt-1 accent-[#dd3333]" />
                 </div>
+                {/* Line Spacing — affects multi-line text only (a single line has no gaps), so it's
+                    hidden on curved text (always single-line). 1.0 = tight, ~1.2 = default, 2.0 = airy. */}
+                {!selectedIsCurved && (
+                  <div>
+                    <div className="flex justify-between items-center">
+                      <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Line Spacing</label>
+                      <span className="text-xs text-gray-700 font-mono">{lineHeight.toFixed(2)}</span>
+                    </div>
+                    <input type="range" min={0.8} max={2.5} step={0.05} value={lineHeight}
+                      onChange={e => setLineHeight(Number(e.target.value))}
+                      className="w-full mt-1 accent-[#dd3333]" />
+                  </div>
+                )}
                 <div>
                   <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Text Color</label>
                   <div className="flex gap-2 mt-2 flex-wrap items-center">
@@ -244,7 +258,7 @@ export default function SelectionPanel({
                   <div className="flex justify-between items-center">
                     <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Curve</label>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-800 font-mono">{curveAmount > 0 ? `+${curveAmount}` : curveAmount}</span>
+                      <span className="text-xs text-gray-800 font-mono">{curveAmount > 0 ? `+${curveAmount}` : curveAmount}°</span>
                       <button onClick={() => setCurveAmount(0)} disabled={textIsMultiline}
                         className={`text-[10px] px-2 py-0.5 rounded font-mono transition-all ${
                           textIsMultiline ? 'bg-gray-100 text-gray-400 cursor-default'
@@ -254,7 +268,7 @@ export default function SelectionPanel({
                       </button>
                     </div>
                   </div>
-                  <input type="range" min="-100" max="100" value={curveAmount}
+                  <input type="range" min="-360" max="360" value={curveAmount}
                     onChange={e => setCurveAmount(Number(e.target.value))}
                     disabled={textIsMultiline}
                     className="w-full mt-1 accent-[#dd3333] disabled:opacity-40" />
@@ -322,7 +336,7 @@ export default function SelectionPanel({
                   {/* These four (spacing / case / direction / align) don't apply to a
                       curved text — it's a baked image; only the re-bake props work. */}
                   {selectedIsCurved && (
-                    <p className="text-[10px] text-gray-500 mt-2">Curved text: straighten to change spacing, case, direction, or align.</p>
+                    <p className="text-[10px] text-gray-500 mt-2">Curved text: straighten to change case, direction, or align.</p>
                   )}
                 </div>
                 {/* Delete belongs to EDIT, not the empty add-surface. */}

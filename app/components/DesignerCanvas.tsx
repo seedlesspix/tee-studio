@@ -178,7 +178,7 @@ const COLOR_HEX_MAP: Record<string, string> = {
 const CANVAS_CUSTOM_PROPS = ['_isSvg', '_originalText', '_currentColor', '_isCurvedText', '_uploadSrc',
   // Bake params for a curved-text image, so selecting it reflects the curve
   // slider + font/size/color and adjusting the curve re-bakes from its OWN values.
-  '_curveAmount', '_curveFontFamily', '_curveFontSize', '_curveFill', '_curveBold', '_curveItalic',
+  '_curveAmount', '_curveFontFamily', '_curveFontSize', '_curveFill', '_curveBold', '_curveItalic', '_curveCharSpacing',
   '_isVectorUpload', // an uploaded SVG (vector) — excluded from the low-res warning (client + bench)
   '_nnRole', // Names & Numbers placeholder role ('name'|'number') — the substitution + cut-file split key
   // A placed DESIGN (decal): the admin-assigned number + its name, frozen onto the object so the order
@@ -307,6 +307,7 @@ export default function DesignerCanvas({
   // initial one (setPrintMethod is then a no-op and wouldn't otherwise fire the effect).
   const [templateReadyTick, setTemplateReadyTick] = useState(0)
   const [letterSpacing, setLetterSpacing] = useState(0)
+  const [lineHeight, setLineHeight] = useState(1.16) // Fabric IText default; the Line Spacing slider drives this (multi-line text)
   const [isBold, setIsBold] = useState(false)
   const [isItalic, setIsItalic] = useState(false)
   const [isUppercase, setIsUppercase] = useState(false)
@@ -694,7 +695,7 @@ export default function DesignerCanvas({
         ? (active as any)._originalText.toUpperCase()
         : (active as any)._originalText
       const { text: rewrapped, fontSize: newSize } = reWrapText(
-        baseText, currentFontSize, selectedFont, isBold, isItalic, letterSpacing * 10
+        baseText, currentFontSize, selectedFont, isBold, isItalic, letterSpacing * 10, lineHeight
       )
       active.set({
         text: rewrapped,
@@ -705,6 +706,7 @@ export default function DesignerCanvas({
         fontStyle: isItalic ? 'italic' : 'normal',
         textAlign: textAlign,
         charSpacing: letterSpacing * 10,
+        lineHeight: lineHeight,
         angle: textDirection === 'vertical' ? 90 : 0,
       })
       canvas.renderAll()
@@ -726,7 +728,7 @@ export default function DesignerCanvas({
         canvas.renderAll()
       }
     }
-  }, [selectedFont, textColor, isBold, isItalic, isUppercase, textAlign, letterSpacing, textDirection, textOutline, curveAmount])
+  }, [selectedFont, textColor, isBold, isItalic, isUppercase, textAlign, letterSpacing, lineHeight, textDirection, textOutline, curveAmount])
 
   // After a font CHANGE on the selected text, re-measure once the new font has actually loaded — the
   // synchronous set above may have measured a fallback (see ensureFontLoaded). Corrects the box and
@@ -971,6 +973,7 @@ export default function DesignerCanvas({
       setTextColor(typeof obj._curveFill === 'string' ? obj._curveFill : textColor)
       setIsBold(!!obj._curveBold)
       setIsItalic(!!obj._curveItalic)
+      setLetterSpacing(Math.round((obj._curveCharSpacing || 0) / 10))
       setCurveAmount(obj._curveAmount ?? 0)
       return
     }
@@ -985,6 +988,7 @@ export default function DesignerCanvas({
     setFontSize(Math.round(obj.fontSize || fontSize))
     setTextColor(fill)
     setLetterSpacing(Math.round((obj.charSpacing || 0) / 10))
+    setLineHeight(typeof obj.lineHeight === 'number' ? obj.lineHeight : 1.16)
     setIsBold(obj.fontWeight === 'bold' || obj.fontWeight === 700)
     setIsItalic(obj.fontStyle === 'italic')
     setIsUppercase(uppercase)
@@ -1046,7 +1050,7 @@ export default function DesignerCanvas({
     if (reflectingRef.current) return  // selecting a text isn't a design change
     markDirty()
   }, [selectedFont, textColor, isBold, isItalic, isUppercase, textAlign,
-      letterSpacing, textDirection, textOutline, curveAmount, fontSize])
+      letterSpacing, lineHeight, textDirection, textOutline, curveAmount, fontSize])
   // The "Your Text" box is the typing surface: the button focuses it, and the
   // first keystroke with nothing selected spawns the text on the shirt.
   const textInputRef = useRef<HTMLTextAreaElement>(null)
@@ -1317,7 +1321,7 @@ export default function DesignerCanvas({
         ? (active as any)._originalText.toUpperCase()
         : (active as any)._originalText
       const { text: rewrapped, fontSize: newSize } = reWrapText(
-        baseText, fontSize, selectedFont, isBold, isItalic, letterSpacing * 10
+        baseText, fontSize, selectedFont, isBold, isItalic, letterSpacing * 10, lineHeight
       )
       active.set({
         text: rewrapped,
@@ -1328,6 +1332,7 @@ export default function DesignerCanvas({
         fontStyle: isItalic ? 'italic' : 'normal',
         textAlign: textAlign,
         charSpacing: letterSpacing * 10,
+        lineHeight: lineHeight,
         scaleX: 1,
         scaleY: 1,
       })
@@ -1915,7 +1920,7 @@ export default function DesignerCanvas({
   // D2 re-fit path calls it per _isCurvedText object to re-curve onto the target garment.
   const bakeCurvedArc = async (
     rawText: string,
-    p: { curveAmount: number; fontSize: number; fontFamily: string; fill: string; bold: boolean; italic: boolean },
+    p: { curveAmount: number; fontSize: number; fontFamily: string; fill: string; bold: boolean; italic: boolean; charSpacing?: number },
     left: number, top: number,
     bounds: { left: number; top: number; right: number; bottom: number } | null,
   ): Promise<any> => {
@@ -1933,6 +1938,7 @@ export default function DesignerCanvas({
     img._curveFill = p.fill
     img._curveBold = p.bold
     img._curveItalic = p.italic
+    img._curveCharSpacing = p.charSpacing ?? 0
     // Keep the baked curved text inside the print area (Issue-2).
     if (bounds) {
       const maxScale = Math.min(
@@ -1960,13 +1966,13 @@ export default function DesignerCanvas({
         const p = rebakeCurveParams(Number(obj._curveFontSize) || 36, Number(obj._curveAmount) || 0, scale)
         const rebaked = await bakeCurvedArc(
           String(obj._originalText || ''),
-          { curveAmount: p.curveAmount, fontSize: p.curveFontSize, fontFamily: String(obj._curveFontFamily || 'Impact'), fill: String(obj._curveFill || '#000000'), bold: !!obj._curveBold, italic: !!obj._curveItalic },
+          { curveAmount: p.curveAmount, fontSize: p.curveFontSize, fontFamily: String(obj._curveFontFamily || 'Impact'), fill: String(obj._curveFill || '#000000'), bold: !!obj._curveBold, italic: !!obj._curveItalic, charSpacing: Number(obj._curveCharSpacing) || 0 },
           obj.left, obj.top, targetLTRB,
         )
         canvas.remove(obj); canvas.add(rebaked)
       } else if (obj.type === 'i-text' || obj.type === 'textbox') {
         const raw = String(obj._originalText || obj.text || '')
-        const { text, fontSize } = reWrapText(raw, Number(obj.fontSize) || 36, obj.fontFamily, obj.fontWeight === 'bold', obj.fontStyle === 'italic', Number(obj.charSpacing) || 0)
+        const { text, fontSize } = reWrapText(raw, Number(obj.fontSize) || 36, obj.fontFamily, obj.fontWeight === 'bold', obj.fontStyle === 'italic', Number(obj.charSpacing) || 0, typeof obj.lineHeight === 'number' ? obj.lineHeight : 1.2)
         const wasUpper = raw !== '' && norm(String(obj.text || '')) === norm(raw.toUpperCase()) && norm(String(obj.text || '')) !== norm(raw)
         obj.set({ text: wasUpper ? text.toUpperCase() : text, fontSize })
         if (targetLTRB) constrainObject(obj, targetLTRB)
@@ -1993,7 +1999,7 @@ export default function DesignerCanvas({
     const myToken = ++curveTokenRef.current
     const rebaked = await bakeCurvedArc(
       String(obj._originalText || ''),
-      { curveAmount: p.curveAmount, fontSize: p.curveFontSize, fontFamily: String(obj._curveFontFamily || 'Impact'), fill: String(obj._curveFill || '#000000'), bold: !!obj._curveBold, italic: !!obj._curveItalic },
+      { curveAmount: p.curveAmount, fontSize: p.curveFontSize, fontFamily: String(obj._curveFontFamily || 'Impact'), fill: String(obj._curveFill || '#000000'), bold: !!obj._curveBold, italic: !!obj._curveItalic, charSpacing: Number(obj._curveCharSpacing) || 0 },
       obj.left, obj.top, getPrintAreaBounds(),
     )
     if (myToken !== curveTokenRef.current) return // superseded by a newer bake (rapid resize/slider)
@@ -2063,7 +2069,7 @@ export default function DesignerCanvas({
           fontFamily: cFont, fontSize: autoFontSize,
           fill: cFill, fontWeight: cBold ? 'bold' : 'normal',
           fontStyle: cItalic ? 'italic' : 'normal',
-          textAlign: textAlign, charSpacing: letterSpacing * 10,
+          textAlign: textAlign, charSpacing: letterSpacing * 10, lineHeight: lineHeight,
           originX: 'center', originY: 'center',
         })
         ;(textObj as any)._originalText = rawText
@@ -2075,7 +2081,7 @@ export default function DesignerCanvas({
       // inside bakeCurvedArc is the exact pixel code that used to live here).
       const img = await bakeCurvedArc(
         rawText,
-        { curveAmount: cAmount, fontSize: cSize, fontFamily: cFont, fill: cFill, bold: cBold, italic: cItalic },
+        { curveAmount: cAmount, fontSize: cSize, fontFamily: cFont, fill: cFill, bold: cBold, italic: cItalic, charSpacing: letterSpacing * 10 },
         spawnX, spawnY, getPrintAreaBounds(),
       )
       if (myToken !== curveTokenRef.current) return  // superseded while baking/decoding
@@ -2089,7 +2095,7 @@ export default function DesignerCanvas({
     return () => {
       if (curveRafRef.current != null) { cancelAnimationFrame(curveRafRef.current); curveRafRef.current = null }
     }
-  }, [curveAmount, fontSize, selectedFont, textColor, isBold, isItalic])
+  }, [curveAmount, fontSize, selectedFont, textColor, isBold, isItalic, letterSpacing])
 
   // Clears the pull-on-select guard. Declared AFTER every push/dirty/curve
   // effect above, so on the batched mirror commit it flushes last — the guarded
@@ -2097,7 +2103,7 @@ export default function DesignerCanvas({
   // pushes normally. Runs every commit; idempotent when the guard is already off.
   useEffect(() => { reflectingRef.current = false })
 
-  const reWrapText = (text: string, targetFontSize: number, fontFamily: string, bold: boolean, italic: boolean, charSpacing: number = 0): { text: string; fontSize: number } => {
+  const reWrapText = (text: string, targetFontSize: number, fontFamily: string, bold: boolean, italic: boolean, charSpacing: number = 0, lineHeightFactor: number = 1.2): { text: string; fontSize: number } => {
     const canvasEl = canvasRef.current
     const overlay = document.querySelector('[data-print-area]') as HTMLElement
     if (!overlay || !canvasEl) return { text, fontSize: targetFontSize }
@@ -2162,7 +2168,7 @@ export default function DesignerCanvas({
 
     // Reduce font size until all lines fit vertically
     let lines = buildLines(autoFontSize)
-    while (autoFontSize > 8 && lines.length * autoFontSize * 1.2 > maxHeight) {
+    while (autoFontSize > 8 && lines.length * autoFontSize * lineHeightFactor > maxHeight) {
       autoFontSize -= 1
       lines = buildLines(autoFontSize)
     }
@@ -2236,6 +2242,7 @@ export default function DesignerCanvas({
         obj.fontWeight === 'bold',
         obj.fontStyle === 'italic',
         obj.charSpacing || 0,
+        typeof obj.lineHeight === 'number' ? obj.lineHeight : 1.2,
       )
       obj.set({ text, fontSize: fitted })
     }
@@ -2685,6 +2692,7 @@ export default function DesignerCanvas({
       fontStyle: isItalic ? 'italic' : 'normal',
       textAlign: textAlign,
       charSpacing: letterSpacing * 10,
+      lineHeight: lineHeight,
       angle: textDirection === 'vertical' ? 90 : 0,
       originX: 'center',
       originY: 'center',
@@ -4063,7 +4071,7 @@ export default function DesignerCanvas({
   // The tool panel body — defined ONCE and rendered in exactly one place at a
   // time (desktop left aside OR mobile sheet), so its textInputRef binds to a
   // single textarea (two live copies would fight over the ref).
-  const textProps = { textInput, textInputRef, handleTextInputChange, selectedObjectType, startNewText, dbFonts, fonts, selectedFont, setSelectedFont, selectedTextPreview, fontSize, setFontSize, letterSpacing, setLetterSpacing, textColor, setTextColor, textDirection, setTextDirection, curveAmount, setCurveAmount, textIsMultiline, textAlign, handleTextAlign, isBold, setIsBold, isItalic, setIsItalic, isUppercase, setIsUppercase }
+  const textProps = { textInput, textInputRef, handleTextInputChange, selectedObjectType, startNewText, dbFonts, fonts, selectedFont, setSelectedFont, selectedTextPreview, fontSize, setFontSize, letterSpacing, setLetterSpacing, lineHeight, setLineHeight, textColor, setTextColor, textDirection, setTextDirection, curveAmount, setCurveAmount, textIsMultiline, textAlign, handleTextAlign, isBold, setIsBold, isItalic, setIsItalic, isUppercase, setIsUppercase }
   // ── Layers ──────────────────────────────────────────────────────────────────
   // A per-side list of everything on the shirt (FRONT-most first) for the Layers tool. Recomputed each
   // render from the live canvas; re-renders are driven by layersTick (reorder + selection), the

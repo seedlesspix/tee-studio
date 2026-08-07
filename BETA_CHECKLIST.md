@@ -12,11 +12,19 @@ CLAUDE.md backlog; this file is the "these are NOT optional" promotion of them.
   center / right / justify-distribute). Denise has a clipart reference uploaded
   and can provide more detail. *(Already logged as the "universal icon set"
   backlog item — this promotes it to pre-beta.)*
-- [ ] **2. Text line spacing + character spacing controls.** Add line-spacing
-  and character-spacing (letter-spacing) adjustments for text, including
-  character spacing on curved text. *(New item — not previously logged.)*
-- [ ] **3. Curve goes to 360°.** Expand the curve/arc range to a full
-  −360°…360°. *(Already logged in backlog — promoted to pre-beta.)*
+- [x] **2. Text line spacing + character spacing controls.** ✅ Shipped
+  2026-08-07. Added a **Line Spacing** slider (multi-line text; hidden on curved),
+  and **Letter Spacing now works on curved text** too (it was disabled before).
+  reWrapText now honors the chosen line height so tall line spacing can't push
+  text out of the print box. *(Desktop panel; mobile letter/line-spacing sliders
+  are a small parity follow-up — mobile never had letter spacing.)*
+- [x] **3. Curve goes to 360°.** ✅ Shipped 2026-08-07. The curve is now
+  **degree-based** — the slider value IS the arc angle, −360°…360° (±360 = a full
+  circle). Rewrote the arc renderer to frame any angle (shallow cap → full ring)
+  and kept the D2 re-fit / resize-rebake in sync (angle is scale-invariant).
+  ⚠ Semantics change: a curved design saved under the OLD model reopens with its
+  number now read as degrees, so its curl may look gentler — flag if any real
+  saved curved designs exist (likely only test ones pre-beta).
 - [ ] **4. Upload panel rearrange.** Move the edit-image tools ABOVE the
   uploaded-image area, and put the uploaded images themselves in a scrolling
   strip/list. *(Rides with the previously mentioned Upload-panel rebuild.)*

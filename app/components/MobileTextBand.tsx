@@ -218,7 +218,7 @@ export default function MobileTextBand({
             <div className="flex items-center gap-2">
               <span className="font-mono text-xs uppercase tracking-widest text-gray-700">Curve</span>
               <input
-                type="range" min={-100} max={100} value={curveAmount}
+                type="range" min={-360} max={360} value={curveAmount}
                 onChange={e => setCurveAmount(Number(e.target.value))}
                 disabled={textIsMultiline}
                 className="min-w-0 flex-1 accent-[#dd3333] disabled:opacity-40"

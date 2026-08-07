@@ -9,12 +9,15 @@
 // node-canvas in tests (the parity guard) — no other behavioral difference.
 
 export interface CurveParams {
-  curveAmount: number   // signed; sign = up/down, magnitude = curl
+  // Signed DEGREES of arc the text subtends: sign = up/down, magnitude = how far it wraps.
+  // Range −360…360 (±360 = a full circle). This IS the slider value now (was an abstract radius-amount).
+  curveAmount: number
   fontSize: number      // canvas-px em
   fontFamily: string
   fill: string
   bold: boolean
   italic: boolean
+  charSpacing?: number  // Fabric units (1/1000 em, = letter-spacing slider × 10); default 0
 }
 
 export interface CurvedArcResult { dataUrl: string; width: number; height: number }
@@ -43,11 +46,12 @@ const domCanvas: CanvasFactory = (w, h) => {
 }
 
 export function renderCurvedArc(rawText: string, p: CurveParams, makeCanvas: CanvasFactory = domCanvas): CurvedArcResult {
-  const { curveAmount, fontSize: fSize, fontFamily: cFont, fill: cFill, bold: cBold, italic: cItalic } = p
+  const { curveAmount, fontSize: fSize, fontFamily: cFont, fill: cFill, bold: cBold, italic: cItalic, charSpacing = 0 } = p
   const direction = curveAmount > 0 ? 'curve-up' : 'curve-down'
-  const absAmount = Math.abs(curveAmount)
-  const radius = Math.max(fSize * 1.5, 800 - absAmount * 7.5)
+  const isDown = direction === 'curve-down'
   const fontStr = `${cItalic ? 'italic' : 'normal'} ${cBold ? 'bold' : 'normal'} ${fSize}px ${cFont}`
+  // Per-glyph gap in px, matching Fabric's charSpacing (1/1000 em) so curved + straight spacing agree.
+  const spacingPx = (charSpacing / 1000) * fSize
 
   const tmp = makeCanvas(1, 1)
   const tmpCtx = tmp.getContext('2d')!
@@ -55,33 +59,54 @@ export function renderCurvedArc(rawText: string, p: CurveParams, makeCanvas: Can
   const chars = rawText.split('')
   const charWidths = chars.map((ch) => tmpCtx.measureText(ch).width)
   const totalWidth = charWidths.reduce((a, b) => a + b, 0)
-  const padding = fSize * 2
-  const size = Math.min(Math.max(totalWidth + padding * 2, radius * 2 + padding * 2), 1200)
+  // Arc length the glyphs (+ their spacing) occupy — sets the radius for the requested angle.
+  const totalEff = totalWidth + spacingPx * chars.length
 
-  const off = makeCanvas(size, size)
+  // curveAmount IS the subtended angle in degrees now. Clamp to a full circle; guard a tiny floor so a
+  // near-zero value renders nearly straight instead of dividing by zero. radius follows from arc length
+  // ÷ angle, so the text ALWAYS spans exactly `curveAmount` degrees (was: radius chosen, angle emergent).
+  const totalAngle = Math.max((Math.min(360, Math.abs(curveAmount)) * Math.PI) / 180, 1e-3)
+  const radius = totalEff / totalAngle
+  const dy = direction === 'curve-up' ? -radius : radius
+
+  const orderedChars = isDown ? [...chars].reverse() : chars
+  const orderedWidths = isDown ? [...charWidths].reverse() : charWidths
+
+  // First pass: each glyph's arc angle (centered on the glyph; advance includes its spacing) and its
+  // center point relative to the circle centre. We bbox those points so the canvas fits ANY angle —
+  // a shallow cap OR a full circle — instead of the old fixed 1200 box + partial-arc assumption.
+  const angles: number[] = []
+  let cur = -totalAngle / 2
+  let cMinX = Infinity, cMinY = Infinity, cMaxX = -Infinity, cMaxY = -Infinity
+  orderedChars.forEach((_ch, idx) => {
+    const a = cur + (orderedWidths[idx] / radius) / 2
+    angles.push(a)
+    const px = -dy * Math.sin(a) // world of (0,dy) after rotate(a): (−dy·sin a, dy·cos a)
+    const py = dy * Math.cos(a)
+    if (px < cMinX) cMinX = px; if (px > cMaxX) cMaxX = px
+    if (py < cMinY) cMinY = py; if (py > cMaxY) cMaxY = py
+    cur += (orderedWidths[idx] + spacingPx) / radius
+  })
+  const margin = fSize * 1.15 // glyph extent (asc/desc) + a little breathing room
+  const W0 = Math.min(4000, Math.max(1, Math.ceil((cMaxX - cMinX) + margin * 2)))
+  const H0 = Math.min(4000, Math.max(1, Math.ceil((cMaxY - cMinY) + margin * 2)))
+  const originX = margin - cMinX
+  const originY = margin - cMinY
+
+  const off = makeCanvas(W0, H0)
   const ctx = off.getContext('2d')!
   ctx.font = fontStr
   ctx.fillStyle = cFill
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
 
-  const totalAngle = totalWidth / radius
-  const isDown = direction === 'curve-down'
-  const orderedChars = isDown ? [...chars].reverse() : chars
-  const orderedWidths = isDown ? [...charWidths].reverse() : charWidths
-  let currentAngle = -totalAngle / 2
-  const cx = size / 2
-  const cy = direction === 'curve-up' ? size * 0.72 : size * 0.28
-
   orderedChars.forEach((ch, idx) => {
-    const charAngle = currentAngle + orderedWidths[idx] / radius / 2
     ctx.save()
-    ctx.translate(cx, cy)
-    ctx.rotate(charAngle)
-    ctx.translate(0, direction === 'curve-up' ? -radius : radius)
+    ctx.translate(originX, originY)
+    ctx.rotate(angles[idx])
+    ctx.translate(0, dy)
     ctx.fillText(ch, 0, 0)
     ctx.restore()
-    currentAngle += orderedWidths[idx] / radius
   })
 
   // Crop to actual inked pixels

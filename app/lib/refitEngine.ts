@@ -184,22 +184,11 @@ export function refitSide(objects: CanvasObj[], sourceBox: RefitBox, targetBox: 
   return { objects: out, scale, degenerate: false, textNeedRewrap, curvedNeedRebake, skippedNnRole, flagged }
 }
 
-// Strategy-B re-bake params for a curved text under a uniform scale k (used by the browser caller when
-// it chooses to re-curve crisp on mount — the pure engine itself only does transform-only geometry).
-// Scales the font size; tries to PRESERVE the curl by re-deriving _curveAmount so the arc radius scales
-// by k too. radius = max(cfs*1.5, 800 - |A|*7.5):
-//   • cfs*1.5 branch active -> radius already scales with size, keep the amount (exact).
-//   • 800 branch active     -> solve |A'| so (800 - |A'|*7.5) = k*(800 - |A|*7.5); if that goes
-//                              negative (curl can't be preserved at this scale) keep the amount and
-//                              accept the shift (Denise's accepted caveat). Sign is preserved.
+// Re-bake params for a curved text under a uniform scale k (used by the browser caller when it re-curves
+// crisp on resize / D2 port — the pure engine itself only does transform-only geometry). In the
+// degree-based model curveAmount is the SUBTENDED ANGLE, which is scale-invariant (a 180° arc stays
+// 180° at any size — the radius scales with the font because arc-length does). So we simply scale the
+// font size and keep the angle. charSpacing is in 1/1000 em, so it also scales with the font on its own.
 export function rebakeCurveParams(curveFontSize: number, curveAmount: number, k: number): { curveFontSize: number; curveAmount: number } {
-  const cfs = num(curveFontSize, 36) * k
-  const A = Math.abs(num(curveAmount, 0))
-  const sign = num(curveAmount, 0) < 0 ? -1 : 1
-  const floorRadius = num(curveFontSize, 36) * 1.5
-  const ampRadius = 800 - A * 7.5
-  if (floorRadius >= ampRadius) return { curveFontSize: cfs, curveAmount } // size-floor branch: keep amount
-  const aPrime = (800 - k * ampRadius) / 7.5
-  if (!Number.isFinite(aPrime) || aPrime < 0) return { curveFontSize: cfs, curveAmount } // can't preserve — accept shift
-  return { curveFontSize: cfs, curveAmount: sign * aPrime }
+  return { curveFontSize: num(curveFontSize, 36) * k, curveAmount: num(curveAmount, 0) }
 }

@@ -43,4 +43,24 @@ describe('curved arc renderer (extraction parity)', () => {
     const big = renderCurvedArc('X', P({ fontSize: 96 }), nodeFactory)
     expect(big.height).toBeGreaterThan(small.height)
   })
+
+  // Degree-based model (BETA item 3) + character spacing on curved (BETA item 2).
+  it('character spacing widens the arc', () => {
+    const tight = renderCurvedArc('ABCDE', P({ curveAmount: 60, charSpacing: 0 }), nodeFactory)
+    const loose = renderCurvedArc('ABCDE', P({ curveAmount: 60, charSpacing: 300 }), nodeFactory)
+    expect(loose.width).toBeGreaterThan(tight.width)
+  })
+
+  it('curveAmount is now degrees: 360° wraps a full, roughly-circular ring', () => {
+    const full = renderCurvedArc('OOOOOOOO', P({ curveAmount: 360 }), nodeFactory)
+    const ratio = full.width / full.height
+    expect(ratio).toBeGreaterThan(0.7)
+    expect(ratio).toBeLessThan(1.4) // a full circle's bbox is ~square, unlike a shallow arc
+  })
+
+  it('a bigger angle curls more (180° taller than 30° for the same text)', () => {
+    const gentle = renderCurvedArc('CURVE', P({ curveAmount: 30 }), nodeFactory)
+    const deep = renderCurvedArc('CURVE', P({ curveAmount: 180 }), nodeFactory)
+    expect(deep.height).toBeGreaterThan(gentle.height)
+  })
 })
