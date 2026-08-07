@@ -6,7 +6,13 @@ import { supabase } from '../lib/supabase'
 // product"). Lists the active templated products (the only ones the designer + cut pipeline
 // understand); on pick the caller navigates to the designer with ?design_id=…&refit=1.
 
-export type TemplateProduct = { id: string; name: string; shopify_product_id: string }
+export type TemplateProduct = {
+  id: string
+  name: string
+  shopify_product_id: string
+  image?: string | null // representative garment photo (first template color's swatch), when present
+  hex?: string | null   // fallback color square when there's no photo
+}
 
 export default function ProductPickerModal({
   open, onClose, onPick, excludeProductId, subtitle,
@@ -26,12 +32,25 @@ export default function ProductPickerModal({
     setLoading(true)
     supabase
       .from('product_templates')
-      .select('id, name, shopify_product_id')
+      .select('id, name, shopify_product_id, product_template_colors(hex, swatch_image_url, sort_order)')
       .eq('is_active', true)
       .order('sort_order')
       .then(({ data }) => {
         if (!alive) return
-        setProducts((data as TemplateProduct[] | null) ?? [])
+        type ColorRow = { hex: string | null; swatch_image_url: string | null; sort_order: number | null }
+        const rows = (data as Array<{ id: string; name: string; shopify_product_id: string; product_template_colors: ColorRow[] | null }> | null) ?? []
+        setProducts(rows.map(r => {
+          // Representative photo = the first template color (by sort order) that has an uploaded swatch;
+          // fall back to the first color's hex as a solid square, so a row is never a blank rectangle.
+          const colors = [...(r.product_template_colors ?? [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+          return {
+            id: r.id,
+            name: r.name,
+            shopify_product_id: r.shopify_product_id,
+            image: colors.find(c => c.swatch_image_url)?.swatch_image_url ?? null,
+            hex: colors[0]?.hex ?? null,
+          }
+        }))
         setLoading(false)
       })
     return () => { alive = false }
@@ -68,9 +87,16 @@ export default function ProductPickerModal({
                   <button
                     type="button"
                     onClick={() => onPick(p)}
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-left text-sm font-medium text-gray-900 transition-colors hover:border-[#dd3333] hover:bg-gray-50"
+                    className="flex w-full items-center gap-3 rounded-lg border border-gray-200 px-3 py-2 text-left text-sm font-medium text-gray-900 transition-colors hover:border-[#dd3333] hover:bg-gray-50"
                   >
-                    {p.name}
+                    {p.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={p.image} alt="" className="h-11 w-11 shrink-0 rounded-md border border-gray-200 object-cover" />
+                    ) : (
+                      <span className="h-11 w-11 shrink-0 rounded-md border border-gray-200"
+                        style={{ background: p.hex || '#e5e7eb' }} aria-hidden="true" />
+                    )}
+                    <span className="min-w-0 truncate">{p.name}</span>
                   </button>
                 </li>
               ))}

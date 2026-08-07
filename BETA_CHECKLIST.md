@@ -27,12 +27,13 @@ CLAUDE.md backlog; this file is the "these are NOT optional" promotion of them.
   the long-term embroidery notes as the PREVIEW half; deliberately excluded
   from the current embroidery designer-mode build — needs its own scoping.
   Denise wants it for beta.)*
-- [ ] **11. Product picker: ordering + product photos.** The garment picker
-  (Products rail / "Use on another product") should list products in an order
-  Denise controls, and show each product's photo — the current text-only list
-  is sterile. *(New item. Likely shape: a sort_order on product templates set
-  in admin, and each product's featured image from Shopify shown in the
-  picker. CC to confirm approach.)*
+- [x] **11. Product picker: ordering + product photos.** ✅ Shipped 2026-08-07.
+  The picker now shows a photo per product (the first template color's uploaded
+  swatch, hex-square fallback) and lists products in admin-controlled order via
+  ▲▼ reorder in /admin/templates (writes product_templates.sort_order, which the
+  picker already sorts by). No Shopify calls added — the photo comes from the
+  same Supabase query. *(Uses the garment swatch images; if a true garment
+  mockup is wanted later, that's a Shopify featuredImage follow-up.)*
 
 - [ ] **12. Text panel cleanup.** The Text "sheet" is clunky — icons, buttons,
   and their order need a tidy-up pass. *(New item; overlaps item 1's

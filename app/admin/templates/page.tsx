@@ -39,10 +39,32 @@ export default function TemplatesAdmin() {
   const [editing, setEditing] = useState<{ id: string | null } | null>(null)
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT)
   const [savingTemplate, setSavingTemplate] = useState(false)
+  const [reordering, setReordering] = useState(false)
 
   const showMessage = (text: string, type: 'success' | 'error' = 'success') => {
     setMessage({ text, type })
     setTimeout(() => setMessage(null), 3000)
+  }
+
+  // Reorder the product list (drives the designer's product picker order). ▲▼ swaps two rows and
+  // reindexes sort_order to a clean 0..n-1, persisting only the rows whose value actually changed
+  // (mirrors the admin colors/fonts reorder). Optimistic; re-syncs from the server on error.
+  const moveTemplate = async (row: Template, dir: 'up' | 'down') => {
+    const idx = templates.findIndex(t => t.id === row.id)
+    const swapWith = dir === 'up' ? idx - 1 : idx + 1
+    if (idx < 0 || swapWith < 0 || swapWith >= templates.length) return
+    setReordering(true)
+    const arr = [...templates]
+    ;[arr[idx], arr[swapWith]] = [arr[swapWith], arr[idx]]
+    const next = arr.map((t, i) => ({ ...t, sort_order: i }))
+    const toPersist = next.filter(t => (templates.find(o => o.id === t.id)?.sort_order ?? -1) !== t.sort_order)
+    setTemplates(next) // optimistic
+    const results = await Promise.all(
+      toPersist.map(t => supabase.from('product_templates').update({ sort_order: t.sort_order }).eq('id', t.id))
+    )
+    setReordering(false)
+    const err = results.find(r => r.error)?.error
+    if (err) { showMessage('Error reordering: ' + err.message, 'error'); fetchData() }
   }
 
   const fetchData = () =>
@@ -198,6 +220,7 @@ export default function TemplatesAdmin() {
               <table className="w-full text-sm font-mono">
                 <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
                   <tr>
+                    <th className="text-left px-2 py-3" title="Order shown in the designer's product picker">Order</th>
                     <th className="text-left px-4 py-3">Name</th>
                     <th className="text-left px-4 py-3">Shopify product</th>
                     <th className="text-left px-4 py-3">Methods</th>
@@ -207,8 +230,16 @@ export default function TemplatesAdmin() {
                   </tr>
                 </thead>
                 <tbody>
-                  {templates.map(t => (
+                  {templates.map((t, i) => (
                     <tr key={t.id} className={`border-t border-gray-100 ${t.is_active ? '' : 'opacity-60'}`}>
+                      <td className="px-2 py-3">
+                        <div className="flex flex-col leading-none">
+                          <button onClick={() => moveTemplate(t, 'up')} disabled={i === 0 || reordering} title="Move up"
+                            className="px-1 text-xs text-gray-500 hover:text-[#dd3333] disabled:opacity-25 disabled:hover:text-gray-500">▲</button>
+                          <button onClick={() => moveTemplate(t, 'down')} disabled={i === templates.length - 1 || reordering} title="Move down"
+                            className="px-1 text-xs text-gray-500 hover:text-[#dd3333] disabled:opacity-25 disabled:hover:text-gray-500">▼</button>
+                        </div>
+                      </td>
                       <td className="px-4 py-3 text-black">{t.name}</td>
                       <td className="px-4 py-3 text-gray-500 text-xs truncate max-w-[16rem]" title={t.shopify_product_id}>
                         {t.shopify_product_id}
