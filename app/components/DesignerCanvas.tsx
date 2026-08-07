@@ -315,6 +315,9 @@ export default function DesignerCanvas({
   const [textOutline, setTextOutline] = useState(false)
   const [textDirection, setTextDirection] = useState<'horizontal' | 'vertical' | 'curve-up' | 'curve-down'>('horizontal')
   const [curveAmount, setCurveAmount] = useState(0)
+  // Bumped when the WORDS of a selected curved text are edited — a dep of the curve effect, so the arc
+  // re-bakes with the new words (in-place re-wording; letter-spacing already re-bakes the same way).
+  const [curveTextTick, setCurveTextTick] = useState(0)
   const [selectedTextPreview, setSelectedTextPreview] = useState<string>('')
   const [selectedObjectType, setSelectedObjectType] = useState<'text' | 'image' | 'svg' | null>(null)
   // Low-resolution warning for the SELECTED raster upload (null = fine / not an upload). Recomputed on
@@ -975,6 +978,9 @@ export default function DesignerCanvas({
       setIsItalic(!!obj._curveItalic)
       setLetterSpacing(Math.round((obj._curveCharSpacing || 0) / 10))
       setCurveAmount(obj._curveAmount ?? 0)
+      // Bind the box to the curved text's words so they can be re-typed in place (judge readability
+      // while curved) — the arc re-bakes on edit, same as adjusting its curve/spacing.
+      { const w = String(obj._originalText ?? '').replace(/\n/g, ' '); setTextInput(w); setSelectedTextPreview(w.trim()) }
       return
     }
     const fill = typeof obj.fill === 'string' ? obj.fill : textColor
@@ -2095,7 +2101,7 @@ export default function DesignerCanvas({
     return () => {
       if (curveRafRef.current != null) { cancelAnimationFrame(curveRafRef.current); curveRafRef.current = null }
     }
-  }, [curveAmount, fontSize, selectedFont, textColor, isBold, isItalic, letterSpacing])
+  }, [curveAmount, fontSize, selectedFont, textColor, isBold, isItalic, letterSpacing, curveTextTick])
 
   // Clears the pull-on-select guard. Declared AFTER every push/dirty/curve
   // effect above, so on the batched mirror commit it flushes last — the guarded
@@ -2722,6 +2728,23 @@ export default function DesignerCanvas({
     const canvas = fabricCanvasRef.current
     if (!canvas) return
     const active = canvas.getActiveObject() as any
+
+    // Curved text is a baked image, not an editable i-text — re-word it IN PLACE by re-baking the arc
+    // from the new words (reusing the curve effect via curveTextTick), instead of spawning a new straight
+    // text. Curve is single-line, so newlines collapse to spaces. Emptying the box removes it (as usual).
+    if (active && active._isCurvedText) {
+      const words = value.replace(/\n/g, ' ')
+      active._originalText = words
+      if (!words.trim()) {
+        canvas.remove(active)
+        setSelectedObjectType(null); setLowResWarning(null); setSelectedTextPreview('')
+        canvas.renderAll()
+        return
+      }
+      setCurveTextTick(t => t + 1)
+      return
+    }
+
     const isText = active && (active.type === 'i-text' || active.type === 'textbox')
 
     if (!isText) {
