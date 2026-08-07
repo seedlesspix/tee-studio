@@ -76,7 +76,7 @@ export default function FontsAdmin() {
     showMessage('Font uploaded!')
     // Register it NOW so its preview renders immediately (FontProvider only scans on page load).
     try {
-      const face = new FontFace(baseFamily(value), `url("${urlData.publicUrl}")`)
+      const face = new FontFace(baseFamily(value), `url("${urlData.publicUrl}")`, { display: 'swap' })
       face.load().then(l => document.fonts.add(l)).catch(() => {})
     } catch { /* ignore */ }
   }

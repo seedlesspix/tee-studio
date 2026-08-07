@@ -34,7 +34,9 @@ export default function FontProvider() {
           // Idempotent: skip a family already registered (re-mount / HMR / duplicate rows).
           if (Array.from(document.fonts).some(f => f.family === family)) continue
           try {
-            const face = new FontFace(family, `url("${row.file_url}")`)
+            // display:swap → show a fallback immediately and swap when the file loads (never invisible
+            // text), matching the Google <link>'s display=swap behavior.
+            const face = new FontFace(family, `url("${row.file_url}")`, { display: 'swap' })
             face.load()
               .then(loaded => { if (!cancelled) document.fonts.add(loaded) })
               .catch(() => { /* a bad/unreachable file just doesn't register — the picker still lists it */ })
