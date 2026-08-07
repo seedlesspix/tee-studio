@@ -31,6 +31,19 @@ export type CutPath = { d: string; fill: string }
 
 type Cmd = { type: string; x?: number; y?: number; x1?: number; y1?: number; x2?: number; y2?: number }
 
+// Map a line to its glyphs, GSUB-safe. opentype.js applies GSUB during stringToGlyphs and THROWS on
+// lookups it hasn't implemented (e.g. Roboto: lookupType 6 substFormat 2; Calistoga: substFormat 2),
+// which would fail the whole cut file. A cut file wants each character's BASE glyph anyway (no
+// contextual/ligature substitution), so on a throw we fall back to per-character charToGlyph — which
+// never applies GSUB. Fonts whose stringToGlyphs succeeds are unchanged (kerning/behavior identical).
+function glyphsForLine(font: opentype.Font, line: string): opentype.Glyph[] {
+  try {
+    return font.stringToGlyphs(line)
+  } catch {
+    return Array.from(line).map(ch => font.charToGlyph(ch))
+  }
+}
+
 function transformCmds(cmds: Cmd[], [a, b, c, d, e, f]: number[]): Cmd[] {
   const X = (x: number, y: number) => a * x + c * y + e
   const Y = (x: number, y: number) => b * x + d * y + f
@@ -86,7 +99,7 @@ export function outlineText(
   const blockTop = cyU - blockH / 2
 
   const measured = lines.map(line => {
-    const gs = font.stringToGlyphs(line); let w = 0
+    const gs = glyphsForLine(font, line); let w = 0
     for (let i = 0; i < gs.length; i++) {
       if (i > 0) w += font.getKerningValue(gs[i - 1], gs[i]) * scale
       w += (gs[i].advanceWidth ?? 0) * scale
@@ -167,7 +180,7 @@ export function curvedTextToCutPath(
 
   const A = curve.curveAmount, up = A > 0
   const radius = Math.max(S * 1.5, 800 - Math.abs(A) * 7.5)
-  const glyphs = font.stringToGlyphs(line)
+  const glyphs = glyphsForLine(font, line)
   const widths = glyphs.map(g => (g.advanceWidth ?? 0) * scale)
   const totalWidth = widths.reduce((s, w) => s + w, 0)
   const totalAngle = totalWidth / radius

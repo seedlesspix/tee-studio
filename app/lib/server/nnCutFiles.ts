@@ -45,7 +45,15 @@ async function condensePlaceholders(
     if (!font) continue
     const text = String(p.text ?? '')
     const fontSize = Number(p.fontSize ?? 40)
-    const advance = font.getAdvanceWidth(text, fontSize)
+    // GSUB-safe: font.getAdvanceWidth runs stringToGlyphs, which throws on fonts with unsupported GSUB
+    // lookups (e.g. Roboto). Fall back to per-character advances (base glyphs) — same as the outliner.
+    let advance: number
+    try {
+      advance = font.getAdvanceWidth(text, fontSize)
+    } catch {
+      const s = fontSize / font.unitsPerEm
+      advance = Array.from(text).reduce((w, ch) => w + (font.charToGlyph(ch).advanceWidth ?? 0) * s, 0)
+    }
     p.scaleX = condensedScaleX(advance, boxWidth * 0.96, 1)
   }
 }
