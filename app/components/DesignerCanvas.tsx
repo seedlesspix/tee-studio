@@ -269,6 +269,9 @@ export default function DesignerCanvas({
   // supported method locks with no toggle. printMethod is the active one. The template is the source of
   // truth (default_print_method); the legacy Shopify metafield is a fallback for non-templated products.
   const [supportedMethods, setSupportedMethods] = useState<string[]>([])
+  // Per-product Names & Numbers gate (2026-08-07): a template can turn OFF N&N for products it doesn't
+  // belong on (accessories, etc.). Default true (non-templated + un-flagged products keep N&N).
+  const [namesNumbersEnabled, setNamesNumbersEnabled] = useState(true)
   // Cached so a method toggle can re-pick this product's per-method print area without re-fetching.
   const loadedTemplateRef = useRef<any>(null)
   const mockupNaturalRef = useRef<{ w: number; h: number } | null>(null)
@@ -1107,6 +1110,11 @@ export default function DesignerCanvas({
     if (printMethod) applyTemplateAreaForMethod(printMethod)
   }, [printMethod, templateReadyTick, applyTemplateAreaForMethod])
 
+  // If this product doesn't offer Names & Numbers, never sit on the (now-hidden) Names tab.
+  useEffect(() => {
+    if (!namesNumbersEnabled && activeTab === 'names') setActiveTab('text')
+  }, [namesNumbersEnabled, activeTab])
+
   // Warn+convert follow-through: after a confirmed switch to embroidery, restyle existing text to the
   // now-loaded embroidery font + thread color. The embroidery fonts/colors load ASYNC after setPrintMethod,
   // so this MUST wait until configMethod === 'embroidery' (both palettes are non-empty, so length can't
@@ -1349,7 +1357,7 @@ export default function DesignerCanvas({
               const { supabase } = await import('../lib/supabase')
               const { data: tpl } = await supabase
                 .from('product_templates')
-                .select('id, default_print_method, supported_print_methods, product_template_print_areas(*), product_template_colors(*)')
+                .select('id, default_print_method, supported_print_methods, supports_names_numbers, product_template_print_areas(*), product_template_colors(*)')
                 .eq('shopify_product_id', data.id)
                 .eq('is_active', true)
                 .maybeSingle()
@@ -1371,6 +1379,7 @@ export default function DesignerCanvas({
                 loadedTemplateRef.current = tpl
                 const supported = (tpl.supported_print_methods as string[] | null) || []
                 setSupportedMethods(supported)
+                setNamesNumbersEnabled(tpl.supports_names_numbers !== false) // default ON unless explicitly off
                 const resolved = supported.includes(method) ? method : (tpl.default_print_method || method)
                 if (areas.length > 0) {
                   // Derive the mockup's natural size from the FIRST image that actually loads (not just
@@ -1392,6 +1401,7 @@ export default function DesignerCanvas({
                 return // templated products use the template area (via the effect), never the metafield
               } else {
                 setSupportedMethods([])
+                setNamesNumbersEnabled(true) // non-templated products keep N&N
               }
             } catch (e) {
               console.error('Template print-area read failed, falling back to metafield:', e)
@@ -4005,6 +4015,15 @@ export default function DesignerCanvas({
       }}
     />
   )
+  // Rail tools to hide for THIS product: Upload+Names in embroidery mode, and Names when the product's
+  // template turns Names & Numbers off (accessories etc.). Undefined = show everything.
+  const railHiddenKeys = (() => {
+    const hidden: string[] = []
+    if (printMethod === 'embroidery') hidden.push(...HIDDEN_FOR_EMBROIDERY)
+    if (!namesNumbersEnabled && !hidden.includes('names')) hidden.push('names')
+    return hidden.length ? hidden : undefined
+  })()
+
   // Print/Embroidery segmented control (embroidery mode) — shared by the desktop aside header AND the
   // mobile band so BOTH surfaces can switch method. Only when the product supports >1. Active = quiet
   // dark (red-vocab: red is action-only, never selected-state).
@@ -4126,7 +4145,7 @@ export default function DesignerCanvas({
             {methodToggle && <div className="border-b border-gray-200 p-2 shrink-0">{methodToggle}</div>}
             <div className="flex flex-1 min-h-0 overflow-hidden">
               <Rail activeTab={activeTab} onSelectTab={handleSelectTab} onProducts={() => setSwitchOpen(true)}
-                hiddenKeys={printMethod === 'embroidery' ? HIDDEN_FOR_EMBROIDERY : undefined} />
+                hiddenKeys={railHiddenKeys} />
               <div className="flex-1 min-w-0 overflow-y-auto pt-3">
                 {activeTab === 'names' ? namesPanel : selectionPanel}
               </div>
@@ -4385,7 +4404,7 @@ export default function DesignerCanvas({
           of the column (never overlays the shirt). Mounted only on mobile, so it
           owns the single SelectionPanel. */}
       {isMobile && (
-        <MobileToolBand open={bandOpen} activeTab={activeTab} onSelectTab={bandSelectTab} onProducts={() => setSwitchOpen(true)} hiddenKeys={printMethod === 'embroidery' ? HIDDEN_FOR_EMBROIDERY : undefined} methodToggle={methodToggle}>
+        <MobileToolBand open={bandOpen} activeTab={activeTab} onSelectTab={bandSelectTab} onProducts={() => setSwitchOpen(true)} hiddenKeys={railHiddenKeys} methodToggle={methodToggle}>
           {mobileBandContent}
         </MobileToolBand>
       )}

@@ -653,6 +653,7 @@ export type Database = {
           shopify_product_id: string
           sort_order: number
           supported_print_methods: string[]
+          supports_names_numbers: boolean
           updated_at: string
         }
         Insert: {
@@ -664,6 +665,7 @@ export type Database = {
           shopify_product_id: string
           sort_order?: number
           supported_print_methods: string[]
+          supports_names_numbers?: boolean
           updated_at?: string
         }
         Update: {
@@ -675,6 +677,7 @@ export type Database = {
           shopify_product_id?: string
           sort_order?: number
           supported_print_methods?: string[]
+          supports_names_numbers?: boolean
           updated_at?: string
         }
         Relationships: [

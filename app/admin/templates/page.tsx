@@ -14,6 +14,7 @@ type Draft = {
   shopify_product_id: string
   supported_print_methods: string[]
   default_print_method: string
+  supports_names_numbers: boolean
   is_active: boolean
 }
 
@@ -22,6 +23,7 @@ const EMPTY_DRAFT: Draft = {
   shopify_product_id: '',
   supported_print_methods: [],
   default_print_method: '',
+  supports_names_numbers: true,
   is_active: true,
 }
 
@@ -77,6 +79,7 @@ export default function TemplatesAdmin() {
       shopify_product_id: t.shopify_product_id,
       supported_print_methods: [...t.supported_print_methods],
       default_print_method: t.default_print_method,
+      supports_names_numbers: t.supports_names_numbers ?? true,
       is_active: t.is_active,
     })
     setEditing({ id: t.id })
@@ -120,6 +123,7 @@ export default function TemplatesAdmin() {
       shopify_product_id: normalizeShopifyProductId(draft.shopify_product_id)!,
       supported_print_methods: draft.supported_print_methods,
       default_print_method: draft.default_print_method,
+      supports_names_numbers: draft.supports_names_numbers,
       is_active: draft.is_active,
     }
     if (editing?.id) {
@@ -315,6 +319,12 @@ export default function TemplatesAdmin() {
                     ))}
                   </select>
                 </div>
+                <label className="flex items-center gap-2 text-sm font-mono text-black" title="Uncheck for products the jersey name/number stack should never go on (accessories, etc.)">
+                  <input type="checkbox" checked={draft.supports_names_numbers}
+                    onChange={e => setDraft(p => ({ ...p, supports_names_numbers: e.target.checked }))}
+                    className="accent-[#dd3333]" />
+                  Offers Names &amp; Numbers
+                </label>
                 <label className="flex items-center gap-2 text-sm font-mono text-black">
                   <input type="checkbox" checked={draft.is_active}
                     onChange={e => setDraft(p => ({ ...p, is_active: e.target.checked }))}
