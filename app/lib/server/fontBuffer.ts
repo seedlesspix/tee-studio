@@ -4,6 +4,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { getGoogleFontBuffer, GOOGLE_FONTS } from './googleFontBuffer'
+import { serviceClient } from '../customer-library'
 
 // CSS family name (as used in globals.css @font-face / the designer's fontFamily) ->
 // file in public/fonts. 'Rockwell' is the .ttf extracted from Rockwell.ttc (opentype
@@ -69,7 +70,36 @@ export async function getFontBuffer(family: string, weight = 400): Promise<Buffe
     return buf
   }
   if (GOOGLE_FONTS[key]) return getGoogleFontBuffer(key, weight)
-  throw new Error(`No outline source for font family "${key}" (not local, not a known Google font)`)
+  // Font Management Phase A: an admin-UPLOADED font (designer_fonts.file_url) — fetch + cache the file
+  // from the fonts bucket so the cut engine can outline it, exactly like the Google path. Runs only when
+  // the family isn't a bundled local file or a known Google font (i.e. a new upload). In Phase B the 58
+  // move here too and LOCAL_FILES is retired.
+  const url = await uploadedFontUrl(key)
+  if (url) {
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`Uploaded font fetch failed for "${key}" (HTTP ${res.status})`)
+    const buf = Buffer.from(await res.arrayBuffer())
+    mem.set(key, buf)
+    return buf
+  }
+  throw new Error(`No outline source for font family "${key}" (not local, not Google, not an uploaded font)`)
+}
+
+// Resolve a base family name → the fonts-bucket URL of its uploaded file, via designer_fonts. The
+// name→url map is cached after the first lookup (cut-file generation is admin + low-frequency).
+let uploadedMap: Map<string, string> | null = null
+async function uploadedFontUrl(baseKey: string): Promise<string | null> {
+  // Refresh when the map is empty OR doesn't know this family — so a font uploaded after the lambda
+  // warmed up still resolves (the mem buffer cache then keeps it from re-querying).
+  if (!uploadedMap || !uploadedMap.has(baseKey)) {
+    const { data } = await serviceClient()
+      .from('designer_fonts')
+      .select('value, file_url')
+      .not('file_url', 'is', null)
+    uploadedMap = new Map()
+    for (const r of data ?? []) if (r.file_url) uploadedMap.set(baseFamily(r.value), r.file_url)
+  }
+  return uploadedMap.get(baseKey) ?? null
 }
 
 // opentype.parse() wants an ArrayBuffer; pooled Node Buffers share a backing

@@ -6,7 +6,7 @@ import type { Tables } from '@/types/database'
 type FontRow = Tables<'designer_fonts'>
 type PrintMethod = Tables<'designer_print_methods'>
 
-type EditFields = { label: string; value: string }
+type EditFields = { label: string; value: string; category: string }
 
 // The `value` column is already a complete CSS font-family stack, e.g.
 // "Cooper, serif" or "Bebas Neue, sans-serif" (unquoted multi-word families
@@ -27,6 +27,12 @@ export default function FontsAdmin() {
   const [reordering, setReordering] = useState(false)
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
   const [editValues, setEditValues] = useState<Record<string, EditFields>>({})
+  // Upload-a-font form (Font Management Phase A).
+  const [upFile, setUpFile] = useState<File | null>(null)
+  const [upLabel, setUpLabel] = useState('')
+  const [upMethod, setUpMethod] = useState('screen_print')
+  const [upCategory, setUpCategory] = useState('')
+  const [uploading, setUploading] = useState(false)
 
   const showMessage = (text: string, type: 'success' | 'error' = 'success') => {
     setMessage({ text, type })
@@ -35,8 +41,44 @@ export default function FontsAdmin() {
 
   const seedEditValues = (rows: FontRow[]) => {
     const vals: Record<string, EditFields> = {}
-    rows.forEach(row => { vals[row.id] = { label: row.label, value: row.value } })
+    rows.forEach(row => { vals[row.id] = { label: row.label, value: row.value, category: row.category ?? '' } })
     setEditValues(vals)
+  }
+
+  const baseFamily = (value: string) => value.split(',')[0].trim().replace(/^['"]|['"]$/g, '')
+
+  // Upload a font file → fonts bucket → new designer_fonts row. WE control the family: base(value) =
+  // the label, value = "<label>, sans-serif" (admin can refine the fallback afterward). The label is the
+  // font's identity (what saved designs + the cut engine key off), so keep it stable once used.
+  const handleUploadFont = async () => {
+    const label = upLabel.trim()
+    if (!upFile) { showMessage('Choose a font file (.ttf/.otf).', 'error'); return }
+    if (!label) { showMessage('Font name is required.', 'error'); return }
+    if (baseFamily(label) !== label) { showMessage('Font name shouldn’t contain a comma.', 'error'); return }
+    setUploading(true)
+    const ext = upFile.name.split('.').pop()?.toLowerCase() || 'ttf'
+    const safe = label.replace(/[^a-zA-Z0-9]+/g, '-')
+    const path = `${safe}-${Date.now()}.${ext}`
+    const { error: upErr } = await supabase.storage.from('fonts').upload(path, upFile, { upsert: true, contentType: upFile.type || undefined })
+    if (upErr) { setUploading(false); showMessage('Upload failed: ' + upErr.message, 'error'); return }
+    const { data: urlData } = supabase.storage.from('fonts').getPublicUrl(path)
+    const value = `${label}, sans-serif`
+    const maxOrder = fonts.filter(f => f.print_method_key === upMethod).reduce((m, f) => Math.max(m, f.sort_order ?? 0), 0)
+    const { data: row, error: insErr } = await supabase.from('designer_fonts').insert({
+      label, value, file_url: urlData.publicUrl, print_method_key: upMethod,
+      category: upCategory.trim() || null, is_active: true, sort_order: maxOrder + 1,
+    }).select().single()
+    setUploading(false)
+    if (insErr) { showMessage('Save failed: ' + insErr.message, 'error'); return }
+    setFonts(prev => [...prev, row])
+    setEditValues(prev => ({ ...prev, [row.id]: { label: row.label, value: row.value, category: row.category ?? '' } }))
+    setUpFile(null); setUpLabel(''); setUpCategory('')
+    showMessage('Font uploaded!')
+    // Register it NOW so its preview renders immediately (FontProvider only scans on page load).
+    try {
+      const face = new FontFace(baseFamily(value), `url("${urlData.publicUrl}")`)
+      face.load().then(l => document.fonts.add(l)).catch(() => {})
+    } catch { /* ignore */ }
   }
 
   useEffect(() => {
@@ -53,7 +95,7 @@ export default function FontsAdmin() {
   const rowDirty = (row: FontRow): boolean => {
     const v = editValues[row.id]
     if (!v) return false
-    return v.label !== row.label || v.value !== row.value
+    return v.label !== row.label || v.value !== row.value || v.category !== (row.category ?? '')
   }
 
   const saveRow = async (row: FontRow) => {
@@ -61,15 +103,13 @@ export default function FontsAdmin() {
     if (!v.label.trim()) { showMessage('Label is required.', 'error'); return }
     if (!v.value.trim()) { showMessage('Font value (CSS family) is required.', 'error'); return }
     setSaving(row.id)
-    const { error } = await supabase
-      .from('designer_fonts')
-      .update({ label: v.label.trim(), value: v.value.trim() })
-      .eq('id', row.id)
+    const patch = { label: v.label.trim(), value: v.value.trim(), category: v.category.trim() || null }
+    const { error } = await supabase.from('designer_fonts').update(patch).eq('id', row.id)
     setSaving(null)
     if (error) { showMessage('Error: ' + error.message, 'error'); return }
     showMessage('Saved!')
-    setFonts(prev => prev.map(r => r.id === row.id ? { ...r, label: v.label.trim(), value: v.value.trim() } : r))
-    setEditValues(prev => ({ ...prev, [row.id]: { label: v.label.trim(), value: v.value.trim() } }))
+    setFonts(prev => prev.map(r => r.id === row.id ? { ...r, ...patch } : r))
+    setEditValues(prev => ({ ...prev, [row.id]: { label: patch.label, value: patch.value, category: patch.category ?? '' } }))
   }
 
   const toggleActive = async (row: FontRow) => {
@@ -153,12 +193,41 @@ export default function FontsAdmin() {
           </div>
         )}
 
+        {/* Upload a font — Font Management Phase A. Uploaded fonts render + cut with no code change. */}
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
-          <p className="text-xs text-gray-600 font-mono">
-            This screen edits, toggles, reorders, and removes existing fonts. Both
-            <span className="text-black"> bundled</span> and <span className="text-black">Google</span> fonts
-            need to be wired into the app codebase before they appear here — adding either is a code change,
-            not an admin task. Custom font uploads are a later phase.
+          <p className="text-xs font-mono uppercase tracking-widest text-gray-700 mb-3">Upload a font</p>
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="block text-[10px] text-gray-600 font-mono uppercase mb-1">File (.ttf / .otf)</label>
+              <input type="file" accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf"
+                onChange={e => setUpFile(e.target.files?.[0] ?? null)}
+                className="text-xs text-black file:mr-2 file:rounded file:border-0 file:bg-[#dd3333] file:px-3 file:py-1.5 file:text-white file:font-mono file:cursor-pointer" />
+            </div>
+            <div>
+              <label className="block text-[10px] text-gray-600 font-mono uppercase mb-1">Font name</label>
+              <input value={upLabel} onChange={e => setUpLabel(e.target.value)} placeholder="e.g. Varsity Script"
+                className="bg-white border border-gray-300 rounded px-2 py-1.5 text-sm text-black outline-none focus:border-[#dd3333] font-mono" />
+            </div>
+            <div>
+              <label className="block text-[10px] text-gray-600 font-mono uppercase mb-1">Method</label>
+              <select value={upMethod} onChange={e => setUpMethod(e.target.value)}
+                className="bg-white border border-gray-300 rounded px-2 py-1.5 text-sm text-black outline-none font-mono">
+                <option value="screen_print">Print</option>
+                <option value="embroidery">Embroidery</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] text-gray-600 font-mono uppercase mb-1">Category (optional)</label>
+              <input value={upCategory} onChange={e => setUpCategory(e.target.value)} placeholder="e.g. Script"
+                className="bg-white border border-gray-300 rounded px-2 py-1.5 text-sm text-black outline-none focus:border-[#dd3333] font-mono" />
+            </div>
+            <button onClick={handleUploadFont} disabled={uploading}
+              className="px-4 py-2 rounded text-sm font-mono font-bold bg-[#dd3333] text-white hover:bg-red-700 transition-all disabled:opacity-50">
+              {uploading ? 'Uploading…' : 'Upload'}
+            </button>
+          </div>
+          <p className="text-[11px] text-gray-500 font-mono mt-2">
+            The name becomes the font’s identity (what designs remember + what the cut engine uses) — keep it stable once a font is in use.
           </p>
         </div>
 
@@ -177,8 +246,9 @@ export default function FontsAdmin() {
 
                 <div className="flex flex-col gap-2">
                   {grouped[method].map((row, i, arr) => {
-                    const v = editValues[row.id] ?? { label: row.label, value: row.value }
+                    const v = editValues[row.id] ?? { label: row.label, value: row.value, category: row.category ?? '' }
                     const isGoogle = !!row.google_font
+                    const isUploaded = !!row.file_url
                     return (
                       <div key={row.id} className={`bg-white border rounded-lg p-3 ${row.is_active ? 'border-gray-200' : 'border-red-300 opacity-60'}`}>
                         <div className="flex items-center gap-3">
@@ -197,9 +267,11 @@ export default function FontsAdmin() {
                               {v.label || 'Sample'}
                             </div>
                             <span className={`inline-block mt-1 text-[9px] font-mono uppercase tracking-wide px-1.5 py-0.5 rounded ${
-                              isGoogle ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-600 border border-gray-200'
+                              isUploaded ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : isGoogle ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                : 'bg-gray-100 text-gray-600 border border-gray-200'
                             }`}>
-                              {isGoogle ? `Google: ${row.google_font}` : 'Bundled'}
+                              {isUploaded ? 'Uploaded' : isGoogle ? `Google: ${row.google_font}` : 'Bundled'}
                             </span>
                           </div>
 
@@ -210,12 +282,25 @@ export default function FontsAdmin() {
                               onChange={e => setEditValues(prev => ({ ...prev, [row.id]: { ...v, label: e.target.value } }))}
                               className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm text-black outline-none focus:border-[#dd3333] font-mono mt-1"
                             />
-                            <label className="text-[10px] text-gray-600 font-mono uppercase mt-2 block">CSS font-family value</label>
-                            <input
-                              value={v.value}
-                              onChange={e => setEditValues(prev => ({ ...prev, [row.id]: { ...v, value: e.target.value } }))}
-                              className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-xs text-black outline-none focus:border-[#dd3333] font-mono mt-1"
-                            />
+                            <div className="flex gap-2">
+                              <div className="flex-1 min-w-0">
+                                <label className="text-[10px] text-gray-600 font-mono uppercase mt-2 block">CSS font-family value</label>
+                                <input
+                                  value={v.value}
+                                  onChange={e => setEditValues(prev => ({ ...prev, [row.id]: { ...v, value: e.target.value } }))}
+                                  className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-xs text-black outline-none focus:border-[#dd3333] font-mono mt-1"
+                                />
+                              </div>
+                              <div className="w-32 shrink-0">
+                                <label className="text-[10px] text-gray-600 font-mono uppercase mt-2 block">Category</label>
+                                <input
+                                  value={v.category}
+                                  onChange={e => setEditValues(prev => ({ ...prev, [row.id]: { ...v, category: e.target.value } }))}
+                                  placeholder="—"
+                                  className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-xs text-black outline-none focus:border-[#dd3333] font-mono mt-1"
+                                />
+                              </div>
+                            </div>
                           </div>
 
                           <div className="flex flex-col gap-2 shrink-0">

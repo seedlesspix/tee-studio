@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import FontProvider from "./components/FontProvider";
 
 export const metadata: Metadata = {
   title: "Tee Studio",
@@ -21,7 +22,12 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="min-h-full">{children}</body>
+      <body className="min-h-full">
+        {/* Registers admin-uploaded fonts (designer_fonts.file_url) at runtime — Font Management Phase A.
+            Existing hardcoded fonts above are untouched; this only adds uploaded ones. */}
+        <FontProvider />
+        {children}
+      </body>
     </html>
   );
 }

@@ -363,6 +363,8 @@ export type Database = {
       }
       designer_fonts: {
         Row: {
+          category: string | null
+          file_url: string | null
           google_font: string | null
           id: string
           is_active: boolean | null
@@ -372,6 +374,8 @@ export type Database = {
           value: string
         }
         Insert: {
+          category?: string | null
+          file_url?: string | null
           google_font?: string | null
           id?: string
           is_active?: boolean | null
@@ -381,6 +385,8 @@ export type Database = {
           value: string
         }
         Update: {
+          category?: string | null
+          file_url?: string | null
           google_font?: string | null
           id?: string
           is_active?: boolean | null
