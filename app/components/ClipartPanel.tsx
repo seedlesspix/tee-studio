@@ -4,17 +4,14 @@ import { supabase } from '../lib/supabase'
 import type { Tables } from '@/types/database'
 
 type Category = Pick<Tables<'clipart_categories'>, 'id' | 'name'>
-type ClipartItem = Pick<Tables<'clipart_items'>, 'id' | 'name' | 'file_url' | 'file_type' | 'category_id' | 'tags' | 'decal_number'>
+type ClipartItem = Pick<Tables<'clipart_items'>, 'id' | 'name' | 'file_url' | 'file_type' | 'tags' | 'decal_number' | 'category_ids'>
 
-// Decal metadata carried to placement/capture when a Designs-section item is chosen.
+// Decal metadata carried to placement/capture when an art carries a decal number.
 export type DecalMeta = { number: number; name: string }
 
 interface Props {
   printMethod: string
   onSelect: (url: string, fileType: string, decal?: DecalMeta) => void
-  // 'clipart' = generic clipart categories; 'design' = Designs (decal) categories. The whole panel
-  // (categories, search, tiles) scopes to the mode. Defaults 'clipart' → existing behavior unchanged.
-  mode?: 'clipart' | 'design'
   // Mobile band layout: category CHIPS + one horizontal thumbnail row instead of
   // the desktop dropdown + vertical grid. Defaults false → desktop is byte-identical.
   horizontal?: boolean
@@ -23,78 +20,66 @@ interface Props {
   showSearch?: boolean
 }
 
-export default function ClipartPanel({ printMethod, onSelect, mode = 'clipart', horizontal = false, showSearch = true }: Props) {
+// ClipartPanel — the unified "Art" browser. Art carries its own supported_methods and can live in
+// several categories (category_ids). One method-scoped fetch drives BOTH the category browse and the
+// search, so an embroidery product only ever sees embroidery-capable art. Customers find art by
+// category or by searching a name / Decal #.
+export default function ClipartPanel({ printMethod, onSelect, horizontal = false, showSearch = true }: Props) {
   const [categories, setCategories] = useState<Category[]>([])
-  const [selectedCategory, setSelectedCategory] = useState<string>('')
-  const [items, setItems] = useState<ClipartItem[]>([])
   const [allItems, setAllItems] = useState<ClipartItem[]>([])
+  const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
 
-  // Load categories for the current mode (clipart vs designs). Reset selection on mode/method change —
-  // always overwrite (even to empty) so switching to a mode with no categories can't leave the old list.
+  // Category names (labels). Art references categories by id (category_ids); we map id → name here.
   useEffect(() => {
-    if (!printMethod) return
     supabase
       .from('clipart_categories')
       .select('id, name')
-      .eq('print_method_key', printMethod)
-      .eq('is_design', mode === 'design')
       .eq('is_active', true)
-      .order('sort_order')
-      .then(({ data }) => {
-        setCategories(data || [])
-        setSelectedCategory(data && data.length > 0 ? data[0].id : '')
-      })
-  }, [printMethod, mode])
+      .order('name')
+      .then(({ data }) => setCategories(data || []))
+  }, [])
 
-  // Load ALL items once for search (including tags). Not mode-filtered here — search is scoped to the
-  // current mode client-side via the loaded (mode-specific) category ids below.
+  // All art available for the product's current method — one fetch drives category browse + search.
   useEffect(() => {
     if (!printMethod) return
-    supabase
-      .from('clipart_items')
-      .select('id, name, file_url, file_type, category_id, tags, decal_number')
-      .eq('print_method_key', printMethod)
-      .eq('is_active', true)
-      .then(({ data }) => {
-        setAllItems(data || [])
-      })
-  }, [printMethod])
-
-  // Load items when category changes
-  useEffect(() => {
-    if (!selectedCategory) { setItems([]); return }
     setLoading(true)
     supabase
       .from('clipart_items')
-      .select('id, name, file_url, file_type, category_id, tags, decal_number')
-      .eq('category_id', selectedCategory)
+      .select('id, name, file_url, file_type, tags, decal_number, category_ids')
+      .contains('supported_methods', [printMethod])
       .eq('is_active', true)
       .order('sort_order')
       .then(({ data }) => {
-        setItems(data || [])
+        setAllItems(data || [])
         setLoading(false)
       })
-  }, [selectedCategory])
+  }, [printMethod])
 
-  // Search matches name OR tags, scoped to the current mode's categories.
-  const categoryIds = new Set(categories.map(c => c.id))
-  const filtered = search.trim()
-    ? allItems.filter(item =>
-        categoryIds.has(item.category_id ?? '') &&
-        (item.name.toLowerCase().includes(search.toLowerCase()) ||
-          (item.tags && item.tags.some((tag: string) => tag.toLowerCase().includes(search.toLowerCase()))))
+  // Only show categories that actually contain art for this method — no empty buckets.
+  const usedCategoryIds = new Set<string>()
+  allItems.forEach(i => (i.category_ids || []).forEach(id => usedCategoryIds.add(id)))
+  const visibleCategories = categories.filter(c => usedCategoryIds.has(c.id))
+
+  // Keep a valid selection without an effect: fall back to the first visible category.
+  const effectiveCategory = visibleCategories.some(c => c.id === selectedCategory)
+    ? selectedCategory
+    : (visibleCategories[0]?.id ?? '')
+
+  // Search matches name, tags, OR Decal # (type a number to jump to that design).
+  const q = search.trim().toLowerCase()
+  const filtered = q
+    ? allItems.filter(i =>
+        i.name.toLowerCase().includes(q) ||
+        (i.decal_number != null && String(i.decal_number).includes(q)) ||
+        (i.tags && i.tags.some((tag: string) => tag.toLowerCase().includes(q)))
       )
-    : items
+    : allItems.filter(i => (i.category_ids || []).includes(effectiveCategory))
 
-  // Only tag a placement with decal metadata in Designs mode, and only when a number is set.
+  // Tag a placement with decal metadata whenever the art has a number (for order sell-through).
   const decalFor = (item: ClipartItem): DecalMeta | undefined =>
-    mode === 'design' && item.decal_number != null
-      ? { number: item.decal_number, name: item.name }
-      : undefined
-
-  const selectedCategoryName = categories.find(c => c.id === selectedCategory)?.name || ''
+    item.decal_number != null ? { number: item.decal_number, name: item.name } : undefined
 
   return (
     <div className={horizontal ? 'flex h-full flex-col gap-2' : 'flex flex-col gap-2'}>
@@ -102,7 +87,7 @@ export default function ClipartPanel({ printMethod, onSelect, mode = 'clipart', 
       {showSearch && (
         <input
           type="text"
-          placeholder={mode === 'design' ? 'Search all designs...' : 'Search all clipart...'}
+          placeholder="Search art or Decal #..."
           value={search}
           onChange={e => setSearch(e.target.value)}
           className={horizontal
@@ -115,13 +100,13 @@ export default function ClipartPanel({ printMethod, onSelect, mode = 'clipart', 
       {!search.trim() && (
         horizontal ? (
           <div className="flex shrink-0 gap-1.5 overflow-x-auto pb-0.5">
-            {categories.map(cat => (
+            {visibleCategories.map(cat => (
               <button
                 key={cat.id}
                 type="button"
                 onClick={() => setSelectedCategory(cat.id)}
                 className={`shrink-0 rounded-full border px-3 py-1 text-xs font-mono transition-colors ${
-                  selectedCategory === cat.id
+                  effectiveCategory === cat.id
                     ? 'bg-gray-900 text-white border-gray-900'
                     : 'bg-white text-gray-600 border-gray-300'
                 }`}
@@ -132,11 +117,11 @@ export default function ClipartPanel({ printMethod, onSelect, mode = 'clipart', 
           </div>
         ) : (
           <select
-            value={selectedCategory}
+            value={effectiveCategory}
             onChange={e => setSelectedCategory(e.target.value)}
             className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333] font-mono cursor-pointer"
           >
-            {categories.map(cat => (
+            {visibleCategories.map(cat => (
               <option key={cat.id} value={cat.id}>
                 {cat.name}
               </option>
@@ -152,11 +137,11 @@ export default function ClipartPanel({ printMethod, onSelect, mode = 'clipart', 
         </p>
       )}
 
-      {/* Clipart tiles — horizontal row (mobile) / vertical grid (desktop) */}
+      {/* Art tiles — horizontal row (mobile) / vertical grid (desktop) */}
       {loading ? (
         <p className="text-xs text-gray-600 text-center py-4">Loading...</p>
       ) : filtered.length === 0 ? (
-        <p className="text-xs text-gray-600 text-center py-4">No {mode === 'design' ? 'designs' : 'clipart'} found</p>
+        <p className="text-xs text-gray-600 text-center py-4">No art found</p>
       ) : horizontal ? (
         <div className="flex min-h-0 flex-1 items-center gap-2 overflow-x-auto pb-1">
           {filtered.map(item => (

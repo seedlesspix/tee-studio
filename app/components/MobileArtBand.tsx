@@ -1,6 +1,5 @@
 'use client'
-import ArtBrowser from './ArtBrowser'
-import { type DecalMeta } from './ClipartPanel'
+import ClipartPanel, { type DecalMeta } from './ClipartPanel'
 import MobileAlignRow from './MobileAlignRow'
 
 // MobileArtBand — BLOCKER-2 mobile rework. The Art (clipart) tool for the compact
@@ -65,7 +64,7 @@ export default function MobileArtBand({
         </div>
       )}
       <div className="min-h-0 flex-1">
-        <ArtBrowser printMethod={printMethod} onSelect={onSelect} horizontal showSearch={!artSelected} />
+        <ClipartPanel printMethod={printMethod} onSelect={onSelect} horizontal showSearch={!artSelected} />
       </div>
     </div>
   )

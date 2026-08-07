@@ -1,7 +1,6 @@
 'use client'
 import { type Dispatch, type SetStateAction, type RefObject, type ChangeEventHandler, type DragEventHandler } from 'react'
-import ArtBrowser from './ArtBrowser'
-import { type DecalMeta } from './ClipartPanel'
+import ClipartPanel, { type DecalMeta } from './ClipartPanel'
 import MyUploadsPanel, { type UploadItem } from './MyUploadsPanel'
 import FontPicker from './FontPicker'
 
@@ -437,7 +436,7 @@ export default function SelectionPanel({
                 raster clipart — which has no recolor). */}
             {activeTab === 'clipart' && (
               <div className="flex flex-col gap-3">
-                <ArtBrowser
+                <ClipartPanel
                   printMethod={printMethod}
                   onSelect={handleClipartSelect}
                 />

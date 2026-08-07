@@ -6,6 +6,11 @@ import type { Tables } from '@/types/database'
 type Category = Tables<'clipart_categories'>
 type ClipartItem = Tables<'clipart_items'>
 
+const METHODS: { key: string; label: string }[] = [
+  { key: 'screen_print', label: 'Print' },
+  { key: 'embroidery', label: 'Embroidery' },
+]
+
 export default function ClipartAdmin() {
   const [categories, setCategories] = useState<Category[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>('')
@@ -14,12 +19,12 @@ export default function ClipartAdmin() {
   const [saving, setSaving] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')
-  const [newCategoryMethod, setNewCategoryMethod] = useState('screen_print')
-  const [newCategoryIsDesign, setNewCategoryIsDesign] = useState(false)
   const [showNewCategory, setShowNewCategory] = useState(false)
   const [tagInputs, setTagInputs] = useState<Record<string, string>>({})
-  // Per-item decal-number input (only shown for items in a Designs category), keyed by item.id.
+  // Per-item decal-number input (every art can carry a number), keyed by item.id.
   const [decalInputs, setDecalInputs] = useState<Record<string, string>>({})
+  // Which item's category checklist is expanded (one at a time).
+  const [openCategoriesFor, setOpenCategoriesFor] = useState<string | null>(null)
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -41,13 +46,14 @@ export default function ClipartAdmin() {
       })
   }, [])
 
+  // Art in the selected category — matched by category_ids (an art can be in several categories).
   useEffect(() => {
-    if (!selectedCategory) return
+    if (!selectedCategory) { setItems([]); return }
     setLoading(true)
     supabase
       .from('clipart_items')
       .select('*')
-      .eq('category_id', selectedCategory)
+      .contains('category_ids', [selectedCategory])
       .order('sort_order')
       .then(({ data }) => {
         setItems(data || [])
@@ -59,39 +65,56 @@ export default function ClipartAdmin() {
         })
         setTagInputs(inputs)
         setDecalInputs(decals)
+        setOpenCategoriesFor(null)
         setLoading(false)
       })
   }, [selectedCategory])
 
-  // Whether the currently-selected category is a Designs (decal) category — gates the
-  // per-item decal-number field.
-  const isDesignCategory = !!categories.find(c => c.id === selectedCategory)?.is_design
-
-  // Saves tags (always) plus, for a Designs category, the decal number — in one update.
+  // Save the text fields (tags + Decal #) in one update. Whole-number validation on the Decal #.
   const saveItem = async (itemId: string) => {
     setSaving(itemId)
     const tagString = tagInputs[itemId] || ''
     const tags = tagString.split(',').map(t => t.trim().toLowerCase()).filter(Boolean)
-    const patch: { tags: string[]; decal_number?: number | null } = { tags }
-    if (isDesignCategory) {
-      const raw = (decalInputs[itemId] || '').trim()
-      if (raw && !/^\d+$/.test(raw)) {
-        setSaving(null)
-        showMessage('Decal number must be a whole number.', 'error')
-        return
-      }
-      patch.decal_number = raw ? parseInt(raw, 10) : null
+    const raw = (decalInputs[itemId] || '').trim()
+    if (raw && !/^\d+$/.test(raw)) {
+      setSaving(null)
+      showMessage('Decal number must be a whole number.', 'error')
+      return
     }
-    const { error } = await supabase
-      .from('clipart_items')
-      .update(patch)
-      .eq('id', itemId)
+    const patch = { tags, decal_number: raw ? parseInt(raw, 10) : null }
+    const { error } = await supabase.from('clipart_items').update(patch).eq('id', itemId)
     setSaving(null)
     if (error) showMessage('Error saving: ' + error.message, 'error')
     else {
       setItems(prev => prev.map(i => i.id === itemId ? { ...i, ...patch } : i))
       showMessage('Saved!')
     }
+  }
+
+  // Method toggle (Print / Embroidery) — persists immediately. An art must keep at least one method,
+  // else it would be invisible everywhere (use the active toggle to hide instead).
+  const toggleMethod = async (item: ClipartItem, method: string) => {
+    const current = item.supported_methods || []
+    const next = current.includes(method) ? current.filter(m => m !== method) : [...current, method]
+    if (next.length === 0) { showMessage('Art needs at least one method (Print or Embroidery).', 'error'); return }
+    const { error } = await supabase.from('clipart_items').update({ supported_methods: next }).eq('id', item.id)
+    if (error) showMessage('Error: ' + error.message, 'error')
+    else setItems(prev => prev.map(i => i.id === item.id ? { ...i, supported_methods: next } : i))
+  }
+
+  // Category membership toggle — persists immediately. Removing the CURRENTLY selected category drops
+  // the art from this list (it now lives elsewhere).
+  const toggleCategory = async (item: ClipartItem, catId: string) => {
+    const current = item.category_ids || []
+    const next = current.includes(catId) ? current.filter(c => c !== catId) : [...current, catId]
+    // Keep at least one category, so art stays findable in this admin (which browses by category only).
+    if (next.length === 0) { showMessage('Art must be in at least one category.', 'error'); return }
+    const { error } = await supabase.from('clipart_items').update({ category_ids: next }).eq('id', item.id)
+    if (error) { showMessage('Error: ' + error.message, 'error'); return }
+    setItems(prev => prev
+      .map(i => i.id === item.id ? { ...i, category_ids: next } : i)
+      .filter(i => (i.category_ids || []).includes(selectedCategory))
+    )
   }
 
   const toggleActive = async (item: ClipartItem) => {
@@ -138,14 +161,16 @@ export default function ClipartAdmin() {
 
       const { data: urlData } = supabase.storage.from('clipart').getPublicUrl(path)
 
+      // New art defaults to Print-only (embroidery is a deliberate per-art opt-in — it has to be
+      // stitch-appropriate) and joins the selected category. More categories/methods are set per-item.
       const { data: newItem, error: insertError } = await supabase
         .from('clipart_items')
         .insert({
-          category_id: selectedCategory,
           name: safeName.replace(/_/g, ' '),
           file_url: urlData.publicUrl,
           file_type: ext === 'svg' ? 'svg' : 'image',
-          print_method_key: category.print_method_key,
+          category_ids: [selectedCategory],
+          supported_methods: ['screen_print'],
           is_active: true,
           sort_order: maxOrder + i + 1,
           tags: []
@@ -171,15 +196,13 @@ export default function ClipartAdmin() {
     if (!newCategoryName.trim()) return
     const { data, error } = await supabase
       .from('clipart_categories')
-      .insert({ name: newCategoryName.trim(), print_method_key: newCategoryMethod, is_design: newCategoryIsDesign, is_active: true, sort_order: categories.length + 1 })
+      .insert({ name: newCategoryName.trim(), is_active: true, sort_order: categories.length + 1 })
       .select()
       .single()
     if (error) { showMessage('Error: ' + error.message, 'error'); return }
     setCategories(prev => [...prev, data])
     setSelectedCategory(data.id)
     setNewCategoryName('')
-    setNewCategoryMethod('screen_print')
-    setNewCategoryIsDesign(false)
     setShowNewCategory(false)
     showMessage('Category created!')
   }
@@ -188,8 +211,8 @@ export default function ClipartAdmin() {
     <div className="p-6">
       <div className="max-w-7xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-2xl font-mono font-bold text-black">Clipart Admin</h1>
-          <p className="text-gray-600 text-sm font-mono mt-1">Manage clipart, tags, and uploads</p>
+          <h1 className="text-2xl font-mono font-bold text-black">Art Library</h1>
+          <p className="text-gray-600 text-sm font-mono mt-1">Manage art, categories, methods, and Decal #s</p>
         </div>
 
         {message && (
@@ -211,40 +234,18 @@ export default function ClipartAdmin() {
             </div>
 
             {showNewCategory && (
-              <div className="mb-3 flex flex-col gap-1">
-                <div className="flex gap-1">
-                  <input
-                    value={newCategoryName}
-                    onChange={e => setNewCategoryName(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && createCategory()}
-                    placeholder="Category name..."
-                    className="flex-1 bg-white border border-[#dd3333] rounded px-2 py-1 text-xs text-black outline-none font-mono"
-                  />
-                  <button onClick={createCategory}
-                    className="px-2 py-1 bg-[#dd3333] text-white rounded text-xs font-mono font-bold hover:bg-red-700 transition-all">
-                    Add
-                  </button>
-                </div>
-                {/* Which print method this category's clipart is for — the designer only shows a category's
-                    items when its method matches the product's active method (embroidery vs print). */}
-                <select
-                  value={newCategoryMethod}
-                  onChange={e => setNewCategoryMethod(e.target.value)}
-                  className="bg-white border border-gray-300 rounded px-2 py-1 text-xs text-black outline-none font-mono"
-                >
-                  <option value="screen_print">Print</option>
-                  <option value="embroidery">Embroidery</option>
-                </select>
-                {/* Clipart vs Designs (decals). A Designs category browses as its own "Designs" section in
-                    the designer, and its items each carry a decal number the print shop tracks. */}
-                <select
-                  value={newCategoryIsDesign ? 'design' : 'clipart'}
-                  onChange={e => setNewCategoryIsDesign(e.target.value === 'design')}
-                  className="bg-white border border-gray-300 rounded px-2 py-1 text-xs text-black outline-none font-mono"
-                >
-                  <option value="clipart">Clipart</option>
-                  <option value="design">Designs (decals)</option>
-                </select>
+              <div className="mb-3 flex gap-1">
+                <input
+                  value={newCategoryName}
+                  onChange={e => setNewCategoryName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && createCategory()}
+                  placeholder="Category name..."
+                  className="flex-1 bg-white border border-[#dd3333] rounded px-2 py-1 text-xs text-black outline-none font-mono"
+                />
+                <button onClick={createCategory}
+                  className="px-2 py-1 bg-[#dd3333] text-white rounded text-xs font-mono font-bold hover:bg-red-700 transition-all">
+                  Add
+                </button>
               </div>
             )}
 
@@ -257,16 +258,6 @@ export default function ClipartAdmin() {
                       : 'bg-gray-100 text-black hover:bg-gray-200'
                   }`}>
                   {cat.name}
-                  {cat.print_method_key === 'embroidery' && (
-                    <span className={`ml-1.5 rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide ${selectedCategory === cat.id ? 'bg-white/25 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
-                      Emb
-                    </span>
-                  )}
-                  {cat.is_design && (
-                    <span className={`ml-1.5 rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide ${selectedCategory === cat.id ? 'bg-white/25 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
-                      Design
-                    </span>
-                  )}
                   <span className={`float-right font-normal ${selectedCategory === cat.id ? 'text-white/80' : 'text-gray-500'}`}>
                     {selectedCategory === cat.id ? items.length : ''}
                   </span>
@@ -297,9 +288,11 @@ export default function ClipartAdmin() {
               ) : (
                 <>
                   <p className="text-black font-mono text-sm group-hover:text-[#dd3333] transition-all">
-                    Drop clipart files here or click to upload
+                    Drop art files here or click to upload
                   </p>
-                  <p className="text-gray-500 font-mono text-xs mt-1">SVG, PNG, JPG, WEBP supported</p>
+                  <p className="text-gray-500 font-mono text-xs mt-1">
+                    SVG, PNG, JPG, WEBP · new art starts as Print-only, in this category
+                  </p>
                 </>
               )}
             </div>
@@ -308,9 +301,9 @@ export default function ClipartAdmin() {
             {loading ? (
               <p className="text-gray-600 font-mono text-sm text-center py-12">Loading...</p>
             ) : items.length === 0 ? (
-              <p className="text-gray-600 font-mono text-sm text-center py-12">No clipart in this category yet. Upload some above!</p>
+              <p className="text-gray-600 font-mono text-sm text-center py-12">No art in this category yet. Upload some above!</p>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                 {items.map(item => (
                   <div key={item.id} className={`bg-white border rounded-lg p-3 flex flex-col gap-2 ${
                     item.is_active ? 'border-gray-200' : 'border-red-300 opacity-60'
@@ -322,17 +315,56 @@ export default function ClipartAdmin() {
 
                     <p className="text-xs font-mono text-black truncate text-center">{item.name}</p>
 
-                    {isDesignCategory && (
-                      <input
-                        value={decalInputs[item.id] || ''}
-                        onChange={e => setDecalInputs(prev => ({ ...prev, [item.id]: e.target.value }))}
-                        onKeyDown={e => e.key === 'Enter' && saveItem(item.id)}
-                        placeholder="Decal #"
-                        inputMode="numeric"
-                        className="w-full bg-white border border-emerald-300 rounded px-2 py-1 text-[10px] text-black outline-none focus:border-emerald-500 font-mono placeholder-gray-400"
-                      />
+                    {/* Methods — Print / Embroidery (persists on click; Print-only by default) */}
+                    <div className="flex gap-1">
+                      {METHODS.map(m => {
+                        const on = (item.supported_methods || []).includes(m.key)
+                        return (
+                          <button key={m.key} onClick={() => toggleMethod(item, m.key)}
+                            className={`flex-1 py-1 rounded text-[10px] font-mono border transition-all ${
+                              on
+                                ? 'bg-gray-900 text-white border-gray-900'
+                                : 'bg-white text-gray-400 border-gray-300 hover:border-gray-500'
+                            }`}>
+                            {m.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {/* Decal # */}
+                    <input
+                      value={decalInputs[item.id] || ''}
+                      onChange={e => setDecalInputs(prev => ({ ...prev, [item.id]: e.target.value }))}
+                      onKeyDown={e => e.key === 'Enter' && saveItem(item.id)}
+                      placeholder="Decal #"
+                      inputMode="numeric"
+                      className="w-full bg-white border border-emerald-300 rounded px-2 py-1 text-[10px] text-black outline-none focus:border-emerald-500 font-mono placeholder-gray-400"
+                    />
+
+                    {/* Categories — an art can be in several. Click to expand the checklist. */}
+                    <button
+                      onClick={() => setOpenCategoriesFor(openCategoriesFor === item.id ? null : item.id)}
+                      className="w-full py-1 rounded text-[10px] font-mono bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 transition-all">
+                      Categories ({(item.category_ids || []).length}) {openCategoriesFor === item.id ? '▴' : '▾'}
+                    </button>
+                    {openCategoriesFor === item.id && (
+                      <div className="max-h-32 overflow-y-auto rounded border border-gray-200 bg-white p-1.5 flex flex-col gap-1">
+                        {categories.map(cat => (
+                          <label key={cat.id} className="flex items-center gap-1.5 text-[10px] font-mono text-black cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={(item.category_ids || []).includes(cat.id)}
+                              onChange={() => toggleCategory(item, cat.id)}
+                              className="accent-[#dd3333]"
+                            />
+                            {cat.name}
+                          </label>
+                        ))}
+                      </div>
                     )}
 
+                    {/* Tags (search keywords) */}
                     <input
                       value={tagInputs[item.id] || ''}
                       onChange={e => setTagInputs(prev => ({ ...prev, [item.id]: e.target.value }))}

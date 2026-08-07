@@ -58,6 +58,7 @@ export type Database = {
       clipart_items: {
         Row: {
           category_id: string | null
+          category_ids: string[]
           created_at: string | null
           decal_number: number | null
           file_type: string | null
@@ -67,10 +68,12 @@ export type Database = {
           name: string
           print_method_key: string | null
           sort_order: number | null
+          supported_methods: string[]
           tags: string[] | null
         }
         Insert: {
           category_id?: string | null
+          category_ids?: string[]
           created_at?: string | null
           decal_number?: number | null
           file_type?: string | null
@@ -80,10 +83,12 @@ export type Database = {
           name: string
           print_method_key?: string | null
           sort_order?: number | null
+          supported_methods?: string[]
           tags?: string[] | null
         }
         Update: {
           category_id?: string | null
+          category_ids?: string[]
           created_at?: string | null
           decal_number?: number | null
           file_type?: string | null
@@ -93,6 +98,7 @@ export type Database = {
           name?: string
           print_method_key?: string | null
           sort_order?: number | null
+          supported_methods?: string[]
           tags?: string[] | null
         }
         Relationships: [
