@@ -1137,7 +1137,10 @@ export default function DesignerCanvas({
       if (!o || o[NN_ROLE_PROP] || (o.type !== 'i-text' && o.type !== 'textbox')) return
       if (font) o.set({ fontFamily: font })
       if (thread) o.set({ fill: thread })
-      o.initDimensions?.(); o.setCoords?.()
+      // The embroidery font has different metrics than the print font, so text sized to fill the box
+      // now overflows it. Re-fit + re-constrain to the print area (same path every text mutation uses)
+      // instead of only recomputing dimensions — otherwise the converted text lands outside the box.
+      fitAndConstrain(o)
     }
     ;[...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current].forEach(restyle)
     canvas.renderAll()
