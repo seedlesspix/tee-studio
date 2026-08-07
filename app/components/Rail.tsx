@@ -1,6 +1,6 @@
 'use client'
 
-import { Shirt, Type, Upload, Shapes, Hash } from 'lucide-react'
+import { Shirt, Type, Upload, Shapes, Hash, Layers } from 'lucide-react'
 
 // Rail — the designer's tool selector, now the sealed vertical ICON RAIL.
 //
@@ -18,12 +18,16 @@ import { Shirt, Type, Upload, Shapes, Hash } from 'lucide-react'
 // screen_print→"Print"). Products (= Design Portability, D2.5) is an ACTION item,
 // not a tab: it opens the switch-garment picker via onProducts instead of driving
 // activeTab. It's enabled only when onProducts is supplied (else it falls back to
-// the dimmed "Soon" placeholder). Layers is deliberately NOT a rail item.
+// the dimmed "Soon" placeholder). Layers IS a rail item now (Denise 2026-08-07,
+// reversing the earlier "deliberately not a rail item" call) — it's the manage
+// view (reorder/select/delete placed elements), the same place customers reach
+// every other tool, and it must reach the phone bottom bar (where overlap is
+// hardest to tap), which the shared rail gives for free.
 //
 // Phase 2 next visual sub-pass (logged, NOT here): the PANEL red-sweep — flip the
 // SelectionPanel's remaining red-for-selection states to quiet (selected-font
 // border, selected color-swatch ring, active align/direction/effects buttons).
-type Tab = 'text' | 'upload' | 'clipart' | 'names'
+type Tab = 'text' | 'upload' | 'clipart' | 'names' | 'layers'
 
 type RailItem = {
   key: string
@@ -39,6 +43,7 @@ const ITEMS: RailItem[] = [
   { key: 'upload',   label: 'Upload',          Icon: Upload, wired: true  },
   { key: 'clipart',  label: 'Art',             Icon: Shapes, wired: true  },
   { key: 'names',    label: 'Names & Numbers', Icon: Hash,   wired: true  },
+  { key: 'layers',   label: 'Layers',          Icon: Layers, wired: true  },
 ]
 
 export default function Rail({

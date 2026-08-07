@@ -23,7 +23,7 @@ import Rail from './Rail'
 // open it shows the existing controls in a vertical scroll (interim). Stages 2+
 // replace each tool with a compact horizontal layout (font chips + horizontal
 // preview row, colour row, etc.).
-type Tab = 'text' | 'upload' | 'clipart' | 'names'
+type Tab = 'text' | 'upload' | 'clipart' | 'names' | 'layers'
 
 export default function MobileToolBand({
   open,

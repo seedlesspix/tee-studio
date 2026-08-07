@@ -1,6 +1,10 @@
 'use client'
 // Module-level variable to persist active object across button clicks
 let _activeObj: any = null
+// Transient per-session id assigned to canvas objects for the Layers list (stable React keys +
+// row→object lookup). NOT persisted (absent from CANVAS_CUSTOM_PROPS) — objects are re-ided on restore.
+let _layerSeq = 0
+const NN_ROW_ID = '__nn__' // the single collapsed "Names & Numbers" row's id
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
@@ -38,6 +42,7 @@ import ActionBar from './ActionBar'
 import Stepper from './Stepper'
 import Rail from './Rail'
 import SelectionPanel from './SelectionPanel'
+import LayersPanel, { type LayerKind, type LayerRow } from './LayersPanel'
 import MobileToolBand from './MobileToolBand'
 import MobileTextBand from './MobileTextBand'
 import MobileUploadBand from './MobileUploadBand'
@@ -252,7 +257,7 @@ export default function DesignerCanvas({
   const [shirtView, setShirtView] = useState<'front' | 'back'>('front')
   const [hasBackImages, setHasBackImages] = useState(false)
   const [printArea, setPrintArea] = useState<{xPct:number,yPct:number,widthPct:number,heightPct:number} | null>(null)
-  const [activeTab, setActiveTab] = useState<'text' | 'upload' | 'clipart' | 'style' | 'names'>('text')
+  const [activeTab, setActiveTab] = useState<'text' | 'upload' | 'clipart' | 'style' | 'names' | 'layers'>('text')
   // Names & Numbers roster (Phase 1: component state + auto-draft; DB persistence = Phase 2 migration).
   const [roster, setRoster] = useState<RosterEntry[]>([])
   const [nnFields, setNnFields] = useState<{ name: boolean; number: boolean; title: boolean }>({ name: false, number: false, title: false })
@@ -331,6 +336,9 @@ export default function DesignerCanvas({
   // Reactive count of objects on the CURRENT side's canvas — drives the blank-shirt
   // empty-state overlay (greeting + on-garment CTAs). Updated on object:added/removed.
   const [canvasObjectCount, setCanvasObjectCount] = useState(0)
+  // Layers list nudge: a pure reorder (bringObjectForward/sendObjectBackwards) changes neither the
+  // object count nor fires add/removed, so bump this to force the Layers panel to re-read getObjects().
+  const [layersTick, setLayersTick] = useState(0)
 
   // ── Mobile (BLOCKER-2, canvas-scaling pass) ──────────────────────────────────
   const stageAreaRef = useRef<HTMLElement>(null)
@@ -772,6 +780,9 @@ export default function DesignerCanvas({
   // Constrain all objects whenever fontSize changes (slider update)
   const fabricCanvasRef = useRef<any>(null)
   const lastActiveObjectRef = useRef<any>(null)
+  // True only while a Layers row selects its object — tells the selection handlers to skip the
+  // auto tab-switch so the customer stays on the Layers tab while reordering.
+  const selectingFromLayersRef = useRef(false)
   const frontObjectsRef = useRef<any[]>([])
   const backObjectsRef = useRef<any[]>([])
   // D2 port: the back side re-fits its GEOMETRY into backObjectsRef up front, but the DOM-coupled
@@ -1584,7 +1595,10 @@ export default function DesignerCanvas({
         // A curve re-bake swaps the object under us — keep the refs, but don't
         // re-run the tab-switch/reflect on every frame (that was the "shake").
         if (curveBakingRef.current) return
-        if (obj) { setActiveTab(sectionForObject(obj)); setSelectedNnRole(obj[NN_ROLE_PROP] ?? null); refreshLowRes(obj) }
+        // Selecting via a Layers row must NOT navigate away from the Layers tab (that's where the
+        // customer is reordering) — the guard skips only the tab-switch; everything else reflects.
+        if (obj) { if (!selectingFromLayersRef.current) setActiveTab(sectionForObject(obj)); setSelectedNnRole(obj[NN_ROLE_PROP] ?? null); refreshLowRes(obj) }
+        setLayersTick(t => t + 1) // keep the Layers row highlight in sync with the canvas selection
         if (obj && (obj.type === 'i-text' || obj.type === 'textbox' || (obj as any)._isCurvedText)) {
           const raw = ((obj as any)._originalText || obj.text || '').replace(/\n/g, ' ')
           setSelectedTextPreview(raw.trim())
@@ -1612,7 +1626,10 @@ export default function DesignerCanvas({
         // A curve re-bake swaps the object under us — keep the refs, but don't
         // re-run the tab-switch/reflect on every frame (that was the "shake").
         if (curveBakingRef.current) return
-        if (obj) { setActiveTab(sectionForObject(obj)); setSelectedNnRole(obj[NN_ROLE_PROP] ?? null); refreshLowRes(obj) }
+        // Selecting via a Layers row must NOT navigate away from the Layers tab (that's where the
+        // customer is reordering) — the guard skips only the tab-switch; everything else reflects.
+        if (obj) { if (!selectingFromLayersRef.current) setActiveTab(sectionForObject(obj)); setSelectedNnRole(obj[NN_ROLE_PROP] ?? null); refreshLowRes(obj) }
+        setLayersTick(t => t + 1) // keep the Layers row highlight in sync with the canvas selection
         if (obj && (obj.type === 'i-text' || obj.type === 'textbox' || (obj as any)._isCurvedText)) {
           const raw = ((obj as any)._originalText || obj.text || '').replace(/\n/g, ' ')
           setSelectedTextPreview(raw.trim())
@@ -2553,7 +2570,7 @@ export default function DesignerCanvas({
   // so switching rail category means "leave edit mode": drop the selection
   // (selection:cleared resets selectedObjectType → the panel shows the chosen
   // category's ADD surface) and set the tab.
-  const handleSelectTab = (tab: 'text' | 'upload' | 'clipart' | 'names') => {
+  const handleSelectTab = (tab: 'text' | 'upload' | 'clipart' | 'names' | 'layers') => {
     const canvas = fabricCanvasRef.current
     if (canvas) {
       canvas.discardActiveObject()
@@ -2625,7 +2642,7 @@ export default function DesignerCanvas({
 
   // Mobile band tab tap: switch tool AND open the band; tapping the ALREADY-active
   // tab closes it (back to just the icon strip, shirt at full size).
-  const bandSelectTab = (tab: 'text' | 'upload' | 'clipart' | 'names') => {
+  const bandSelectTab = (tab: 'text' | 'upload' | 'clipart' | 'names' | 'layers') => {
     if (bandOpen && activeTab === tab) { setBandOpen(false); return }
     handleSelectTab(tab)
     setBandOpen(true)
@@ -4047,6 +4064,100 @@ export default function DesignerCanvas({
   // time (desktop left aside OR mobile sheet), so its textInputRef binds to a
   // single textarea (two live copies would fight over the ref).
   const textProps = { textInput, textInputRef, handleTextInputChange, selectedObjectType, startNewText, dbFonts, fonts, selectedFont, setSelectedFont, selectedTextPreview, fontSize, setFontSize, letterSpacing, setLetterSpacing, textColor, setTextColor, textDirection, setTextDirection, curveAmount, setCurveAmount, textIsMultiline, textAlign, handleTextAlign, isBold, setIsBold, isItalic, setIsItalic, isUppercase, setIsUppercase }
+  // ── Layers ──────────────────────────────────────────────────────────────────
+  // A per-side list of everything on the shirt (FRONT-most first) for the Layers tool. Recomputed each
+  // render from the live canvas; re-renders are driven by layersTick (reorder + selection), the
+  // selection state, canvasObjectCount (add/remove), and shirtView (side). N&N placeholders collapse
+  // into ONE locked row. layersTick is a re-render nonce (a reorder/selection changes neither the object
+  // count nor fires an add/removed event); read here so it isn't flagged unused.
+  void layersTick
+  const layerKind = (o: any): LayerKind => {
+    if (o.type === 'i-text' || o.type === 'textbox' || o._isCurvedText) return 'text'
+    if (typeof o._isSvg === 'boolean') return 'art' // library art (SVG or raster clipart / decal)
+    return 'image' // customer upload
+  }
+  const layerLabel = (o: any, kind: LayerKind): string => {
+    if (kind === 'text') {
+      const t = String(o._originalText ?? o.text ?? '').replace(/\s+/g, ' ').trim()
+      return t || 'Text'
+    }
+    if (o._decalName) return String(o._decalName)
+    if (o._uploadSrc) {
+      try {
+        const base = decodeURIComponent(String(o._uploadSrc).split('?')[0].split('/').pop() || '')
+        if (base) return base
+      } catch { /* fall through to generic */ }
+      return 'Upload'
+    }
+    return kind === 'art' ? 'Art' : 'Image'
+  }
+  const layerObjById = (id: string): any =>
+    fabricCanvasRef.current?.getObjects().find((o: any) => o._layerId === id) || null
+  const buildLayerRows = (): LayerRow[] => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return []
+    const objs = canvas.getObjects().filter((o: any) => o && !o._isCropRect && !o.excludeFromExport)
+    const active = canvas.getActiveObject()
+    const rows: LayerRow[] = []
+    let nnPushed = false
+    for (let i = objs.length - 1; i >= 0; i--) { // last object = front-most → top of the list
+      const o: any = objs[i]
+      if (o[NN_ROLE_PROP]) {
+        if (!nnPushed) {
+          nnPushed = true
+          rows.push({ id: NN_ROW_ID, kind: 'nn', label: 'Names & Numbers', selected: !!(active && active[NN_ROLE_PROP]) })
+        }
+        continue // collapse the whole N&N stack into one row
+      }
+      if (!o._layerId) o._layerId = `L${++_layerSeq}`
+      const kind = layerKind(o)
+      rows.push({ id: o._layerId, kind, label: layerLabel(o, kind), selected: o === active })
+    }
+    return rows
+  }
+  const layerRows = buildLayerRows()
+  const onLayerSelect = (id: string) => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    if (id === NN_ROW_ID) {
+      const nn = canvas.getObjects().find((o: any) => o[NN_ROLE_PROP])
+      if (nn) { canvas.setActiveObject(nn); canvas.renderAll() } // routes to Names via sectionForObject
+      else setActiveTab('names')
+      return
+    }
+    const obj = layerObjById(id)
+    if (!obj) return
+    selectingFromLayersRef.current = true // stay on the Layers tab (skip the auto tab-switch)
+    canvas.setActiveObject(obj)
+    canvas.renderAll()
+    selectingFromLayersRef.current = false
+    setLayersTick(t => t + 1) // refresh the selected-row highlight (same-type selects don't move state)
+  }
+  const onLayerMove = (id: string, dir: 'up' | 'down') => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas || id === NN_ROW_ID) return
+    const obj = layerObjById(id)
+    if (!obj) return
+    if (dir === 'up') canvas.bringObjectForward(obj) // toward the front
+    else canvas.sendObjectBackwards(obj)             // toward the back
+    canvas.renderAll()
+    markDirty()
+    setLayersTick(t => t + 1) // a pure reorder fires no add/removed event — nudge the list
+  }
+  const onLayerDelete = (id: string) => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas || id === NN_ROW_ID) return
+    const obj = layerObjById(id)
+    if (!obj) return
+    canvas.remove(obj)
+    canvas.discardActiveObject()
+    canvas.renderAll()
+    markDirty() // object:removed → canvasObjectCount → re-render
+  }
+  const layersPanel = (
+    <LayersPanel rows={layerRows} onSelect={onLayerSelect} onMove={onLayerMove} onDelete={onLayerDelete} />
+  )
+
   const selectionPanel = (
     <SelectionPanel
       activeTab={activeTab}
@@ -4165,6 +4276,7 @@ export default function DesignerCanvas({
         alignObject={alignObject}
       />
     )
+    : activeTab === 'layers' ? layersPanel
     : activeTab === 'names' ? namesPanel
     : selectionPanel
 
@@ -4219,7 +4331,7 @@ export default function DesignerCanvas({
               <Rail activeTab={activeTab} onSelectTab={handleSelectTab} onProducts={() => setSwitchOpen(true)}
                 hiddenKeys={railHiddenKeys} />
               <div className="flex-1 min-w-0 overflow-y-auto pt-3">
-                {activeTab === 'names' ? namesPanel : selectionPanel}
+                {activeTab === 'layers' ? layersPanel : activeTab === 'names' ? namesPanel : selectionPanel}
               </div>
             </div>
           </aside>
@@ -4416,7 +4528,7 @@ export default function DesignerCanvas({
 
         {/* Right panel */}
         <aside className="w-64 bg-white border-l border-gray-200 hidden lg:flex lg:flex-col gap-4 p-4 overflow-y-auto shrink-0">
-          <h2 className="font-black text-lg tracking-widest">ORDER</h2>
+          <h2 className="font-black text-lg tracking-widest">PRODUCT</h2>
 
           <div className="flex flex-col gap-2 text-sm">
             <div className="flex justify-between text-gray-800">
