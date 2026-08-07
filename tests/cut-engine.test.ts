@@ -7,6 +7,7 @@ import { autoTraceSvg } from '../app/lib/server/autoTrace'
 const phys = { width_in: 12, height_in: 16 } // 3600 x 4800 print box
 const pathCount = (svg: string) => (svg.match(/<path/g) || []).length
 const extractD = (svg: string) => svg.match(/ d="([^"]+)"/)?.[1] ?? ''
+const extractAllD = (svg: string) => (svg.match(/ d="([^"]+)"/g) || []).join(' ')
 // paper's NO-boolean re-emit of a path — the faithful baseline the fix must match for
 // non-overlapping art (a revert to unconditional unite/intersect would re-fit and diverge).
 function faithfulReEmit(d: string): string {
@@ -37,6 +38,21 @@ describe('cut engine — curve fidelity (guards the paper.js boolean gate)', () 
     const rB = 'M1200 1200 H2700 V2700 H1200 Z' // overlaps rA
     const svg = assembleCutSvgUnioned([{ d: rA, fill: '#dd0000' }, { d: rB, fill: '#dd0000' }], phys)
     expect(pathCount(svg)).toBe(1) // merged to a single cut outline
+  })
+
+  it('closes open (Z-less) contours so a boolean keeps their final curve — no straight-close notch', () => {
+    // opentype's toPathData returns each contour to its start but emits NO closepath. Paper parses
+    // those OPEN, and when a boolean runs it closes them with a STRAIGHT line — dropping the contour's
+    // final curve (an "O" counter, an "S" tail came out notched; straight-edged glyphs looked fine).
+    const OPEN = BLOB.replace(/\s*Z\s*$/, '')          // the same smooth 4-cubic blob, minus its Z
+    const ovA = 'M2600 300 H3100 V800 H2600 Z'
+    const ovB = 'M2900 600 H3400 V1100 H2900 Z'        // ovA∩ovB self-overlaps → forces unite on the layer
+    const svg = assembleCutSvgUnioned(
+      [{ d: OPEN, fill: '#000000' }, { d: ovA, fill: '#000000' }, { d: ovB, fill: '#000000' }], phys,
+    )
+    // The blob is disjoint from the overlap, but paper unites the WHOLE color layer. With the Z-close
+    // fix the blob's 4 cubics survive; without it the closing cubic degrades to a straight line.
+    expect((extractAllD(svg).match(/[CQcq]/g) || []).length).toBeGreaterThanOrEqual(4)
   })
 
   it('mirror bakes a different geometry into the path', () => {

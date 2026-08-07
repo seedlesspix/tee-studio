@@ -18,6 +18,18 @@ import type { CutPath, PhysBox } from './cutFileEngine'
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 const idSafe = (fill: string) => fill.replace(/[^A-Za-z0-9]+/g, '_').replace(/^(\d)/, '_$1')
 
+// 🚨 opentype's toPathData returns each contour to its start point but emits NO closepath ('Z'), so
+// paper parses them as OPEN subpaths. When a boolean op (unite/intersect) then closes such a subpath,
+// it replaces the contour's FINAL CURVE with a straight closing line — notching rounded features (an
+// "O" counter, an "S" tail, cursive bowls) while straight-edged glyphs look fine. Every cut shape is a
+// closed fill, so force an explicit Z on each subpath before paper sees it. Harmless where no boolean
+// runs (endpoint already coincides with start → zero-length close) and idempotent if a Z is present.
+const closeSubpaths = (d: string): string =>
+  !d ? d : d.split(/(?=[Mm])/).map(s => {
+    const t = s.trim()
+    return !t ? '' : /[Zz]\s*$/.test(t) ? t : t + 'Z'
+  }).filter(Boolean).join('')
+
 export function assembleCutSvgUnioned(
   paths: CutPath[], phys: PhysBox, opts: { dpi?: number; mirror?: boolean } = {},
 ): string {
@@ -29,7 +41,7 @@ export function assembleCutSvgUnioned(
   try {
     const box = new scope.Path.Rectangle(new scope.Rectangle(0, 0, viewW, viewH))
     const byColor = new Map<string, string[]>()
-    for (const p of paths) { if (!p.d) continue; const a = byColor.get(p.fill) ?? []; a.push(p.d); byColor.set(p.fill, a) }
+    for (const p of paths) { if (!p.d) continue; const a = byColor.get(p.fill) ?? []; a.push(closeSubpaths(p.d)); byColor.set(p.fill, a) }
 
     const layers: string[] = []
     let i = 0
