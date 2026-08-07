@@ -4,7 +4,8 @@ import { useSearchParams } from 'next/navigation'
 import type { Tables } from '@/types/database'
 import { type RosterEntry } from '@/app/lib/namesNumbers'
 import Stepper from '@/app/components/Stepper'
-import { VOLUME_DISCOUNT, currentTier, nextTier } from '@/app/lib/volumeTiers'
+import { supabase } from '@/app/lib/supabase'
+import { VOLUME_DISCOUNT, currentTier, nextTier, normalizeTiers, type VolumeTier } from '@/app/lib/volumeTiers'
 
 type DesignOrder = Omit<Tables<'design_orders'>, 'quantities'> & {
   quantities: Record<string, number> | null
@@ -22,6 +23,9 @@ function OrderPage() {
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState('')
   const [notes, setNotes] = useState('')
+  // This garment's per-product volume ladder (product_templates.volume_tiers, public read) — drives
+  // the incentive display only; the real % comes off at checkout via the Shopify discount Function.
+  const [volumeTiers, setVolumeTiers] = useState<VolumeTier[]>([])
 
   useEffect(() => {
     if (!designId) return
@@ -48,6 +52,11 @@ function OrderPage() {
         setOrderedSizes(sizesToUse)
         setQuantities(initQty)
         setLoading(false)
+        // This garment's volume ladder (public-read template row). Non-blocking; no tiers → no display.
+        if (order.template_id) {
+          supabase.from('product_templates').select('volume_tiers').eq('id', order.template_id).maybeSingle()
+            .then(({ data }) => setVolumeTiers(normalizeTiers(data?.volume_tiers)))
+        }
       })
   }, [designId])
 
@@ -280,18 +289,18 @@ function OrderPage() {
               </div>
             </div>
 
-            {/* Volume savings — INCENTIVE display only. The actual % comes off at checkout via the
-                Shopify quantity-tier discount app; this shows the ladder + a "one more to save" nudge so
-                the customer knows it's there. Gated by VOLUME_DISCOUNT.enabled so it can't show before
-                the app is live (never promise a discount Shopify won't apply). */}
-            {VOLUME_DISCOUNT.enabled && (() => {
-              const cur = currentTier(totalQty)
-              const nxt = nextTier(totalQty)
+            {/* Volume savings — INCENTIVE display only, for THIS garment's ladder (per-product). The
+                actual % comes off at checkout via the Shopify discount Function; this shows the ladder +
+                a "one more to save" nudge so the customer knows it's there. Gated by VOLUME_DISCOUNT.enabled
+                (never promise a discount before the Function is live) AND this garment having tiers. */}
+            {VOLUME_DISCOUNT.enabled && volumeTiers.length > 0 && (() => {
+              const cur = currentTier(totalQty, volumeTiers)
+              const nxt = nextTier(totalQty, volumeTiers)
               return (
                 <div className="border-t border-gray-200 mt-4 pt-4">
                   <p className="text-xs font-mono text-gray-900 uppercase tracking-widest mb-2">Volume savings</p>
                   <div className="flex flex-wrap gap-1.5 mb-2">
-                    {VOLUME_DISCOUNT.tiers.map(t => {
+                    {volumeTiers.map(t => {
                       const active = cur?.minQty === t.minQty
                       return (
                         <span key={t.minQty}

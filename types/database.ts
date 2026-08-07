@@ -676,6 +676,7 @@ export type Database = {
           supported_print_methods: string[]
           supports_names_numbers: boolean
           updated_at: string
+          volume_tiers: Json | null
         }
         Insert: {
           created_at?: string
@@ -688,6 +689,7 @@ export type Database = {
           supported_print_methods: string[]
           supports_names_numbers?: boolean
           updated_at?: string
+          volume_tiers?: Json | null
         }
         Update: {
           created_at?: string
@@ -700,6 +702,7 @@ export type Database = {
           supported_print_methods?: string[]
           supports_names_numbers?: boolean
           updated_at?: string
+          volume_tiers?: Json | null
         }
         Relationships: [
           {

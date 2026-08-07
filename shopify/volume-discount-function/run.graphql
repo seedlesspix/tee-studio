@@ -1,0 +1,23 @@
+# Input query for the Volume Tier Discount function (target: purchase.product-discount.run).
+# Pulls, per cart line: the quantity, the variant id (to target), the owning product id (to group
+# sizes of the same design together), and the product's volume.tiers metafield (the per-garment ladder
+# our app stamps at add-to-cart). A line whose product has no volume.tiers metafield is simply ignored.
+query RunInput {
+  cart {
+    lines {
+      quantity
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          id
+          product {
+            id
+            volumeTiers: metafield(namespace: "volume", key: "tiers") {
+              value
+            }
+          }
+        }
+      }
+    }
+  }
+}

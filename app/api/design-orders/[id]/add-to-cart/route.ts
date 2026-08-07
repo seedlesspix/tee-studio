@@ -8,6 +8,7 @@ import {
   waitForMediaReady,
 } from '../../../../lib/design-products'
 import { type RosterEntry, entryHasContent, rosterValue, rosterShirtCount, rosterSizeQuantities } from '../../../../lib/namesNumbers'
+import { normalizeTiers, type VolumeTier } from '../../../../lib/volumeTiers'
 
 export const runtime = 'nodejs'
 
@@ -205,13 +206,27 @@ export async function POST(
     (u): u is string => typeof u === 'string' && u.startsWith('https://')
   )
 
-  // 1. Ephemeral product (per-size variants, folded price, seo.hidden).
+  // This garment's per-product volume ladder → stamped on the design product as the volume.tiers
+  // metafield the discount Function reads at checkout. Best-effort: a missing template / no tiers just
+  // means no volume discount for this order (never blocks the cart-add).
+  let volumeTiers: VolumeTier[] = []
+  if (design.template_id) {
+    const { data: tmpl } = await supabase
+      .from('product_templates')
+      .select('volume_tiers')
+      .eq('id', design.template_id)
+      .maybeSingle()
+    volumeTiers = normalizeTiers(tmpl?.volume_tiers)
+  }
+
+  // 1. Ephemeral product (per-size variants, folded price, seo.hidden, volume.tiers).
   const product = await createDesignProduct({
     designOrderId: id,
     title: `Custom ${design.product_title ?? 'Design'}`,
     price,
     sizes,
     previewUrls,
+    volumeTiers,
   }).catch((e: Error) => e)
   if (product instanceof Error) {
     console.error('[add-to-cart] product creation failed:', product.message)

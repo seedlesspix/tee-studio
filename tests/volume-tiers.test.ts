@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { currentTier, nextTier, type VolumeTier } from '../app/lib/volumeTiers'
+import { currentTier, nextTier, normalizeTiers, type VolumeTier } from '../app/lib/volumeTiers'
 
 const TIERS: VolumeTier[] = [
   { minQty: 6, pct: 10 },
@@ -19,6 +19,34 @@ describe('currentTier', () => {
     expect(currentTier(23, TIERS)?.pct).toBe(15)
     expect(currentTier(24, TIERS)?.pct).toBe(20)
     expect(currentTier(100, TIERS)?.pct).toBe(20)
+  })
+})
+
+describe('normalizeTiers', () => {
+  it('passes a clean array through', () => {
+    expect(normalizeTiers(TIERS)).toEqual(TIERS)
+  })
+  it('parses a JSON string (the jsonb/metafield form)', () => {
+    expect(normalizeTiers('[{"minQty":6,"pct":10},{"minQty":12,"pct":15}]')).toEqual([
+      { minQty: 6, pct: 10 }, { minQty: 12, pct: 15 },
+    ])
+  })
+  it('sorts ascending and de-dupes minQty (last wins)', () => {
+    expect(normalizeTiers([{ minQty: 24, pct: 20 }, { minQty: 6, pct: 5 }, { minQty: 6, pct: 10 }])).toEqual([
+      { minQty: 6, pct: 10 }, { minQty: 24, pct: 20 },
+    ])
+  })
+  it('drops invalid rows (minQty<2, pct out of 1..99, non-numbers)', () => {
+    expect(normalizeTiers([
+      { minQty: 1, pct: 10 }, { minQty: 6, pct: 0 }, { minQty: 12, pct: 100 },
+      { minQty: 'x', pct: 10 }, { minQty: 24, pct: 20 },
+    ])).toEqual([{ minQty: 24, pct: 20 }])
+  })
+  it('returns [] for null/garbage', () => {
+    expect(normalizeTiers(null)).toEqual([])
+    expect(normalizeTiers('not json')).toEqual([])
+    expect(normalizeTiers({})).toEqual([])
+    expect(normalizeTiers(42)).toEqual([])
   })
 })
 

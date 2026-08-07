@@ -31,6 +31,7 @@
 // (which is what the ORDERS_PAID webhook reads).
 
 import { adminGraphQL, PUBLICATION_ONLINE_STORE } from './shopify-admin'
+import { normalizeTiers, type VolumeTier } from './volumeTiers'
 
 // Cleanup jobs find these products by tag. NOTE (proven Days 4–5): tag values
 // containing a colon MUST be quoted in Admin search syntax —
@@ -61,6 +62,7 @@ export type CreateDesignProductInput = {
   price: number // single price for every size (blank + print charges)
   sizes: string[] // in Shopify variant order — never sorted
   previewUrls: string[] // public PNG URLs (front/back) → product media
+  volumeTiers?: VolumeTier[] // this garment's per-product volume ladder → the volume.tiers metafield the discount Function reads
 }
 
 export type DesignProduct = {
@@ -81,6 +83,19 @@ export async function createDesignProduct(
   if (input.sizes.length === 0) throw new Error('createDesignProduct: no sizes')
   const price = input.price.toFixed(2)
 
+  // seo.hidden=1: out of Online Store search + sitemap once published.
+  const metafields: Array<{ namespace: string; key: string; type: string; value: string }> = [
+    { namespace: 'seo', key: 'hidden', type: 'number_integer', value: '1' },
+  ]
+  // volume.tiers (JSON): this garment's volume-discount ladder, copied from its product_templates row.
+  // The Shopify product-discount Function reads THIS metafield at checkout to apply the % (per-product
+  // tiers ride on the product itself — no tags, single source of truth = the template config). Only set
+  // when there are real tiers; a product with no metafield simply gets no volume discount.
+  const tiers = normalizeTiers(input.volumeTiers)
+  if (tiers.length) {
+    metafields.push({ namespace: 'volume', key: 'tiers', type: 'json', value: JSON.stringify(tiers) })
+  }
+
   const data = await adminGraphQL<ProductSetResult>(
     `mutation ($input: ProductSetInput!) {
       productSet(input: $input) {
@@ -96,13 +111,10 @@ export async function createDesignProduct(
       input: {
         title: input.title,
         status: 'ACTIVE', // sellable; invisible until published
-        // seo.hidden=1: out of Online Store search + sitemap once published.
-        // Live-verified (control-pair probe 2026-07-16): hides search, but
-        // NOT the auto /collections/all browse page — that's what the
-        // productType below closes.
-        metafields: [
-          { namespace: 'seo', key: 'hidden', type: 'number_integer', value: '1' },
-        ],
+        // seo.hidden (live-verified control-pair probe 2026-07-16): hides search, but NOT the auto
+        // /collections/all browse page — that's what the productType below closes. Plus volume.tiers
+        // when this garment has a volume ladder (built above).
+        metafields,
         // A merchant-created collection with handle `all` REPLACES Shopify's
         // auto all-products collection, and automated-collection rules
         // support "Product type is not equal to" — this type is the
