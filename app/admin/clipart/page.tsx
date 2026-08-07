@@ -15,8 +15,11 @@ export default function ClipartAdmin() {
   const [uploading, setUploading] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')
   const [newCategoryMethod, setNewCategoryMethod] = useState('screen_print')
+  const [newCategoryIsDesign, setNewCategoryIsDesign] = useState(false)
   const [showNewCategory, setShowNewCategory] = useState(false)
   const [tagInputs, setTagInputs] = useState<Record<string, string>>({})
+  // Per-item decal-number input (only shown for items in a Designs category), keyed by item.id.
+  const [decalInputs, setDecalInputs] = useState<Record<string, string>>({})
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -49,25 +52,46 @@ export default function ClipartAdmin() {
       .then(({ data }) => {
         setItems(data || [])
         const inputs: Record<string, string> = {}
+        const decals: Record<string, string> = {}
         data?.forEach(item => {
           inputs[item.id] = (item.tags || []).join(', ')
+          decals[item.id] = item.decal_number != null ? String(item.decal_number) : ''
         })
         setTagInputs(inputs)
+        setDecalInputs(decals)
         setLoading(false)
       })
   }, [selectedCategory])
 
-  const saveTags = async (itemId: string) => {
+  // Whether the currently-selected category is a Designs (decal) category — gates the
+  // per-item decal-number field.
+  const isDesignCategory = !!categories.find(c => c.id === selectedCategory)?.is_design
+
+  // Saves tags (always) plus, for a Designs category, the decal number — in one update.
+  const saveItem = async (itemId: string) => {
     setSaving(itemId)
     const tagString = tagInputs[itemId] || ''
     const tags = tagString.split(',').map(t => t.trim().toLowerCase()).filter(Boolean)
+    const patch: { tags: string[]; decal_number?: number | null } = { tags }
+    if (isDesignCategory) {
+      const raw = (decalInputs[itemId] || '').trim()
+      if (raw && !/^\d+$/.test(raw)) {
+        setSaving(null)
+        showMessage('Decal number must be a whole number.', 'error')
+        return
+      }
+      patch.decal_number = raw ? parseInt(raw, 10) : null
+    }
     const { error } = await supabase
       .from('clipart_items')
-      .update({ tags })
+      .update(patch)
       .eq('id', itemId)
     setSaving(null)
-    if (error) showMessage('Error saving tags: ' + error.message, 'error')
-    else showMessage('Tags saved!')
+    if (error) showMessage('Error saving: ' + error.message, 'error')
+    else {
+      setItems(prev => prev.map(i => i.id === itemId ? { ...i, ...patch } : i))
+      showMessage('Saved!')
+    }
   }
 
   const toggleActive = async (item: ClipartItem) => {
@@ -134,6 +158,7 @@ export default function ClipartAdmin() {
       } else if (newItem) {
         setItems(prev => [...prev, newItem])
         setTagInputs(prev => ({ ...prev, [newItem.id]: '' }))
+        setDecalInputs(prev => ({ ...prev, [newItem.id]: '' }))
         showMessage(`Uploaded ${file.name}!`)
       }
     }
@@ -146,7 +171,7 @@ export default function ClipartAdmin() {
     if (!newCategoryName.trim()) return
     const { data, error } = await supabase
       .from('clipart_categories')
-      .insert({ name: newCategoryName.trim(), print_method_key: newCategoryMethod, is_active: true, sort_order: categories.length + 1 })
+      .insert({ name: newCategoryName.trim(), print_method_key: newCategoryMethod, is_design: newCategoryIsDesign, is_active: true, sort_order: categories.length + 1 })
       .select()
       .single()
     if (error) { showMessage('Error: ' + error.message, 'error'); return }
@@ -154,6 +179,7 @@ export default function ClipartAdmin() {
     setSelectedCategory(data.id)
     setNewCategoryName('')
     setNewCategoryMethod('screen_print')
+    setNewCategoryIsDesign(false)
     setShowNewCategory(false)
     showMessage('Category created!')
   }
@@ -209,6 +235,16 @@ export default function ClipartAdmin() {
                   <option value="screen_print">Print</option>
                   <option value="embroidery">Embroidery</option>
                 </select>
+                {/* Clipart vs Designs (decals). A Designs category browses as its own "Designs" section in
+                    the designer, and its items each carry a decal number the print shop tracks. */}
+                <select
+                  value={newCategoryIsDesign ? 'design' : 'clipart'}
+                  onChange={e => setNewCategoryIsDesign(e.target.value === 'design')}
+                  className="bg-white border border-gray-300 rounded px-2 py-1 text-xs text-black outline-none font-mono"
+                >
+                  <option value="clipart">Clipart</option>
+                  <option value="design">Designs (decals)</option>
+                </select>
               </div>
             )}
 
@@ -224,6 +260,11 @@ export default function ClipartAdmin() {
                   {cat.print_method_key === 'embroidery' && (
                     <span className={`ml-1.5 rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide ${selectedCategory === cat.id ? 'bg-white/25 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
                       Emb
+                    </span>
+                  )}
+                  {cat.is_design && (
+                    <span className={`ml-1.5 rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide ${selectedCategory === cat.id ? 'bg-white/25 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
+                      Design
                     </span>
                   )}
                   <span className={`float-right font-normal ${selectedCategory === cat.id ? 'text-white/80' : 'text-gray-500'}`}>
@@ -281,16 +322,27 @@ export default function ClipartAdmin() {
 
                     <p className="text-xs font-mono text-black truncate text-center">{item.name}</p>
 
+                    {isDesignCategory && (
+                      <input
+                        value={decalInputs[item.id] || ''}
+                        onChange={e => setDecalInputs(prev => ({ ...prev, [item.id]: e.target.value }))}
+                        onKeyDown={e => e.key === 'Enter' && saveItem(item.id)}
+                        placeholder="Decal #"
+                        inputMode="numeric"
+                        className="w-full bg-white border border-emerald-300 rounded px-2 py-1 text-[10px] text-black outline-none focus:border-emerald-500 font-mono placeholder-gray-400"
+                      />
+                    )}
+
                     <input
                       value={tagInputs[item.id] || ''}
                       onChange={e => setTagInputs(prev => ({ ...prev, [item.id]: e.target.value }))}
-                      onKeyDown={e => e.key === 'Enter' && saveTags(item.id)}
+                      onKeyDown={e => e.key === 'Enter' && saveItem(item.id)}
                       placeholder="tags, comma, separated"
                       className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-[10px] text-black outline-none focus:border-[#dd3333] font-mono placeholder-gray-400"
                     />
 
                     <div className="flex gap-1">
-                      <button onClick={() => saveTags(item.id)}
+                      <button onClick={() => saveItem(item.id)}
                         className="flex-1 py-1 rounded text-[10px] font-mono bg-[#dd3333] text-white hover:bg-red-700 transition-all">
                         {saving === item.id ? '...' : 'Save'}
                       </button>

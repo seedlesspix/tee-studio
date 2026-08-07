@@ -1,6 +1,7 @@
 'use client'
 import { type Dispatch, type SetStateAction, type RefObject, type ChangeEventHandler, type DragEventHandler } from 'react'
-import ClipartPanel from './ClipartPanel'
+import ArtBrowser from './ArtBrowser'
+import { type DecalMeta } from './ClipartPanel'
 import MyUploadsPanel, { type UploadItem } from './MyUploadsPanel'
 import FontPicker from './FontPicker'
 
@@ -91,7 +92,7 @@ type SelectionPanelProps = {
   }
   clipart: {
     printMethod: string
-    handleClipartSelect: (url: string, fileType: string) => void
+    handleClipartSelect: (url: string, fileType: string, decal?: DecalMeta) => void
     recolorSvg: (hex: string) => void
     setSelectedSvgColor: Dispatch<SetStateAction<string>>
     selectedSvgColor: string
@@ -436,7 +437,7 @@ export default function SelectionPanel({
                 raster clipart — which has no recolor). */}
             {activeTab === 'clipart' && (
               <div className="flex flex-col gap-3">
-                <ClipartPanel
+                <ArtBrowser
                   printMethod={printMethod}
                   onSelect={handleClipartSelect}
                 />

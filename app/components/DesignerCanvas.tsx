@@ -175,7 +175,10 @@ const CANVAS_CUSTOM_PROPS = ['_isSvg', '_originalText', '_currentColor', '_isCur
   // slider + font/size/color and adjusting the curve re-bakes from its OWN values.
   '_curveAmount', '_curveFontFamily', '_curveFontSize', '_curveFill', '_curveBold', '_curveItalic',
   '_isVectorUpload', // an uploaded SVG (vector) — excluded from the low-res warning (client + bench)
-  '_nnRole'] // Names & Numbers placeholder role ('name'|'number') — the substitution + cut-file split key
+  '_nnRole', // Names & Numbers placeholder role ('name'|'number') — the substitution + cut-file split key
+  // A placed DESIGN (decal): the admin-assigned number + its name, frozen onto the object so the order
+  // can record which decals were used (sell-through). Survives serialization via this allowlist.
+  '_decalNumber', '_decalName']
 
 // Fallback size list ONLY — real sizes come per-product from the Shopify Size
 // option (see productSizes). Used when a product exposes no Size option.
@@ -3492,6 +3495,17 @@ export default function DesignerCanvas({
         seenUrls.add(f.url) // same image on both sides -> one entry
         return true
       })
+
+      // Decals placed in this design (Designs section). Same _stamp technique as _uploadSrc: walk both
+      // sides, dedup by decal number so the same decal on front + back counts once for sell-through.
+      // Deleting a decal removes its object, so it drops out for free.
+      const decalMap = new Map<number, { number: number; name: string }>()
+      ;[...frontObjectsRef.current, ...backObjectsRef.current].forEach((o: any) => {
+        if (o?._decalNumber != null && !decalMap.has(o._decalNumber)) {
+          decalMap.set(o._decalNumber, { number: o._decalNumber, name: o._decalName || '' })
+        }
+      })
+      const decalsUsed = Array.from(decalMap.values())
       // Fail SAFE. If we hold uploads but found no stamps at all, something
       // upstream lost them (e.g. a design saved by an older build, whose canvas
       // JSON predates the toObject fix). Handing the print shop EXTRA files is
@@ -3566,6 +3580,9 @@ export default function DesignerCanvas({
         // Names & Numbers roster (Option 1 pricing: no separate fee). Only sent for N&N designs so a
         // plain order never touches the new column. Content entries only.
         ...(nnActive ? { roster: nnEntries } : {}),
+        // Decals used (Designs section). Only sent when decals were placed, so a plain order never
+        // touches the column. List of { number, name } for sell-through reporting.
+        ...(decalsUsed.length > 0 ? { decals_used: decalsUsed } : {}),
         // Real sizes available for the selected color, in Shopify variant order.
         available_sizes: (productSizes.length ? productSizes : SIZES).filter(s => isSizeAvailable(s)),
         unit_price: unitPrice,
@@ -3898,7 +3915,7 @@ export default function DesignerCanvas({
     }
   }
 
-  const handleClipartSelect = (url: string, fileType: string) => {
+  const handleClipartSelect = (url: string, fileType: string, decal?: { number: number; name: string }) => {
     if (!fabricCanvas) return
     markDirty()
     const canvasEl = canvasRef.current
@@ -3925,6 +3942,12 @@ export default function DesignerCanvas({
         }
         img.set({ left: spawnX, top: spawnY, originX: 'center', originY: 'center' })
         ;(img as any)._isSvg = fileType === 'svg'
+        // Decal stamp: freeze the number + name onto the object so the order can record which
+        // decals were placed (collected at save). Only present for Designs-section items.
+        if (decal) {
+          ;(img as any)._decalNumber = decal.number
+          ;(img as any)._decalName = decal.name
+        }
         fabricCanvas.add(img)
         fabricCanvas.setActiveObject(img)
         lastActiveObjectRef.current = img

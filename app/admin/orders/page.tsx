@@ -42,12 +42,15 @@ type ShippingLine = {
   source?: string
 }
 
-type Order = Omit<Tables<'design_orders'>, 'quantities' | 'uploaded_files' | 'shipping_address' | 'billing_address' | 'shipping_lines'> & {
+type DecalUsed = { number: number; name: string }
+
+type Order = Omit<Tables<'design_orders'>, 'quantities' | 'uploaded_files' | 'shipping_address' | 'billing_address' | 'shipping_lines' | 'decals_used'> & {
   quantities: Record<string, number> | null
   uploaded_files: UploadedFile[] | null
   shipping_address: Address | null
   billing_address: Address | null
   shipping_lines: ShippingLine[] | null
+  decals_used: DecalUsed[] | null
 }
 
 // Pickup vs ship, derived from REAL order data (verified against #17036 pickup
@@ -604,6 +607,21 @@ export default function OrdersAdmin() {
                                 </button>
                               </div>
                             </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Decals used (Designs section) — sell-through record + print-shop reference. */}
+                    {row.decals_used && row.decals_used.length > 0 && (
+                      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                        <p className="text-xs font-mono text-gray-600 uppercase tracking-widest mb-3">Decals Used</p>
+                        <div className="flex flex-wrap gap-2">
+                          {row.decals_used.map((d, j) => (
+                            <span key={j} className="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5">
+                              <span className="text-xs font-mono font-bold text-emerald-800">#{d.number}</span>
+                              <span className="text-xs font-mono text-gray-700">{d.name}</span>
+                            </span>
                           ))}
                         </div>
                       </div>

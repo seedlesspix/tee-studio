@@ -20,6 +20,7 @@ export type Database = {
           icon: string | null
           id: string
           is_active: boolean | null
+          is_design: boolean
           name: string
           print_method_key: string | null
           sort_order: number | null
@@ -29,6 +30,7 @@ export type Database = {
           icon?: string | null
           id?: string
           is_active?: boolean | null
+          is_design?: boolean
           name: string
           print_method_key?: string | null
           sort_order?: number | null
@@ -38,6 +40,7 @@ export type Database = {
           icon?: string | null
           id?: string
           is_active?: boolean | null
+          is_design?: boolean
           name?: string
           print_method_key?: string | null
           sort_order?: number | null
@@ -56,6 +59,7 @@ export type Database = {
         Row: {
           category_id: string | null
           created_at: string | null
+          decal_number: number | null
           file_type: string | null
           file_url: string
           id: string
@@ -68,6 +72,7 @@ export type Database = {
         Insert: {
           category_id?: string | null
           created_at?: string | null
+          decal_number?: number | null
           file_type?: string | null
           file_url: string
           id?: string
@@ -80,6 +85,7 @@ export type Database = {
         Update: {
           category_id?: string | null
           created_at?: string | null
+          decal_number?: number | null
           file_type?: string | null
           file_url?: string
           id?: string
@@ -168,6 +174,7 @@ export type Database = {
           customer_email: string | null
           customer_name: string | null
           customer_phone: string | null
+          decals_used: Json | null
           id: string
           notes: string | null
           price_per_item: number | null
@@ -212,6 +219,7 @@ export type Database = {
           customer_email?: string | null
           customer_name?: string | null
           customer_phone?: string | null
+          decals_used?: Json | null
           id?: string
           notes?: string | null
           price_per_item?: number | null
@@ -256,6 +264,7 @@ export type Database = {
           customer_email?: string | null
           customer_name?: string | null
           customer_phone?: string | null
+          decals_used?: Json | null
           id?: string
           notes?: string | null
           price_per_item?: number | null
