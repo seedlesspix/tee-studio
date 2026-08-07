@@ -152,6 +152,41 @@ export async function createDesignProduct(
   return { productId: product.id, handle: product.handle, variantsBySize }
 }
 
+// Shopify processes product media (the design preview) ASYNCHRONOUSLY after productSet — typically
+// ~5-8s to fetch the Supabase PNG and build the CDN rendition. Until it's READY the product has no
+// featured image, so a cart line added in that window renders BLANK (looks like the design was dropped —
+// Denise, embroidery Dad Hat 2026-08-07). This best-effort poll waits for the preview to finish before
+// the customer is handed to /cart. Capped + non-throwing: on timeout/failure we proceed anyway (the
+// image still self-heals on a later cart refresh), so this never blocks a real cart-add.
+export async function waitForMediaReady(
+  productId: string,
+  opts?: { attempts?: number; delayMs?: number }
+): Promise<boolean> {
+  const attempts = opts?.attempts ?? 10
+  const delayMs = opts?.delayMs ?? 800
+  for (let i = 0; i < attempts; i++) {
+    let nodes: Array<{ status?: string | null }> = []
+    try {
+      const data = await adminGraphQL<{
+        product: { media: { nodes: Array<{ status?: string | null }> } } | null
+      }>(
+        `query ($id: ID!) {
+          product(id: $id) { media(first: 10) { nodes { ... on MediaImage { status } } } }
+        }`,
+        { id: productId }
+      )
+      nodes = data.product?.media.nodes ?? []
+    } catch {
+      return false // transport hiccup — don't hold the cart-add hostage
+    }
+    if (nodes.length === 0) return true // nothing to wait for
+    if (nodes.some((n) => n.status === 'FAILED')) return false
+    if (nodes.every((n) => !n.status || n.status === 'READY')) return true
+    await new Promise((r) => setTimeout(r, delayMs))
+  }
+  return false
+}
+
 export async function publishProduct(
   productId: string,
   publicationId: string = PUBLICATION_ONLINE_STORE

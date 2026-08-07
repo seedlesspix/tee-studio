@@ -5,6 +5,7 @@ import {
   createDesignProduct,
   publishProduct,
   deleteDesignProduct,
+  waitForMediaReady,
 } from '../../../../lib/design-products'
 import { type RosterEntry, entryHasContent, rosterValue, rosterShirtCount, rosterSizeQuantities } from '../../../../lib/namesNumbers'
 
@@ -220,6 +221,11 @@ export async function POST(
   try {
     // 2. Online Store publish — the session cart's owning channel.
     await publishProduct(product.productId)
+
+    // 2b. Wait (best-effort) for Shopify to finish processing the design preview so the cart line shows
+    // the design immediately instead of a blank image. Overlaps with variant propagation (below), so it
+    // usually costs nothing extra; capped + non-throwing, so a slow/failed render never blocks the add.
+    await waitForMediaReady(product.productId)
 
     // 3. One items[] POST to the customer's own /cart/add.js. A just-
     // published variant can take a moment to reach the Online Store catalog
