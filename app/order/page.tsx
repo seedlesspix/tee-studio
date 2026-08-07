@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation'
 import type { Tables } from '@/types/database'
 import { type RosterEntry } from '@/app/lib/namesNumbers'
 import Stepper from '@/app/components/Stepper'
+import { VOLUME_DISCOUNT, currentTier, nextTier } from '@/app/lib/volumeTiers'
 
 type DesignOrder = Omit<Tables<'design_orders'>, 'quantities'> & {
   quantities: Record<string, number> | null
@@ -278,6 +279,41 @@ function OrderPage() {
                 <span className="text-[#dd3333] text-lg">${total}</span>
               </div>
             </div>
+
+            {/* Volume savings — INCENTIVE display only. The actual % comes off at checkout via the
+                Shopify quantity-tier discount app; this shows the ladder + a "one more to save" nudge so
+                the customer knows it's there. Gated by VOLUME_DISCOUNT.enabled so it can't show before
+                the app is live (never promise a discount Shopify won't apply). */}
+            {VOLUME_DISCOUNT.enabled && (() => {
+              const cur = currentTier(totalQty)
+              const nxt = nextTier(totalQty)
+              return (
+                <div className="border-t border-gray-200 mt-4 pt-4">
+                  <p className="text-xs font-mono text-gray-900 uppercase tracking-widest mb-2">Volume savings</p>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {VOLUME_DISCOUNT.tiers.map(t => {
+                      const active = cur?.minQty === t.minQty
+                      return (
+                        <span key={t.minQty}
+                          className={`rounded-full border px-2.5 py-1 text-xs font-mono ${
+                            active ? 'border-emerald-400 bg-emerald-50 text-emerald-800 font-bold' : 'border-gray-200 bg-white text-gray-600'
+                          }`}>
+                          {t.minQty}+ save {t.pct}%
+                        </span>
+                      )
+                    })}
+                  </div>
+                  {nxt ? (
+                    <p className="text-sm text-emerald-700">
+                      Add <span className="font-bold">{nxt.needed}</span> more to save <span className="font-bold">{nxt.tier.pct}%</span> on your order.
+                    </p>
+                  ) : cur ? (
+                    <p className="text-sm text-emerald-700">You’re getting <span className="font-bold">{cur.pct}% off</span> — the top tier. 🎉</p>
+                  ) : null}
+                  <p className="mt-1 text-[11px] text-gray-500">Discount applied automatically at checkout.</p>
+                </div>
+              )
+            })()}
           </div>
 
           {/* Design Notes — printing details for the shop; saved to the order

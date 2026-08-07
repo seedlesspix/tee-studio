@@ -65,13 +65,16 @@ CLAUDE.md backlog; this file is the "these are NOT optional" promotion of them.
   product image usually needs a page refresh to show up. Should appear
   immediately. *(New item — needs diagnosis: likely image generation/upload
   timing vs. cart page caching.)*
-- [ ] **14. Volume pricing discount on the Order Page.** A quantity-based
-  discount (e.g. lower per-item price at higher counts). *(New item, Denise
-  2026-08-06. 🚨 CC NOTE: the OLD volume discount was REMOVED because it was
-  UI-only math Shopify never honored at checkout — do NOT rebuild it that way.
-  Use Shopify AUTOMATIC discounts, admin → Discounts → Automatic, keyed off cart
-  quantity — see the "Volume discount removed" note in CLAUDE.md. Exact tiers/
-  percentages are Denise's to set.)*
+- [ ] **14. Volume pricing discount on the Order Page.** 🟡 HALF DONE
+  2026-08-07. **Display built + gated OFF:** the Order Page shows a tier ladder
+  (6+→10%, 12+→15%, 24+→20%) + an "add N more to save X%" nudge, driven by
+  `app/lib/volumeTiers.ts` (tested). It only renders when `VOLUME_DISCOUNT.enabled`
+  is true — deliberately false until enforcement is live, so it can never show a
+  discount checkout won't apply (the old bug). **Remaining (Denise):** install a
+  Shopify quantity-tier discount APP (cart-quantity, applies automatically at
+  checkout, all products), set the same 6/12/24→10/15/20 tiers, confirm it
+  discounts at checkout — THEN flip `enabled: true` (and keep the numbers in sync).
+  If no app fits, fall back to a Shopify discount Function.
 
 ## Admin
 
