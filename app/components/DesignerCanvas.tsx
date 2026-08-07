@@ -178,7 +178,10 @@ const CANVAS_CUSTOM_PROPS = ['_isSvg', '_originalText', '_currentColor', '_isCur
   '_nnRole', // Names & Numbers placeholder role ('name'|'number') — the substitution + cut-file split key
   // A placed DESIGN (decal): the admin-assigned number + its name, frozen onto the object so the order
   // can record which decals were used (sell-through). Survives serialization via this allowlist.
-  '_decalNumber', '_decalName']
+  '_decalNumber', '_decalName',
+  // Which print methods a placed art supports — a method switch keeps art valid in the new method
+  // (dual-method clipart survives Print↔Embroidery) instead of removing everything.
+  '_supportedMethods']
 
 // Fallback size list ONLY — real sizes come per-product from the Shopify Size
 // option (see productSizes). Used when a product exposes no Size option.
@@ -2553,30 +2556,55 @@ export default function DesignerCanvas({
     if (!m || m === printMethod) return
     userToggledMethodRef.current = true // an in-flight product load must not clobber this choice
     const canvas = fabricCanvasRef.current
-    if (m === 'embroidery') {
-      // Warn + convert: uploaded images (raster) AND print clipart don't carry to embroidery — both are
-      // removed (Denise 2026-08-06); existing text moves to an embroidery font + thread color. Only prompt
-      // when there's something to convert; a blank / text-free-and-art-free canvas switches silently.
-      const all = canvas ? [...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current] : []
-      const isRemovable = (o: any) => o && (o._uploadSrc || typeof o._isSvg === 'boolean') // upload OR clipart
-      const uploads = all.filter((o: any) => o && o._uploadSrc)
-      const clipart = all.filter((o: any) => o && typeof o._isSvg === 'boolean')
-      const hasText = all.some((o: any) => o && (o.type === 'i-text' || o.type === 'textbox') && !o[NN_ROLE_PROP])
-      if (uploads.length || clipart.length || hasText) {
-        const removeLabel = [uploads.length && 'uploaded images', clipart.length && 'clipart'].filter(Boolean).join(' and ')
-        const bits = [removeLabel && `remove your ${removeLabel}`, hasText && 'set your text to an embroidery font + thread color'].filter(Boolean)
-        if (!window.confirm(`Switching to Embroidery will ${bits.join(' and ')}. Continue?`)) return
-        if (uploads.length || clipart.length) {
-          all.filter(isRemovable).forEach((o: any) => canvas?.remove(o))
-          frontObjectsRef.current = frontObjectsRef.current.filter((o: any) => !isRemovable(o))
-          backObjectsRef.current = backObjectsRef.current.filter((o: any) => !isRemovable(o))
-          markDirty() // the removal is a design change even when there's no text to restyle (#autodraft)
-        }
-        if (hasText) pendingEmbConvertRef.current = true // text re-styled once embroidery config loads
+    const all = canvas
+      ? [...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current]
+      : [...frontObjectsRef.current, ...backObjectsRef.current]
+
+    const isUpload = (o: any) => !!o?._uploadSrc
+    const isClipart = (o: any) => typeof o?._isSvg === 'boolean' && !o?._uploadSrc // library art (not an upload)
+    const isText = (o: any) => o && (o.type === 'i-text' || o.type === 'textbox') && !o[NN_ROLE_PROP]
+    // Does a placed art carry into the target method `m`?
+    //   • uploads are Print-only (the Upload tool is hidden in embroidery);
+    //   • library art carries its own _supportedMethods stamp — KEEP it if the new method is in there
+    //     (so dual-method clipart survives Print↔Embroidery). Legacy art with no stamp = Print-only.
+    //   • text (and everything else) always survives.
+    const artSurvives = (o: any) => {
+      if (isUpload(o)) return m === 'screen_print'
+      if (isClipart(o)) {
+        const methods = (o as any)._supportedMethods
+        return Array.isArray(methods) ? methods.includes(m) : m === 'screen_print'
       }
-      // Land on a still-visible tool (Upload/Names are hidden in embroidery).
-      if (HIDDEN_FOR_EMBROIDERY.includes(activeTab)) setActiveTab('text')
+      return true
     }
+
+    const toRemove = all.filter((o: any) => (isUpload(o) || isClipart(o)) && !artSurvives(o))
+    const uploadsRemoved = toRemove.filter(isUpload).length
+    const clipartRemoved = toRemove.filter(isClipart).length
+    const hasText = all.some(isText)
+    const willRestyleText = m === 'embroidery' && hasText
+
+    if (toRemove.length || willRestyleText) {
+      const removeLabel = [
+        uploadsRemoved && 'uploaded images',
+        clipartRemoved && `art that isn't available for ${methodLabel(m)}`,
+      ].filter(Boolean).join(' and ')
+      const bits = [
+        removeLabel && `remove your ${removeLabel}`,
+        willRestyleText && 'set your text to an embroidery font + thread color',
+      ].filter(Boolean)
+      if (bits.length && !window.confirm(`Switching to ${methodLabel(m)} will ${bits.join(' and ')}. Continue?`)) return
+      if (toRemove.length) {
+        const rm = new Set(toRemove)
+        toRemove.forEach((o: any) => canvas?.remove(o))
+        frontObjectsRef.current = frontObjectsRef.current.filter((o: any) => !rm.has(o))
+        backObjectsRef.current = backObjectsRef.current.filter((o: any) => !rm.has(o))
+        markDirty() // the removal is a design change even when there's no text to restyle (#autodraft)
+      }
+      if (willRestyleText) pendingEmbConvertRef.current = true // text re-styled once embroidery config loads
+    }
+    // Land on a still-visible tool (Upload/Names are hidden in embroidery).
+    if (m === 'embroidery' && HIDDEN_FOR_EMBROIDERY.includes(activeTab)) setActiveTab('text')
+
     canvas?.discardActiveObject(); canvas?.renderAll()
     setLowResWarning(null)
     setPrintMethod(m)
@@ -3915,7 +3943,7 @@ export default function DesignerCanvas({
     }
   }
 
-  const handleClipartSelect = (url: string, fileType: string, decal?: { number: number; name: string }) => {
+  const handleClipartSelect = (url: string, fileType: string, meta?: { decal?: { number: number; name: string }; supportedMethods?: string[] }) => {
     if (!fabricCanvas) return
     markDirty()
     const canvasEl = canvasRef.current
@@ -3942,11 +3970,13 @@ export default function DesignerCanvas({
         }
         img.set({ left: spawnX, top: spawnY, originX: 'center', originY: 'center' })
         ;(img as any)._isSvg = fileType === 'svg'
+        // Which methods this art supports — so a Print↔Embroidery switch keeps it if it's valid there.
+        if (meta?.supportedMethods) (img as any)._supportedMethods = meta.supportedMethods
         // Decal stamp: freeze the number + name onto the object so the order can record which
-        // decals were placed (collected at save). Only present for Designs-section items.
-        if (decal) {
-          ;(img as any)._decalNumber = decal.number
-          ;(img as any)._decalName = decal.name
+        // decals were placed (collected at save). Only present for art that carries a Decal #.
+        if (meta?.decal) {
+          ;(img as any)._decalNumber = meta.decal.number
+          ;(img as any)._decalName = meta.decal.name
         }
         fabricCanvas.add(img)
         fabricCanvas.setActiveObject(img)

@@ -1,6 +1,6 @@
 'use client'
 import { type Dispatch, type SetStateAction, type RefObject, type ChangeEventHandler, type DragEventHandler } from 'react'
-import ClipartPanel, { type DecalMeta } from './ClipartPanel'
+import ClipartPanel, { type ArtMeta } from './ClipartPanel'
 import MyUploadsPanel, { type UploadItem } from './MyUploadsPanel'
 import FontPicker from './FontPicker'
 
@@ -91,7 +91,7 @@ type SelectionPanelProps = {
   }
   clipart: {
     printMethod: string
-    handleClipartSelect: (url: string, fileType: string, decal?: DecalMeta) => void
+    handleClipartSelect: (url: string, fileType: string, meta?: ArtMeta) => void
     recolorSvg: (hex: string) => void
     setSelectedSvgColor: Dispatch<SetStateAction<string>>
     selectedSvgColor: string
@@ -458,9 +458,15 @@ export default function SelectionPanel({
                         />
                       ))}
                     </div>
-                    <p className="text-xs text-gray-800 mt-1 font-mono">
-                      {(dbColors.length > 0 ? dbColors : [{ label: 'Black', hex: '#000000' }, { label: 'White', hex: '#ffffff' }]).find(c => c.hex?.toLowerCase() === selectedSvgColor?.toLowerCase())?.label || selectedSvgColor || 'Black'}
-                    </p>
+                    {/* Chosen-color indicator — a larger SQUARE swatch + name, matching the Text Color
+                        section so the two read the same. */}
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="h-6 w-6 shrink-0 rounded-md border border-gray-300"
+                        style={{ background: selectedSvgColor }} aria-hidden="true" />
+                      <span className="text-xs text-gray-800 font-mono">
+                        {(dbColors.length > 0 ? dbColors : [{ label: 'Black', hex: '#000000' }, { label: 'White', hex: '#ffffff' }]).find(c => c.hex?.toLowerCase() === selectedSvgColor?.toLowerCase())?.label || selectedSvgColor || 'Black'}
+                      </span>
+                    </div>
                   </div>
                 )}
                 {(selectedObjectType === 'svg' || selectedObjectType === 'image') && (

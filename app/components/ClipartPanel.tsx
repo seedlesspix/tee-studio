@@ -4,14 +4,17 @@ import { supabase } from '../lib/supabase'
 import type { Tables } from '@/types/database'
 
 type Category = Pick<Tables<'clipart_categories'>, 'id' | 'name'>
-type ClipartItem = Pick<Tables<'clipart_items'>, 'id' | 'name' | 'file_url' | 'file_type' | 'tags' | 'decal_number' | 'category_ids'>
+type ClipartItem = Pick<Tables<'clipart_items'>, 'id' | 'name' | 'file_url' | 'file_type' | 'tags' | 'decal_number' | 'category_ids' | 'supported_methods'>
 
 // Decal metadata carried to placement/capture when an art carries a decal number.
 export type DecalMeta = { number: number; name: string }
+// Metadata stamped on a placed art: its decal number (if any) + which print methods it supports (so a
+// method switch can KEEP art that's available in the new method instead of removing it).
+export type ArtMeta = { decal?: DecalMeta; supportedMethods?: string[] }
 
 interface Props {
   printMethod: string
-  onSelect: (url: string, fileType: string, decal?: DecalMeta) => void
+  onSelect: (url: string, fileType: string, meta?: ArtMeta) => void
   // Mobile band layout: category CHIPS + one horizontal thumbnail row instead of
   // the desktop dropdown + vertical grid. Defaults false → desktop is byte-identical.
   horizontal?: boolean
@@ -47,7 +50,7 @@ export default function ClipartPanel({ printMethod, onSelect, horizontal = false
     setLoading(true)
     supabase
       .from('clipart_items')
-      .select('id, name, file_url, file_type, tags, decal_number, category_ids')
+      .select('id, name, file_url, file_type, tags, decal_number, category_ids, supported_methods')
       .contains('supported_methods', [printMethod])
       .eq('is_active', true)
       .order('sort_order')
@@ -77,9 +80,12 @@ export default function ClipartPanel({ printMethod, onSelect, horizontal = false
       )
     : allItems.filter(i => (i.category_ids || []).includes(effectiveCategory))
 
-  // Tag a placement with decal metadata whenever the art has a number (for order sell-through).
-  const decalFor = (item: ClipartItem): DecalMeta | undefined =>
-    item.decal_number != null ? { number: item.decal_number, name: item.name } : undefined
+  // Metadata to stamp on a placement: decal number (for order sell-through, when the art has one) +
+  // which methods the art supports (so a method switch keeps art that's valid in the new method).
+  const metaFor = (item: ClipartItem): ArtMeta => ({
+    decal: item.decal_number != null ? { number: item.decal_number, name: item.name } : undefined,
+    supportedMethods: item.supported_methods ?? undefined,
+  })
 
   return (
     <div className={horizontal ? 'flex h-full flex-col gap-2' : 'flex flex-col gap-2'}>
@@ -148,7 +154,7 @@ export default function ClipartPanel({ printMethod, onSelect, horizontal = false
             <button
               key={item.id}
               type="button"
-              onClick={() => onSelect(item.file_url, item.file_type ?? 'image', decalFor(item))}
+              onClick={() => onSelect(item.file_url, item.file_type ?? 'image', metaFor(item))}
               title={item.name}
               className="flex w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white p-1.5"
             >
@@ -162,7 +168,7 @@ export default function ClipartPanel({ printMethod, onSelect, horizontal = false
           {filtered.map(item => (
             <button
               key={item.id}
-              onClick={() => onSelect(item.file_url, item.file_type ?? 'image', decalFor(item))}
+              onClick={() => onSelect(item.file_url, item.file_type ?? 'image', metaFor(item))}
               title={item.name}
               className="bg-white border border-gray-200 rounded-lg p-2 hover:border-[#dd3333] transition-all flex flex-col items-center gap-1"
             >

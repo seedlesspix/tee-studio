@@ -1,5 +1,5 @@
 'use client'
-import ClipartPanel, { type DecalMeta } from './ClipartPanel'
+import ClipartPanel, { type ArtMeta } from './ClipartPanel'
 import MobileAlignRow from './MobileAlignRow'
 
 // MobileArtBand — BLOCKER-2 mobile rework. The Art (clipart) tool for the compact
@@ -24,7 +24,7 @@ export default function MobileArtBand({
   alignObject,
 }: {
   printMethod: string
-  onSelect: (url: string, fileType: string, decal?: DecalMeta) => void
+  onSelect: (url: string, fileType: string, meta?: ArtMeta) => void
   selectedObjectType: string | null
   dbColors: any[]
   recolorSvg: (hex: string) => void
