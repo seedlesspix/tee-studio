@@ -62,12 +62,18 @@ export function run(input) {
 
   const discounts = [];
   for (const { tiers, qty, variantIds } of byProduct.values()) {
-    // Highest tier whose minQty is met (same rule as the designer's currentTier).
+    // The tier with the HIGHEST minQty that's met — byte-for-byte the same rule as the Order-Page's
+    // currentTier (app/lib/volumeTiers.ts). Matching on minQty (not "biggest pct") guarantees the %
+    // shown on the Order Page equals the % charged here, even if a garment's tiers aren't monotonic.
     let pct = 0;
+    let bestMin = -1;
     for (const t of tiers) {
       const minQty = Number(t.minQty);
       const p = Number(t.pct);
-      if (Number.isFinite(minQty) && Number.isFinite(p) && qty >= minQty && p > pct) pct = p;
+      if (Number.isFinite(minQty) && Number.isFinite(p) && qty >= minQty && minQty > bestMin) {
+        bestMin = minQty;
+        pct = p;
+      }
     }
     if (pct <= 0) continue;
 
