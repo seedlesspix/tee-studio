@@ -15,7 +15,11 @@
 export type VolumeTier = { minQty: number; pct: number }
 
 export const VOLUME_DISCOUNT: { enabled: boolean } = {
-  enabled: false, // flip true ONLY after the Shopify discount Function is deployed AND confirmed at checkout
+  // ON as of 2026-08-08 — the Shopify discount Function is deployed and the full checkout path was
+  // confirmed (discount applies + re-tiers on quantity edits). The Order-Page ladder now shows for
+  // garments that have tiers set. To hide the ladder again, set false (the checkout discount is
+  // independent — deactivate that in Admin → Discounts).
+  enabled: true,
 }
 
 // Coerce an unknown value (jsonb column, metafield JSON, admin draft) into clean, sorted tiers.
