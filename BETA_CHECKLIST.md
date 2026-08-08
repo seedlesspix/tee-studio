@@ -7,13 +7,14 @@ CLAUDE.md backlog; this file is the "these are NOT optional" promotion of them.
 
 ## Designer (customer-facing)
 
-- [ ] **1. Align icons match Illustrator's.** 🟡 FIRST PASS shipped 2026-08-08.
-  Swapped the hand-rolled align SVGs for the shared **Lucide AlignLeft/Center/Right**
-  glyphs (the standard Illustrator paragraph-align vocabulary), desktop + mobile.
-  **Awaiting Denise:** share the clipart reference to fine-tune the exact glyph look
-  if Lucide's aren't the intended set, and confirm whether to ADD a **justify**
-  option (the app currently offers left/center/right only). *(Universal-icon-set
-  backlog item, promoted to pre-beta.)*
+- [ ] **1. Align icons match Illustrator's.** 🟡 2nd pass shipped 2026-08-08 (per
+  Denise's reference). TWO distinct sets now: the **object-align cluster** (toolbar +
+  mobile) uses the Illustrator **Align-panel glyphs** (boxes-vs-guide:
+  AlignStart/Center/EndVertical + …Horizontal), and the **Text sheet's paragraph
+  align** keeps line-glyphs and **gained justify** (left/center/right/justify,
+  desktop + mobile). **Awaiting Denise:** verify the object-align glyphs match the
+  reference closely enough (else swap to pixel-exact custom SVGs). *(Universal-icon-set
+  backlog item.)*
 - [x] **2. Text line spacing + character spacing controls.** ✅ Shipped
   2026-08-07. Added a **Line Spacing** slider (multi-line text; hidden on curved),
   and **Letter Spacing now works on curved text** too (it was disabled before).
@@ -46,13 +47,11 @@ CLAUDE.md backlog; this file is the "these are NOT optional" promotion of them.
   reorder in /admin/templates (writes product_templates.sort_order, which the
   picker sorts by).
 
-- [ ] **12. Text panel cleanup.** 🟡 FIRST PASS shipped 2026-08-08. Merged the
-  separate "Text Align" + "Effects" blocks into one consistent **Format** toolbar
-  (Bold / Italic / UPPERCASE + align, one button treatment, titled), and cleaned
-  the ad-hoc glyphs (Direction —/↕ → icons; upload ⬆ → Upload icon). Kept the
-  overall control order. **Awaiting Denise:** what specifically feels clunky about
-  the ORDER (so the deeper reorder matches her intent, not a guess). *(Overlaps
-  item 1's icon work — shipped together.)*
+- [ ] **12. Text panel cleanup.** 🟡 2nd pass shipped 2026-08-08. Merged Align +
+  Effects into one **Format** toolbar; cleaned ad-hoc glyphs; **Text Color moved to
+  the BOTTOM** so all text options sit above it (per Denise); and the **font picker
+  gained a category DROPDOWN** ("All" default) that filters the list. **Awaiting
+  Denise:** verify the new order + picker feel right. *(Overlaps item 1.)*
 - [x] **13. Designs vs. Clipart split + decal numbers on orders.** ✅ Done
   2026-08-10 as the unified Art Library (per-art method toggles, Decal # on
   every art, multi-category labels, search by Decal #, automatic capture in
@@ -67,7 +66,11 @@ CLAUDE.md backlog; this file is the "these are NOT optional" promotion of them.
 
 ## Cart / storefront
 
-- [ ] **5. Product images slow to appear in cart.** After adding to cart, the
+- [x] **5. Product images slow to appear in cart.** ✅ Fixed 2026-08-08 — the
+  app now waits for Shopify to finish processing the design preview before
+  handing off to the cart (capped poll, proceeds anyway if slow). Verified by
+  Denise during the decal-capture cart testing. Original text follows.
+  After adding to cart, the
   product image usually needs a page refresh to show up. Should appear
   immediately. *(New item — needs diagnosis: likely image generation/upload
   timing vs. cart page caching.)*
