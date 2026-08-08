@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { normalizeShopifyProductId } from '../../lib/productImages'
 import { normalizeTiers, type VolumeTier } from '../../lib/volumeTiers'
+import { useT } from '../../components/StringsProvider'
 import type { Tables } from '@/types/database'
 import PrintAreaEditor from './PrintAreaEditor'
 import TemplateColorsEditor from './TemplateColorsEditor'
@@ -35,6 +36,7 @@ const EMPTY_DRAFT: Draft = {
 }
 
 export default function TemplatesAdmin() {
+  const t = useT()
   const [templates, setTemplates] = useState<Template[]>([])
   const [methods, setMethods] = useState<PrintMethod[]>([])
   const [areaCounts, setAreaCounts] = useState<Record<string, number>>({})
@@ -99,7 +101,12 @@ export default function TemplatesAdmin() {
   // setState in the effect body).
   useEffect(() => { fetchData().then(() => setLoading(false)) }, [])
 
-  const labelFor = (key: string) => methods.find(m => m.key === key)?.label ?? key.replace('_', ' ')
+  // Method display name via the Language editor (so admin shows "Print", not the DB "Screen Print" — BETA
+  // #15); falls back to the DB label / key for any unregistered method.
+  const labelFor = (key: string) => {
+    const s = t('method.' + key)
+    return s.startsWith('method.') ? (methods.find(m => m.key === key)?.label ?? key.replace('_', ' ')) : s
+  }
 
   const openNew = () => { setDraft(EMPTY_DRAFT); setEditing({ id: null }) }
   const openEdit = (t: Template) => {

@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useT } from '../../components/StringsProvider'
 import type { Tables } from '@/types/database'
 
 type Category = Tables<'clipart_categories'>
@@ -12,6 +13,7 @@ const METHODS: { key: string; label: string }[] = [
 ]
 
 export default function ClipartAdmin() {
+  const t = useT()
   const [categories, setCategories] = useState<Category[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [items, setItems] = useState<ClipartItem[]>([])
@@ -212,7 +214,7 @@ export default function ClipartAdmin() {
       <div className="max-w-7xl mx-auto">
         <div className="mb-8">
           <h1 className="text-2xl font-mono font-bold text-black">Art Library</h1>
-          <p className="text-gray-600 text-sm font-mono mt-1">Manage art, categories, methods, and Decal #s</p>
+          <p className="text-gray-600 text-sm font-mono mt-1">Manage art, categories, methods, and {t('admin.design_number')}s</p>
         </div>
 
         {message && (
@@ -337,7 +339,7 @@ export default function ClipartAdmin() {
                       value={decalInputs[item.id] || ''}
                       onChange={e => setDecalInputs(prev => ({ ...prev, [item.id]: e.target.value }))}
                       onKeyDown={e => e.key === 'Enter' && saveItem(item.id)}
-                      placeholder="Decal #"
+                      placeholder={t('admin.design_number')}
                       inputMode="numeric"
                       className="w-full bg-white border border-emerald-300 rounded px-2 py-1 text-[10px] text-black outline-none focus:border-emerald-500 font-mono placeholder-gray-400"
                     />

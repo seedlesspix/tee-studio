@@ -2,13 +2,15 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
+// Order per Denise (BETA #18): Orders / Pricing / Templates / Clipart / Fonts / Colors, then Language.
 const tabs = [
-  { href: '/admin/clipart', label: 'Clipart' },
   { href: '/admin/orders', label: 'Orders' },
   { href: '/admin/pricing', label: 'Pricing' },
-  { href: '/admin/colors', label: 'Colors' },
-  { href: '/admin/fonts', label: 'Fonts' },
   { href: '/admin/templates', label: 'Templates' },
+  { href: '/admin/clipart', label: 'Clipart' },
+  { href: '/admin/fonts', label: 'Fonts' },
+  { href: '/admin/colors', label: 'Colors' },
+  { href: '/admin/language', label: 'Language' },
 ]
 
 export default function AdminTabs() {

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { Tables } from '@/types/database'
 import { orderFileStem } from '../../lib/orderFiles'
+import { useT } from '../../components/StringsProvider'
 
 // The full Shopify address shape as captured verbatim by the webhook (both
 // billing_address and shipping_address). We surface ALL of it for the print
@@ -128,6 +129,7 @@ const statusLabel = (status: string | null) =>
   STATUS_LABELS[status ?? 'draft'] ?? status ?? 'Draft'
 
 export default function OrdersAdmin() {
+  const t = useT()
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
@@ -644,7 +646,7 @@ export default function OrdersAdmin() {
                     {/* Decals used (Designs section) — sell-through record + print-shop reference. */}
                     {row.decals_used && row.decals_used.length > 0 && (
                       <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-                        <p className="text-xs font-mono text-gray-600 uppercase tracking-widest mb-3">Decals Used</p>
+                        <p className="text-xs font-mono text-gray-600 uppercase tracking-widest mb-3">{t('admin.designs_used')}</p>
                         <div className="flex flex-wrap gap-2">
                           {row.decals_used.map((d, j) => (
                             <span key={j} className="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5">

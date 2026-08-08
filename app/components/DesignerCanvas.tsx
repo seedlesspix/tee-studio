@@ -18,6 +18,7 @@ import NamesNumbersPanel from './NamesNumbersPanel'
 import { type RosterEntry, type NnRole, NN_ROLE_PROP, entryHasContent, condensedScaleX, rosterShirtCount, rosterSizeQuantities, rosterValue, jerseyStackLayout } from '../lib/namesNumbers'
 import { renderCurvedArc } from '../lib/curvedArc'
 import { applyEmbroideryLook, removeEmbroideryLook } from '../lib/embroideryLook'
+import { useT } from './StringsProvider'
 import { refitSide, rebakeCurveParams, type RefitBox, type CanvasObj } from '../lib/refitEngine'
 import { boxFromSnapshot, isSnapshot, boxFromPct } from '../lib/boxSnapshot'
 
@@ -275,6 +276,10 @@ export default function DesignerCanvas({
   const [selectedFont, setSelectedFont] = useState('Arial Black')
   const [textColor, setTextColor] = useState('#ffffff')
   const [fontSize, setFontSize] = useState(36)
+  const t = useT() // admin-editable wording (Language editor, BETA item 9)
+  // Method DISPLAY name via the Language editor ("Print"/"Embroidery"); falls back to the hardcoded map
+  // for any method key not registered. Internal keys (screen_print/embroidery) are unaffected.
+  const tMethod = (m: string) => { const s = t('method.' + m); return s.startsWith('method.') ? methodLabel(m) : s }
   const [printMethod, setPrintMethod] = useState<string>('')
   // Embroidery mode (2026-08-06): a product's template can support MULTIPLE print methods (e.g. a hat =
   // print OR embroidery). supportedMethods drives the in-designer Print/Embroidery toggle; a single
@@ -2680,13 +2685,13 @@ export default function DesignerCanvas({
     if (toRemove.length || willRestyleText) {
       const removeLabel = [
         uploadsRemoved && 'uploaded images',
-        clipartRemoved && `art that isn't available for ${methodLabel(m)}`,
+        clipartRemoved && `art that isn't available for ${tMethod(m)}`,
       ].filter(Boolean).join(' and ')
       const bits = [
         removeLabel && `remove your ${removeLabel}`,
         willRestyleText && 'set your text to an embroidery font + thread color',
       ].filter(Boolean)
-      if (bits.length && !window.confirm(`Switching to ${methodLabel(m)} will ${bits.join(' and ')}. Continue?`)) return
+      if (bits.length && !window.confirm(`Switching to ${tMethod(m)} will ${bits.join(' and ')}. Continue?`)) return
       if (toRemove.length) {
         const rm = new Set(toRemove)
         toRemove.forEach((o: any) => canvas?.remove(o))
@@ -2717,7 +2722,7 @@ export default function DesignerCanvas({
   // the mobile band. The canvas going empty re-shows the "Let's build it" greeting on
   // both layouts (canvasObjectCount → 0). setBandOpen is a no-op on desktop.
   const handleClearAll = () => {
-    if (!confirm('Clear all design elements?')) return
+    if (!confirm(t('notify.clear_all_confirm'))) return
     const canvas = fabricCanvasRef.current
     if (!canvas) return
     canvas.discardActiveObject()
@@ -4296,7 +4301,7 @@ export default function DesignerCanvas({
   // products, so it rides with the method toggle rather than being tied to it).
   const embNote = printMethod === 'embroidery' ? (
     <p className="flex items-center gap-1.5 text-[11px] text-gray-500">
-      <span aria-hidden="true">🧵</span> Preview — final stitching may vary.
+      <span aria-hidden="true">🧵</span> {t('designer.embroidery_preview_note')}
     </p>
   ) : null
   const methodToggle = (supportedMethods.length > 1 || embNote) ? (
@@ -4315,7 +4320,7 @@ export default function DesignerCanvas({
                   active ? 'bg-gray-900 text-white' : 'border border-gray-300 text-gray-700 hover:border-gray-400'
                 }`}
               >
-                {methodLabel(m)}
+                {tMethod(m)}
               </button>
             )
           })}

@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation'
 import type { Tables } from '@/types/database'
 import { type RosterEntry } from '@/app/lib/namesNumbers'
 import Stepper from '@/app/components/Stepper'
+import { useT } from '@/app/components/StringsProvider'
 import { supabase } from '@/app/lib/supabase'
 import { VOLUME_DISCOUNT, currentTier, nextTier, resolveTiers, type VolumeTier } from '@/app/lib/volumeTiers'
 
@@ -12,6 +13,7 @@ type DesignOrder = Omit<Tables<'design_orders'>, 'quantities'> & {
 }
 
 function OrderPage() {
+  const t = useT()
   const searchParams = useSearchParams()
   const designId = searchParams.get('design_id')
   const [design, setDesign] = useState<DesignOrder | null>(null)
@@ -205,7 +207,7 @@ function OrderPage() {
             <p className="text-xs font-mono text-gray-900 uppercase tracking-widest mb-3">Pricing</p>
             <div className="flex flex-col gap-2 text-sm">
               <div className="flex justify-between text-gray-900">
-                <span>Blank shirt</span>
+                <span>{t('order.blank_line')}</span>
                 <span className="text-gray-900 font-medium">${design?.unit_price?.toFixed(2)}</span>
               </div>
               {frontCharge > 0 && (

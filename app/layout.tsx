@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import FontProvider from "./components/FontProvider";
+import StringsProvider from "./components/StringsProvider";
 
 export const metadata: Metadata = {
   title: "Tee Studio",
@@ -26,7 +27,9 @@ export default function RootLayout({
         {/* Registers admin-uploaded fonts (designer_fonts.file_url) at runtime — Font Management Phase A.
             Existing hardcoded fonts above are untouched; this only adds uploaded ones. */}
         <FontProvider />
-        {children}
+        {/* Language editor (BETA item 9): resolves admin-editable wording via t(); defaults render
+            immediately, overrides swap in once loaded. */}
+        <StringsProvider>{children}</StringsProvider>
       </body>
     </html>
   );
