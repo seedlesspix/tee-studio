@@ -7,8 +7,8 @@ import { resolveString } from '../lib/uiStrings'
 // then `t(key)` = override ?? code default. Unedited strings render their default immediately (the
 // overrides map starts empty), so there's no flash for anything that hasn't been reworded.
 
-type TFn = (key: string) => string
-const StringsContext = createContext<TFn>((key) => resolveString(key, null))
+type TFn = (key: string, fallback?: string) => string
+const StringsContext = createContext<TFn>((key, fallback) => resolveString(key, null, fallback))
 
 export function useT(): TFn {
   return useContext(StringsContext)
@@ -26,6 +26,6 @@ export default function StringsProvider({ children }: { children: ReactNode }) {
     })
     return () => { cancelled = true }
   }, [])
-  const t = useMemo<TFn>(() => (key: string) => resolveString(key, overrides), [overrides])
+  const t = useMemo<TFn>(() => (key: string, fallback?: string) => resolveString(key, overrides, fallback), [overrides])
   return <StringsContext.Provider value={t}>{children}</StringsContext.Provider>
 }

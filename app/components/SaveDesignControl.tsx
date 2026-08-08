@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
+import { useT } from './StringsProvider'
 
 // "Save design" button + its feedback.
 //
@@ -23,6 +24,7 @@ export default function SaveDesignControl({ onSave, loggedIn, dirty }: Props) {
   const [restoreUrl, setRestoreUrl] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
+  const t = useT()
 
   // "Saved ✓" used to time out after 2.5s because nothing tracked whether the
   // design had since changed. Now that `dirty` does, the state can just be
@@ -66,11 +68,11 @@ export default function SaveDesignControl({ onSave, loggedIn, dirty }: Props) {
 
   const isSaved = savedOnce && !dirty
   const text =
-    status === 'saving' ? 'Saving…' :
-    status === 'error' ? 'Try again' :
-    isSaved ? 'Saved ✓' :
-    savedOnce ? 'Save changes' :
-    'Save design'
+    status === 'saving' ? t('designer.save.saving', 'Saving…') :
+    status === 'error' ? t('designer.save.try_again', 'Try again') :
+    isSaved ? t('designer.save.saved', 'Saved ✓') :
+    savedOnce ? t('designer.save.save_changes', 'Save changes') :
+    t('designer.save.save_design', 'Save design')
 
   return (
     <div className="relative" ref={wrapRef}>
@@ -91,17 +93,17 @@ export default function SaveDesignControl({ onSave, loggedIn, dirty }: Props) {
       {restoreUrl && (
         <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-xl p-4 z-50">
           <div className="flex items-start justify-between gap-2">
-            <p className="text-sm font-semibold text-gray-900">Design saved</p>
+            <p className="text-sm font-semibold text-gray-900">{t('designer.save.design_saved', 'Design saved')}</p>
             <button
               onClick={() => setRestoreUrl(null)}
-              aria-label="Dismiss"
+              aria-label={t('designer.dismiss', 'Dismiss')}
               className="text-gray-400 hover:text-gray-700 text-xs leading-none mt-1"
             >
               ✕
             </button>
           </div>
           <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-            Keep this link to come back to your design later:
+            {t('designer.save.link_hint', 'Keep this link to come back to your design later:')}
           </p>
           <div className="flex gap-1.5 mt-2">
             <input
@@ -114,12 +116,11 @@ export default function SaveDesignControl({ onSave, loggedIn, dirty }: Props) {
               onClick={copy}
               className="px-2.5 py-1.5 rounded text-xs font-semibold bg-[#dd3333] text-white hover:bg-red-700 transition-colors whitespace-nowrap"
             >
-              {copied ? 'Copied' : 'Copy'}
+              {copied ? t('designer.save.copied', 'Copied') : t('designer.save.copy', 'Copy')}
             </button>
           </div>
           <p className="text-[11px] text-gray-500 mt-3 pt-3 border-t border-gray-100 leading-relaxed">
-            Or <span className="font-semibold text-gray-700">log in</span> and we&rsquo;ll keep it in your
-            account — no link to hang on to.
+            {t('designer.save.login_prefix', 'Or')} <span className="font-semibold text-gray-700">{t('designer.save.login_word', 'log in')}</span> {t('designer.save.login_suffix', 'and we’ll keep it in your account — no link to hang on to.')}
           </p>
         </div>
       )}

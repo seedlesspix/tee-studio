@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useCustomerSession } from '../hooks/useCustomerSession'
+import { useT } from './StringsProvider'
 
 type Props = {
   // Anon "Log in" styling. 'default' is the filled-red style used on its own;
@@ -23,6 +24,7 @@ type Props = {
 //   - logged in: "Hi, <firstName> ▾" with a dropdown containing Logout.
 export function CustomerAuthButton({ variant = 'default', onBeforeLogin }: Props) {
   const { loggedIn, customer, isLoading } = useCustomerSession()
+  const t = useT()
   const [menuOpen, setMenuOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const wrapperRef = useRef<HTMLDivElement | null>(null)
@@ -87,13 +89,13 @@ export function CustomerAuthButton({ variant = 'default', onBeforeLogin }: Props
         disabled={busy}
         className={`inline-flex h-8 items-center rounded px-3 text-sm font-medium disabled:opacity-60 ${anonClass}`}
       >
-        {busy ? 'Saving…' : 'Log in'}
+        {busy ? t('designer.auth.saving', 'Saving…') : t('designer.auth.log_in', 'Log in')}
       </button>
     )
   }
 
   const displayName =
-    customer.firstName?.trim() || customer.email?.split('@')[0] || 'there'
+    customer.firstName?.trim() || customer.email?.split('@')[0] || t('designer.auth.name_fallback', 'there')
 
   return (
     <div ref={wrapperRef} className="relative inline-block">
@@ -104,7 +106,7 @@ export function CustomerAuthButton({ variant = 'default', onBeforeLogin }: Props
         aria-expanded={menuOpen}
         className="inline-flex h-8 items-center gap-1 rounded border border-gray-300 bg-white px-3 text-sm font-medium text-black hover:bg-gray-50"
       >
-        <span>Hi, {displayName}</span>
+        <span>{t('designer.auth.greeting', 'Hi,')} {displayName}</span>
         <span aria-hidden="true">▾</span>
       </button>
       {menuOpen && (
@@ -132,7 +134,7 @@ export function CustomerAuthButton({ variant = 'default', onBeforeLogin }: Props
             role="menuitem"
             className="block w-full px-3 py-2 text-left text-sm text-black hover:bg-gray-100"
           >
-            Log out
+            {t('designer.auth.log_out', 'Log out')}
           </a>
         </div>
       )}

@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { CustomerAuthButton } from './CustomerAuthButton'
 import SaveDesignControl from './SaveDesignControl'
+import { useT } from './StringsProvider'
 
 // ActionBar — the designer's top action bar.
 //
@@ -47,13 +48,14 @@ export default function ActionBar({
   // identical — every desktop element is `hidden lg:*` (shows ≥1024 exactly as
   // before) and every mobile element is `lg:hidden` (display:none on desktop).
   const [menuOpen, setMenuOpen] = useState(false)
+  const t = useT()
   return (
     <header className="sticky lg:relative top-0 lg:top-auto z-30 lg:z-auto flex items-center px-6 h-14 bg-white border-b border-gray-200 shrink-0">
       {/* Mobile ☰ (never on desktop) */}
       <button
         type="button"
         onClick={() => setMenuOpen(o => !o)}
-        aria-label="Menu"
+        aria-label={t('designer.menu_button', 'Menu')}
         aria-expanded={menuOpen}
         className="lg:hidden -ml-2 mr-1 flex h-9 w-9 items-center justify-center rounded text-gray-800 hover:bg-gray-100"
       >
@@ -77,21 +79,21 @@ export default function ActionBar({
             onClick={onOpenDesigns}
             className="px-3 py-1.5 rounded text-sm text-gray-600 hover:text-[#dd3333] transition-colors whitespace-nowrap"
           >
-            My Designs{savedDesignsCount > 0 ? ` (${savedDesignsCount})` : ''}
+            {t('designer.my_designs', 'My Designs')}{savedDesignsCount > 0 ? ` (${savedDesignsCount})` : ''}
           </button>
           <CustomerAuthButton variant="quiet" onBeforeLogin={onBeforeLogin} />
         </div>
         {/* Always visible: folded-in price (neutral — info, not action) + Next Step */}
         {pricePerItem != null && (
           <span className="text-sm font-bold text-gray-900 whitespace-nowrap tabular-nums">
-            ${pricePerItem.toFixed(2)} <span className="font-normal text-gray-500">each</span>
+            ${pricePerItem.toFixed(2)} <span className="font-normal text-gray-500">{t('designer.price_each', 'each')}</span>
           </span>
         )}
         <button
           onClick={onNextStep}
           data-cart-btn
           className="bg-[#dd3333] text-white px-5 py-2 rounded text-sm font-bold tracking-wide hover:opacity-80 transition-opacity">
-          Next Step →
+          {t('designer.next_step', 'Next Step →')}
         </button>
       </div>
 
@@ -100,7 +102,7 @@ export default function ActionBar({
         <>
           <div className="lg:hidden fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
           <div className="lg:hidden absolute left-4 top-14 z-50 w-60 rounded-lg border border-gray-200 bg-white py-2 shadow-lg">
-            <p className="truncate border-b border-gray-100 px-4 pb-2 pt-1 font-mono text-xs text-gray-500">{productTitle || 'Your design'}</p>
+            <p className="truncate border-b border-gray-100 px-4 pb-2 pt-1 font-mono text-xs text-gray-500">{productTitle || t('designer.your_design_fallback', 'Your design')}</p>
             <div className="px-4 py-2" onClick={() => setMenuOpen(false)}>
               <SaveDesignControl onSave={onSave} loggedIn={loggedIn} dirty={dirty} />
             </div>
@@ -108,7 +110,7 @@ export default function ActionBar({
               onClick={() => { onOpenDesigns(); setMenuOpen(false) }}
               className="block w-full px-4 py-2 text-left text-sm text-gray-800 hover:bg-gray-50"
             >
-              My Designs{savedDesignsCount > 0 ? ` (${savedDesignsCount})` : ''}
+              {t('designer.my_designs', 'My Designs')}{savedDesignsCount > 0 ? ` (${savedDesignsCount})` : ''}
             </button>
             <div className="px-4 py-2" onClick={() => setMenuOpen(false)}>
               <CustomerAuthButton variant="quiet" onBeforeLogin={onBeforeLogin} />

@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { AlignLeft, AlignCenter, AlignRight, AlignJustify, MoveHorizontal, MoveVertical } from 'lucide-react'
 import MobileAlignRow from './MobileAlignRow'
+import { useT } from './StringsProvider'
 
 // MobileTextBand — BLOCKER-2 mobile rework, Stage 2. The Text tool's controls laid
 // out for the compact bottom band, ImprintNext-style: a sub-tool row
@@ -36,6 +37,7 @@ export default function MobileTextBand({
   deleteSelected: () => void
   alignObject: (fn: string) => void
 }) {
+  const t = useT()
   const {
     textInput, textInputRef, handleTextInputChange, selectedObjectType, startNewText,
     dbFonts, fonts, selectedFont, setSelectedFont, selectedTextPreview,
@@ -52,7 +54,7 @@ export default function MobileTextBand({
   const fontList = fontQuery
     ? allFonts.filter(f => f.label.toLowerCase().includes(fontQuery.toLowerCase()))
     : allFonts
-  const sample = (selectedTextPreview || textInput || 'Abc').slice(0, 10) || 'Abc'
+  const sample = (selectedTextPreview || textInput || t('designer.text.font_sample', 'Abc')).slice(0, 10) || t('designer.text.font_sample', 'Abc')
   const colorList = (dbColors.length > 0 ? dbColors : [
     { label: 'White', hex: '#ffffff' }, { label: 'Black', hex: '#000000' },
   ]) as { label: string; hex: string }[]
@@ -73,7 +75,7 @@ export default function MobileTextBand({
             onClick={() => setSub(key)}
             className={chip(sub === key)}
           >
-            {label}
+            {t(`designer.text.sub_${key}`, label)}
           </button>
         ))}
       </div>
@@ -86,7 +88,7 @@ export default function MobileTextBand({
               value={textInput}
               ref={textInputRef}
               onChange={e => handleTextInputChange(e.target.value)}
-              placeholder="Type something…  ↵ for a new line"
+              placeholder={t('designer.text.type_placeholder', 'Type something…  ↵ for a new line')}
               className="min-h-0 flex-1 w-full resize-none rounded border border-gray-200 bg-gray-100 px-3 py-2 text-base leading-snug text-gray-900 outline-none focus:border-[#dd3333]"
             />
             {selectedObjectType === 'text' && (
@@ -94,7 +96,7 @@ export default function MobileTextBand({
                 onClick={startNewText}
                 className="shrink-0 rounded border border-gray-300 py-1.5 text-xs text-gray-700 transition-colors hover:border-[#dd3333] hover:text-[#dd3333]"
               >
-                + Add another text
+                {t('designer.text.add_another', '+ Add another text')}
               </button>
             )}
           </div>
@@ -104,11 +106,11 @@ export default function MobileTextBand({
           <div className="flex h-full flex-col gap-2">
             {/* Category chips (single "All" until admin gets a category field) + search */}
             <div className="flex shrink-0 items-center gap-2">
-              <span className={chip(true)}>All</span>
+              <span className={chip(true)}>{t('designer.text.category_all', 'All')}</span>
               <input
                 value={fontQuery}
                 onChange={e => setFontQuery(e.target.value)}
-                placeholder="Search fonts"
+                placeholder={t('designer.text.search_fonts', 'Search fonts')}
                 className="min-w-0 flex-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-sm text-gray-900 outline-none focus:border-gray-500"
               />
             </div>
@@ -133,7 +135,7 @@ export default function MobileTextBand({
                 </button>
               ))}
               {fontList.length === 0 && (
-                <span className="self-center px-2 text-xs text-gray-400">No fonts match “{fontQuery}”.</span>
+                <span className="self-center px-2 text-xs text-gray-400">{t('designer.text.no_fonts_match', 'No fonts match')} “{fontQuery}”.</span>
               )}
             </div>
           </div>
@@ -142,7 +144,7 @@ export default function MobileTextBand({
         {sub === 'size' && (
           <div className="flex h-full flex-col justify-center gap-2">
             <div className="flex items-center justify-between">
-              <span className="font-mono text-xs uppercase tracking-widest text-gray-700">Size</span>
+              <span className="font-mono text-xs uppercase tracking-widest text-gray-700">{t('designer.text.size_label', 'Size')}</span>
               <input
                 type="number" min={8} max={120} value={fontSize}
                 onChange={e => setFontSize(Number(e.target.value))}
@@ -159,7 +161,7 @@ export default function MobileTextBand({
 
         {sub === 'color' && (
           <div className="flex h-full flex-col justify-center gap-2">
-            <span className="font-mono text-xs uppercase tracking-widest text-gray-700">Text Color</span>
+            <span className="font-mono text-xs uppercase tracking-widest text-gray-700">{t('designer.text.color_label', 'Text Color')}</span>
             <div className="flex items-center gap-2 overflow-x-auto pb-1">
               {colorList.map(c => (
                 <button
@@ -176,7 +178,7 @@ export default function MobileTextBand({
               <input
                 type="color" value={textColor}
                 onChange={e => setTextColor(e.target.value)}
-                title="Custom color"
+                title={t('designer.text.custom_color', 'Custom color')}
                 className="h-9 w-9 shrink-0 cursor-pointer overflow-hidden rounded-full"
               />
             </div>
@@ -194,7 +196,7 @@ export default function MobileTextBand({
                   key={a}
                   onClick={() => handleTextAlign(a)}
                   disabled={selectedIsCurved}
-                  title={`Align ${a}`}
+                  title={`${t('designer.text.align_prefix', 'Align')} ${a}`}
                   className={`flex flex-1 items-center justify-center rounded py-1.5 transition-all disabled:opacity-40 ${
                     textAlign === a ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 border border-gray-200'
                   }`}
@@ -205,20 +207,20 @@ export default function MobileTextBand({
               <button
                 onClick={() => setIsBold((b: boolean) => !b)}
                 className={`flex-1 rounded py-1.5 text-xs font-bold transition-all ${isBold ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 border border-gray-200'}`}
-              >B</button>
+              >{t('designer.text.bold', 'B')}</button>
               <button
                 onClick={() => setIsItalic((i: boolean) => !i)}
                 className={`flex-1 rounded py-1.5 text-xs italic transition-all ${isItalic ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 border border-gray-200'}`}
-              >I</button>
+              >{t('designer.text.italic', 'I')}</button>
               <button
                 onClick={() => setIsUppercase((u: boolean) => !u)}
                 disabled={selectedIsCurved}
                 className={`flex-1 rounded py-1.5 text-xs font-mono transition-all disabled:opacity-40 ${isUppercase ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 border border-gray-200'}`}
-              >AA</button>
+              >{t('designer.text.uppercase', 'AA')}</button>
             </div>
             {/* Curve + direction */}
             <div className="flex items-center gap-2">
-              <span className="font-mono text-xs uppercase tracking-widest text-gray-700">Curve</span>
+              <span className="font-mono text-xs uppercase tracking-widest text-gray-700">{t('designer.text.curve_label', 'Curve')}</span>
               <input
                 type="range" min={-360} max={360} value={curveAmount}
                 onChange={e => setCurveAmount(Number(e.target.value))}
@@ -230,23 +232,23 @@ export default function MobileTextBand({
                 disabled={textIsMultiline}
                 className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-mono ${textIsMultiline ? 'bg-gray-100 text-gray-400' : curveAmount !== 0 ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-700'}`}
               >
-                Straight
+                {t('designer.text.straight', 'Straight')}
               </button>
             </div>
             {textIsMultiline && (
-              <p className="text-[10px] text-gray-500">Curve works on single-line text.</p>
+              <p className="text-[10px] text-gray-500">{t('designer.text.curve_singleline', 'Curve works on single-line text.')}</p>
             )}
             <div className="flex gap-2">
               <button
                 onClick={() => setTextDirection('horizontal')}
                 disabled={selectedIsCurved}
                 className={`flex flex-1 items-center justify-center gap-1.5 rounded py-1.5 text-xs font-mono transition-all disabled:opacity-40 ${textDirection === 'horizontal' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 border border-gray-200'}`}
-              ><MoveHorizontal size={14} /> Horizontal</button>
+              ><MoveHorizontal size={14} /> {t('designer.text.direction_horizontal', 'Horizontal')}</button>
               <button
                 onClick={() => setTextDirection('vertical')}
                 disabled={selectedIsCurved}
                 className={`flex flex-1 items-center justify-center gap-1.5 rounded py-1.5 text-xs font-mono transition-all disabled:opacity-40 ${textDirection === 'vertical' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 border border-gray-200'}`}
-              ><MoveVertical size={14} /> Vertical</button>
+              ><MoveVertical size={14} /> {t('designer.text.direction_vertical', 'Vertical')}</button>
             </div>
           </div>
         )}

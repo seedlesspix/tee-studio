@@ -1,6 +1,7 @@
 'use client'
 import MyUploadsPanel, { type UploadItem } from './MyUploadsPanel'
 import MobileAlignRow from './MobileAlignRow'
+import { useT } from './StringsProvider'
 
 // MobileUploadBand — BLOCKER-2 mobile rework. The Upload tool for the compact
 // band, MODE-SWITCHED like Art:
@@ -60,6 +61,7 @@ export default function MobileUploadBand({
   cancelCrop: () => void
   lowResWarning?: string | null
 }) {
+  const t = useT()
   if (selectedObjectType === 'image') {
     return (
       <div className="flex h-full flex-col justify-center gap-2 overflow-y-auto px-3">
@@ -71,37 +73,37 @@ export default function MobileUploadBand({
         {cropMode ? (
           <div className="flex gap-2">
             <button onClick={applyCrop} disabled={imageEditBusy}
-              className="flex-1 rounded-lg bg-[#dd3333] py-2 text-sm text-white disabled:opacity-50">Apply Crop</button>
+              className="flex-1 rounded-lg bg-[#dd3333] py-2 text-sm text-white disabled:opacity-50">{t('designer.upload.apply_crop', 'Apply Crop')}</button>
             <button onClick={cancelCrop} disabled={imageEditBusy}
-              className="flex-1 rounded-lg border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50">Cancel</button>
+              className="flex-1 rounded-lg border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50">{t('designer.upload.cancel_crop', 'Cancel')}</button>
           </div>
         ) : colorPreview ? (
           <div className="flex flex-col gap-2">
             <input type="range" min={5} max={100} value={removeColorTol}
               onChange={e => setRemoveColorTol(Number(e.target.value))}
-              className="w-full accent-[#dd3333]" aria-label="Color match tolerance" />
+              className="w-full accent-[#dd3333]" aria-label={t('designer.upload.tolerance_aria', 'Color match tolerance')} />
             <div className="flex gap-2">
               <button onClick={applyColorRemoval} disabled={imageEditBusy}
-                className="flex-1 rounded-lg bg-[#dd3333] py-2 text-sm text-white disabled:opacity-50">Apply</button>
+                className="flex-1 rounded-lg bg-[#dd3333] py-2 text-sm text-white disabled:opacity-50">{t('designer.upload.apply_color', 'Apply')}</button>
               <button onClick={cancelColorRemoval} disabled={imageEditBusy}
-                className="flex-1 rounded-lg border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50">Cancel</button>
+                className="flex-1 rounded-lg border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50">{t('designer.upload.cancel_color', 'Cancel')}</button>
             </div>
           </div>
         ) : (
           <>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={removeBackground} disabled={imageEditBusy}
-                className="rounded-lg border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50">Remove Background</button>
+                className="rounded-lg border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50">{t('designer.upload.remove_background', 'Remove Background')}</button>
               <button onClick={removeWhite} disabled={imageEditBusy}
-                className="rounded-lg border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50">Remove White</button>
+                className="rounded-lg border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50">{t('designer.upload.remove_white', 'Remove White')}</button>
               <button onClick={() => setEyedropperActive(v => !v)} disabled={imageEditBusy}
                 className={`rounded-lg border py-2 text-sm disabled:opacity-50 ${
                   eyedropperActive ? 'border-gray-800 bg-gray-200 text-gray-900' : 'border-gray-300 text-gray-700'
                 }`}>
-                {eyedropperActive ? 'Tap the color…' : 'Remove a Color'}
+                {eyedropperActive ? t('designer.upload.eyedropper_active_mobile', 'Tap the color…') : t('designer.upload.remove_color', 'Remove a Color')}
               </button>
               <button onClick={startCrop} disabled={imageEditBusy}
-                className="rounded-lg border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50">Crop…</button>
+                className="rounded-lg border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50">{t('designer.upload.crop', 'Crop…')}</button>
             </div>
             <MobileAlignRow alignObject={alignObject} onDelete={deleteSelected} />
           </>
@@ -115,10 +117,10 @@ export default function MobileUploadBand({
     <div className="flex h-full flex-col gap-2">
       <div className="flex shrink-0 items-center gap-2">
         <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-700 transition-colors hover:border-[#dd3333] hover:text-[#dd3333]">
-          <span className="text-lg leading-none">⬆</span> Upload image
+          <span className="text-lg leading-none">⬆</span> {t('designer.upload.upload_image', 'Upload image')}
           <input type="file" accept={ACCEPT} onChange={handleImageUpload} className="hidden" />
         </label>
-        <span className="truncate text-[11px] text-gray-400">JPG · PNG · SVG · AI · PSD · PDF</span>
+        <span className="truncate text-[11px] text-gray-400">{t('designer.upload.formats', 'JPG · PNG · SVG · AI · PSD · PDF')}</span>
       </div>
       <p className="shrink-0 text-[11px] leading-snug text-gray-400">{uploadGuidance}</p>
       <MyUploadsPanel

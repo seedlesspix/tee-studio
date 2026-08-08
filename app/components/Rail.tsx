@@ -1,6 +1,7 @@
 'use client'
 
 import { Shirt, Type, Upload, Shapes, Hash, Layers } from 'lucide-react'
+import { useT } from './StringsProvider'
 
 // Rail — the designer's tool selector, now the sealed vertical ICON RAIL.
 //
@@ -65,6 +66,7 @@ export default function Rail({
   // mobile bottom-sheet tab bar (same items; active marker moves to the bottom).
   orientation?: 'vertical' | 'horizontal'
 }) {
+  const t = useT()
   const horizontal = orientation === 'horizontal'
   const marker = horizontal ? 'border-b-2' : 'border-l-2'
   const items = hiddenKeys?.length ? ITEMS.filter(i => !hiddenKeys.includes(i.key)) : ITEMS
@@ -78,6 +80,7 @@ export default function Rail({
         const enabled = action ? !!onProducts : wired
         const active = !action && wired && activeTab === key
         const handleClick = action ? onProducts : () => onSelectTab(key as Tab)
+        const tLabel = t(`designer.rail_${key}`, label)
         return (
           <button
             key={key}
@@ -85,7 +88,7 @@ export default function Rail({
             disabled={!enabled}
             onClick={enabled ? handleClick : undefined}
             aria-current={active ? 'page' : undefined}
-            title={enabled ? label : `${label} — coming soon`}
+            title={enabled ? tLabel : `${tLabel} — ${t('designer.rail_coming_soon', 'coming soon')}`}
             className={`relative flex flex-col items-center gap-1 px-1 py-2.5 text-center transition-colors ${horizontal ? 'flex-1' : ''} ${
               !enabled
                 ? 'text-gray-300 cursor-default'
@@ -95,9 +98,9 @@ export default function Rail({
             }`}
           >
             <Icon size={20} strokeWidth={1.75} />
-            <span className="text-[10px] leading-tight">{label}</span>
+            <span className="text-[10px] leading-tight">{tLabel}</span>
             {!enabled && (
-              <span className="text-[8px] uppercase tracking-wide text-gray-400 font-mono">Soon</span>
+              <span className="text-[8px] uppercase tracking-wide text-gray-400 font-mono">{t('designer.rail_soon', 'Soon')}</span>
             )}
           </button>
         )

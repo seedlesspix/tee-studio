@@ -4,6 +4,7 @@ import { AlignLeft, AlignCenter, AlignRight, AlignJustify, Bold, Italic, CaseUpp
 import ClipartPanel, { type ArtMeta } from './ClipartPanel'
 import MyUploadsPanel, { type UploadItem } from './MyUploadsPanel'
 import FontPicker from './FontPicker'
+import { useT } from './StringsProvider'
 
 // SelectionPanel — the designer's LEFT TOOL PANEL BODY (Text / Upload / Clipart).
 //
@@ -109,6 +110,7 @@ export default function SelectionPanel({
   upload,
   clipart,
 }: SelectionPanelProps) {
+  const t = useT()
   const {
     textInput, textInputRef, handleTextInputChange, selectedObjectType, startNewText,
     dbFonts, fonts, selectedFont, setSelectedFont, selectedTextPreview,
@@ -141,16 +143,16 @@ export default function SelectionPanel({
                 {/* The box is the typing surface — always live. The first
                     keystroke puts the text on the shirt; no button hunt. */}
                 <div>
-                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Your Text</label>
+                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">{t('designer.text.your_text_label', 'Your Text')}</label>
                   <textarea value={textInput} ref={textInputRef} rows={3}
                     onChange={e => handleTextInputChange(e.target.value)}
-                    placeholder="Type something...&#10;Press Enter for a new line"
+                    placeholder={t('designer.text.placeholder', 'Type something...\nPress Enter for a new line')}
                     className="w-full mt-1 bg-gray-100 border border-gray-200 rounded px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333] resize-y leading-snug"
                   />
                   {/* Teaches the quicker path, and only once it's useful. */}
                   {selectedObjectType === 'text' && (
                     <p className="mt-1.5 text-[11px] text-gray-500 bg-gray-50 border border-gray-200 rounded px-2 py-1.5 leading-relaxed">
-                      Or <span className="font-semibold text-gray-700">double-click</span> the text on the shirt to edit it here.
+                      {t('designer.text.edit_hint_prefix', 'Or ')}<span className="font-semibold text-gray-700">{t('designer.text.edit_hint_action', 'double-click')}</span>{t('designer.text.edit_hint_suffix', ' the text on the shirt to edit it here.')}
                     </p>
                   )}
                 </div>
@@ -161,21 +163,21 @@ export default function SelectionPanel({
                 {selectedObjectType === 'text' && (
                   <button onClick={startNewText}
                     className="w-full border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-[#dd3333] hover:text-[#dd3333] transition-colors">
-                    + Add another text
+                    {t('designer.text.add_another', '+ Add another text')}
                   </button>
                 )}
                 <div>
-                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Font</label>
+                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">{t('designer.text.font_label', 'Font')}</label>
                   <FontPicker
                     fonts={dbFonts.length > 0 ? dbFonts : fonts}
                     value={selectedFont}
                     onChange={setSelectedFont}
-                    previewText={selectedTextPreview || textInput || 'Preview Text'}
+                    previewText={selectedTextPreview || textInput || t('designer.text.preview_placeholder', 'Preview Text')}
                   />
                 </div>
                 <div>
                   <div className="flex justify-between items-center">
-                    <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Size</label>
+                    <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">{t('designer.text.size_label', 'Size')}</label>
                     <input type="number" min={8} max={120} value={fontSize}
                       onChange={e => setFontSize(Number(e.target.value))}
                       className="w-14 bg-gray-100 border border-gray-200 rounded px-2 py-1 text-xs text-gray-900 outline-none text-center focus:border-[#dd3333]"
@@ -187,7 +189,7 @@ export default function SelectionPanel({
                 </div>
                 <div>
                   <div className="flex justify-between items-center">
-                    <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Letter Spacing</label>
+                    <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">{t('designer.text.letter_spacing_label', 'Letter Spacing')}</label>
                     <span className="text-xs text-gray-700 font-mono">{letterSpacing}</span>
                   </div>
                   <input type="range" min={-5} max={30} value={letterSpacing}
@@ -199,7 +201,7 @@ export default function SelectionPanel({
                 {!selectedIsCurved && (
                   <div>
                     <div className="flex justify-between items-center">
-                      <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Line Spacing</label>
+                      <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">{t('designer.text.line_spacing_label', 'Line Spacing')}</label>
                       <span className="text-xs text-gray-700 font-mono">{lineHeight.toFixed(2)}</span>
                     </div>
                     <input type="range" min={0.8} max={2.5} step={0.05} value={lineHeight}
@@ -209,7 +211,7 @@ export default function SelectionPanel({
                 )}
                 <div>
                   <div className="flex justify-between items-center">
-                    <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Curve</label>
+                    <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">{t('designer.text.curve_label', 'Curve')}</label>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-800 font-mono">{curveAmount > 0 ? `+${curveAmount}` : curveAmount}°</span>
                       <button onClick={() => setCurveAmount(0)} disabled={textIsMultiline}
@@ -217,7 +219,7 @@ export default function SelectionPanel({
                           textIsMultiline ? 'bg-gray-100 text-gray-400 cursor-default'
                             : curveAmount !== 0 ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-800'
                         }`}>
-                        Straight
+                        {t('designer.text.straight', 'Straight')}
                       </button>
                     </div>
                   </div>
@@ -228,12 +230,12 @@ export default function SelectionPanel({
                   {textIsMultiline ? (
                     /* The arc renderer lays every character along ONE arc, so a
                        stacked design would silently collapse into a single line. */
-                    <p className="text-[10px] text-gray-500 mt-1">Curve works on single-line text.</p>
+                    <p className="text-[10px] text-gray-500 mt-1">{t('designer.text.curve_single_line', 'Curve works on single-line text.')}</p>
                   ) : (
                     <div className="flex justify-between text-[9px] text-gray-800 font-mono mt-0.5">
-                      <span>⌣ Down</span>
+                      <span>{t('designer.text.curve_down', '⌣ Down')}</span>
                       <span>|</span>
-                      <span>⌢ Up</span>
+                      <span>{t('designer.text.curve_up', '⌢ Up')}</span>
                     </div>
                   )}
                 </div>
@@ -241,17 +243,17 @@ export default function SelectionPanel({
                     shared Lucide set). Bold/Italic re-bake on curved text; UPPERCASE + Align don't apply
                     to a baked curve, so they disable there. */}
                 <div>
-                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Format</label>
+                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">{t('designer.text.format_label', 'Format')}</label>
                   <div className="grid grid-cols-3 gap-2 mt-1">
-                    <button onClick={() => setIsBold(b => !b)} title="Bold"
+                    <button onClick={() => setIsBold(b => !b)} title={t('designer.text.bold_tooltip', 'Bold')}
                       className={`flex items-center justify-center py-2 rounded border transition-all ${isBold ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'}`}>
                       <Bold size={16} strokeWidth={2.5} />
                     </button>
-                    <button onClick={() => setIsItalic(i => !i)} title="Italic"
+                    <button onClick={() => setIsItalic(i => !i)} title={t('designer.text.italic_tooltip', 'Italic')}
                       className={`flex items-center justify-center py-2 rounded border transition-all ${isItalic ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'}`}>
                       <Italic size={16} strokeWidth={2.5} />
                     </button>
-                    <button onClick={() => setIsUppercase(u => !u)} disabled={selectedIsCurved} title="UPPERCASE"
+                    <button onClick={() => setIsUppercase(u => !u)} disabled={selectedIsCurved} title={t('designer.text.uppercase_tooltip', 'UPPERCASE')}
                       className={`flex items-center justify-center py-2 rounded border transition-all disabled:opacity-40 disabled:cursor-default ${isUppercase ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'}`}>
                       <CaseUpper size={18} strokeWidth={2.5} />
                     </button>
@@ -260,7 +262,7 @@ export default function SelectionPanel({
                       OBJECT-align cluster in the toolbar (which positions the whole object). */}
                   <div className="grid grid-cols-4 gap-2 mt-2">
                     {([['left', AlignLeft], ['center', AlignCenter], ['right', AlignRight], ['justify', AlignJustify]] as const).map(([align, Icon]) => (
-                      <button key={align} onClick={() => handleTextAlign(align)} disabled={selectedIsCurved} title={`Align ${align}`}
+                      <button key={align} onClick={() => handleTextAlign(align)} disabled={selectedIsCurved} title={`${t('designer.text.align_tooltip_prefix', 'Align')} ${align}`}
                         className={`flex items-center justify-center py-2 rounded border transition-all disabled:opacity-40 disabled:cursor-default ${
                           textAlign === align ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'
                         }`}>
@@ -270,25 +272,25 @@ export default function SelectionPanel({
                   </div>
                   {/* Case / direction / align don't apply to a curved text — it's a baked image. */}
                   {selectedIsCurved && (
-                    <p className="text-[10px] text-gray-500 mt-2">Curved text: straighten to change case, direction, or alignment.</p>
+                    <p className="text-[10px] text-gray-500 mt-2">{t('designer.text.curved_note', 'Curved text: straighten to change case, direction, or alignment.')}</p>
                   )}
                 </div>
                 <div>
-                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Direction</label>
+                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">{t('designer.text.direction_label', 'Direction')}</label>
                   <div className="grid grid-cols-2 gap-2 mt-1">
                     <button onClick={() => setTextDirection('horizontal')} disabled={selectedIsCurved}
                       className={`flex items-center justify-center gap-1.5 py-2 rounded text-xs font-mono transition-all disabled:opacity-40 disabled:cursor-default border ${textDirection === 'horizontal' ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'}`}>
-                      <MoveHorizontal size={14} /> Horizontal
+                      <MoveHorizontal size={14} /> {t('designer.text.direction_horizontal', 'Horizontal')}
                     </button>
                     <button onClick={() => setTextDirection('vertical')} disabled={selectedIsCurved}
                       className={`flex items-center justify-center gap-1.5 py-2 rounded text-xs font-mono transition-all disabled:opacity-40 disabled:cursor-default border ${textDirection === 'vertical' ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'}`}>
-                      <MoveVertical size={14} /> Vertical
+                      <MoveVertical size={14} /> {t('designer.text.direction_vertical', 'Vertical')}
                     </button>
                   </div>
                 </div>
                 {/* Text Color — LAST of the text controls (Denise: all text options sit ABOVE color). */}
                 <div>
-                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Text Color</label>
+                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">{t('designer.text.color_label', 'Text Color')}</label>
                   <div className="flex gap-2 mt-2 flex-wrap items-center">
                     {(dbColors.length > 0 ? dbColors : [
                       { label: 'White', hex: '#ffffff' },
@@ -317,7 +319,7 @@ export default function SelectionPanel({
                       style={{ background: textColor }} aria-hidden="true" />
                     <span className="text-xs text-gray-800 font-mono">
                       {(dbColors.length > 0 ? dbColors : [{ label: 'White', hex: '#ffffff' }, { label: 'Black', hex: '#000000' }])
-                        .find(c => c.hex?.toLowerCase() === textColor?.toLowerCase())?.label || textColor || 'Custom'}
+                        .find(c => c.hex?.toLowerCase() === textColor?.toLowerCase())?.label || textColor || t('designer.text.color_custom', 'Custom')}
                     </span>
                   </div>
                 </div>
@@ -325,7 +327,7 @@ export default function SelectionPanel({
                 {selectedObjectType === 'text' && (
                   <button onClick={deleteSelected}
                     className="w-full border border-red-800 text-red-400 py-2 rounded text-sm hover:bg-red-900/20 transition-colors">
-                    Delete Selected
+                    {t('designer.delete_selected', 'Delete Selected')}
                   </button>
                 )}
               </>
@@ -333,15 +335,15 @@ export default function SelectionPanel({
             {/* UPLOAD — dropzone + library always; Delete activates on a selected image */}
             {activeTab === 'upload' && (
               <div>
-                <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Upload Artwork</label>
+                <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">{t('designer.upload.artwork_label', 'Upload Artwork')}</label>
                 <label
                   onDragOver={e => e.preventDefault()}
                   onDrop={handleImageDrop}
                   className="mt-2 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-xl p-8 cursor-pointer hover:border-[#dd3333] hover:bg-[#dd3333]/5 transition-all">
                   <Upload size={28} className="mb-3 text-gray-500" strokeWidth={1.75} />
                   <span className="text-sm text-gray-800 text-center">
-                    Drop image here<br />
-                    <span className="text-xs opacity-60">JPG · PNG · SVG · AI · PSD · PDF</span>
+                    {t('designer.upload.drop_here', 'Drop image here')}<br />
+                    <span className="text-xs opacity-60">{t('designer.upload.formats', 'JPG · PNG · SVG · AI · PSD · PDF')}</span>
                   </span>
                   <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,application/pdf,.pdf,.svg,.png,.jpg,.jpeg,.webp,.ai,.psd" onChange={handleImageUpload} className="hidden" />
                 </label>
@@ -356,7 +358,7 @@ export default function SelectionPanel({
                     one-tap; Remove a Color arms an eyedropper (click the color on the shirt). */}
                 {selectedObjectType === 'image' && (
                   <div className="mt-3 flex flex-col gap-2">
-                    <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Edit Image</label>
+                    <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">{t('designer.upload.edit_image_label', 'Edit Image')}</label>
                     {lowResWarning && (
                       <p className="rounded border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11px] leading-snug text-amber-800">
                         {lowResWarning}
@@ -365,21 +367,21 @@ export default function SelectionPanel({
                     {cropMode ? (
                       /* Manual crop — the drag-box lives on the shirt; commit here. */
                       <div className="border border-gray-300 rounded p-2 flex flex-col gap-2">
-                        <p className="text-[11px] text-gray-600 leading-snug">Drag the box on the shirt to frame what to keep, then Apply.</p>
+                        <p className="text-[11px] text-gray-600 leading-snug">{t('designer.upload.crop_instructions', 'Drag the box on the shirt to frame what to keep, then Apply.')}</p>
                         <div className="flex gap-2">
                           <button onClick={applyCrop} disabled={imageEditBusy}
-                            className="flex-1 bg-[#dd3333] text-white py-2 rounded text-sm hover:bg-[#c02020] transition-colors disabled:opacity-50">Apply Crop</button>
+                            className="flex-1 bg-[#dd3333] text-white py-2 rounded text-sm hover:bg-[#c02020] transition-colors disabled:opacity-50">{t('designer.upload.apply_crop', 'Apply Crop')}</button>
                           <button onClick={cancelCrop} disabled={imageEditBusy}
-                            className="flex-1 border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-gray-500 transition-colors disabled:opacity-50">Cancel</button>
+                            className="flex-1 border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-gray-500 transition-colors disabled:opacity-50">{t('designer.upload.cancel', 'Cancel')}</button>
                         </div>
                       </div>
                     ) : colorPreview ? (
                       /* Live color-removal preview — adjust tolerance, watch the shirt, commit with Apply. */
                       <div className="border border-gray-300 rounded p-2 flex flex-col gap-2">
-                        <p className="text-[11px] text-gray-600 leading-snug">Adjust until only the color you want is gone, then Apply.</p>
+                        <p className="text-[11px] text-gray-600 leading-snug">{t('designer.upload.color_removal_instructions', 'Adjust until only the color you want is gone, then Apply.')}</p>
                         <div>
                           <div className="flex justify-between items-center">
-                            <label className="text-[11px] text-gray-600 font-mono">Color match</label>
+                            <label className="text-[11px] text-gray-600 font-mono">{t('designer.upload.color_match_label', 'Color match')}</label>
                             <span className="text-[11px] text-gray-600 font-mono">{removeColorTol}</span>
                           </div>
                           <input type="range" min={5} max={100} value={removeColorTol}
@@ -388,38 +390,38 @@ export default function SelectionPanel({
                         </div>
                         <div className="flex gap-2">
                           <button onClick={applyColorRemoval} disabled={imageEditBusy}
-                            className="flex-1 bg-[#dd3333] text-white py-2 rounded text-sm hover:bg-[#c02020] transition-colors disabled:opacity-50">Apply</button>
+                            className="flex-1 bg-[#dd3333] text-white py-2 rounded text-sm hover:bg-[#c02020] transition-colors disabled:opacity-50">{t('designer.upload.apply', 'Apply')}</button>
                           <button onClick={cancelColorRemoval} disabled={imageEditBusy}
-                            className="flex-1 border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-gray-500 transition-colors disabled:opacity-50">Cancel</button>
+                            className="flex-1 border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-gray-500 transition-colors disabled:opacity-50">{t('designer.upload.cancel', 'Cancel')}</button>
                         </div>
                       </div>
                     ) : (
                       <>
                         <button onClick={removeBackground} disabled={imageEditBusy}
                           className="w-full border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-[#dd3333] hover:text-[#dd3333] transition-colors disabled:opacity-50">
-                          Remove Background
+                          {t('designer.upload.remove_background', 'Remove Background')}
                         </button>
                         <button onClick={removeWhite} disabled={imageEditBusy}
                           className="w-full border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-[#dd3333] hover:text-[#dd3333] transition-colors disabled:opacity-50">
-                          Remove White
+                          {t('designer.upload.remove_white', 'Remove White')}
                         </button>
                         <button onClick={() => setEyedropperActive(v => !v)} disabled={imageEditBusy}
                           className={`w-full border py-2 rounded text-sm transition-colors disabled:opacity-50 ${
                             eyedropperActive ? 'border-gray-800 bg-gray-200 text-gray-900' : 'border-gray-300 text-gray-800 hover:border-[#dd3333] hover:text-[#dd3333]'
                           }`}>
-                          {eyedropperActive ? 'Click the color on the shirt…' : 'Remove a Color'}
+                          {eyedropperActive ? t('designer.upload.eyedropper_active', 'Click the color on the shirt…') : t('designer.upload.remove_color', 'Remove a Color')}
                         </button>
                         <button onClick={startCrop} disabled={imageEditBusy}
                           className="w-full border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-[#dd3333] hover:text-[#dd3333] transition-colors disabled:opacity-50">
-                          Crop…
+                          {t('designer.upload.crop', 'Crop…')}
                         </button>
                         <button onClick={deleteSelected}
                           className="w-full border border-red-800 text-red-400 py-2 rounded text-sm hover:bg-red-900/20 transition-colors">
-                          Delete Selected
+                          {t('designer.delete_selected', 'Delete Selected')}
                         </button>
                       </>
                     )}
-                    {imageEditBusy && <p className="text-[11px] text-gray-500">Processing…</p>}
+                    {imageEditBusy && <p className="text-[11px] text-gray-500">{t('designer.upload.processing', 'Processing…')}</p>}
                   </div>
                 )}
               </div>
@@ -439,7 +441,7 @@ export default function SelectionPanel({
                 {/* SVG Color swatches — only SVGs can be recolored. */}
                 {selectedObjectType === 'svg' && (
                   <div className="mt-2">
-                    <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Clipart Color</label>
+                    <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">{t('designer.art.color_label', 'Clipart Color')}</label>
                     <div className="flex gap-2 mt-2 flex-wrap items-center">
                       {(dbColors.length > 0 ? dbColors : [
                         { label: 'Black', hex: '#000000' },
@@ -460,7 +462,7 @@ export default function SelectionPanel({
                       <span className="h-6 w-6 shrink-0 rounded-md border border-gray-300"
                         style={{ background: selectedSvgColor }} aria-hidden="true" />
                       <span className="text-xs text-gray-800 font-mono">
-                        {(dbColors.length > 0 ? dbColors : [{ label: 'Black', hex: '#000000' }, { label: 'White', hex: '#ffffff' }]).find(c => c.hex?.toLowerCase() === selectedSvgColor?.toLowerCase())?.label || selectedSvgColor || 'Black'}
+                        {(dbColors.length > 0 ? dbColors : [{ label: 'Black', hex: '#000000' }, { label: 'White', hex: '#ffffff' }]).find(c => c.hex?.toLowerCase() === selectedSvgColor?.toLowerCase())?.label || selectedSvgColor || t('designer.art.color_default_name', 'Black')}
                       </span>
                     </div>
                   </div>
@@ -468,7 +470,7 @@ export default function SelectionPanel({
                 {(selectedObjectType === 'svg' || selectedObjectType === 'image') && (
                   <button onClick={deleteSelected}
                     className="w-full border border-red-800 text-red-400 py-2 rounded text-sm hover:bg-red-900/20 transition-colors mt-2">
-                    Delete Selected
+                    {t('designer.delete_selected', 'Delete Selected')}
                   </button>
                 )}
               </div>

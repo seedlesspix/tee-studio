@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { Plus, Trash2, Type, Hash, Tag, ClipboardPaste, Download, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
 import { type RosterEntry, emptyEntry, parseBulkRoster, rosterShirtCount } from '../lib/namesNumbers'
 import FontPicker from './FontPicker'
+import { useT } from './StringsProvider'
 
 export default function NamesNumbersPanel({
   roster,
@@ -57,6 +58,7 @@ export default function NamesNumbersPanel({
     onExit: () => void
   }
 }) {
+  const t = useT()
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState('')
 
@@ -97,53 +99,55 @@ export default function NamesNumbersPanel({
   return (
     <div className="flex flex-col gap-3 p-3 text-gray-900">
       <div>
-        <h3 className="text-sm font-semibold">Names &amp; Numbers</h3>
+        <h3 className="text-sm font-semibold">{t('nn.heading', 'Names & Numbers')}</h3>
         <p className="mt-0.5 text-[11px] leading-snug text-gray-500">
-          Name, Number, and Title are <span className="font-medium text-gray-700">placeholders</span> — style each once
-          (font, color, size). Every row in your list prints as its own shirt. Text prints UPPERCASE.
+          {t('nn.intro_a', 'Name, Number, and Title are')}{' '}
+          <span className="font-medium text-gray-700">{t('nn.intro_placeholders', 'placeholders')}</span>{' '}
+          {t('nn.intro_b', '— style each once (font, color, size). Every row in your list prints as its own shirt. Text prints UPPERCASE.')}
         </p>
       </div>
 
       {/* Placeholder fields — the classic jersey stack: Name (top) · Title (below name) · Number (center) */}
       <div className="flex flex-wrap gap-2">
         <button type="button" onClick={onAddNameField} disabled={!printReady} className={fieldBtn(hasName)}>
-          <Type size={14} /> {hasName ? 'Name ✓' : 'Add Name'}
+          <Type size={14} /> {hasName ? t('nn.name_done', 'Name ✓') : t('nn.add_name', 'Add Name')}
         </button>
         <button type="button" onClick={onAddNumberField} disabled={!printReady} className={fieldBtn(hasNumber)}>
-          <Hash size={14} /> {hasNumber ? 'Number ✓' : 'Add Number'}
+          <Hash size={14} /> {hasNumber ? t('nn.number_done', 'Number ✓') : t('nn.add_number', 'Add Number')}
         </button>
         <button type="button" onClick={onAddTitleField} disabled={!printReady} className={fieldBtn(hasTitle)}>
-          <Tag size={14} /> {hasTitle ? 'Title ✓' : 'Add Title'}
+          <Tag size={14} /> {hasTitle ? t('nn.title_done', 'Title ✓') : t('nn.add_title', 'Add Title')}
         </button>
       </div>
       {!printReady && (
         <p className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11px] leading-snug text-amber-800">
-          This product doesn&apos;t have a print area loaded yet, so there&apos;s nowhere to place the
-          name/number. Add a print area for it in <span className="font-medium">Templates</span> (admin), then reload the designer.
+          {t('nn.no_print_area_a', "This product doesn't have a print area loaded yet, so there's nowhere to place the name/number. Add a print area for it in")}{' '}
+          <span className="font-medium">{t('nn.no_print_area_templates', 'Templates')}</span>{' '}
+          {t('nn.no_print_area_b', '(admin), then reload the designer.')}
         </p>
       )}
 
       {/* Roster table — columns mirror the placed fields (Name/Number/Title), Size + Qty always. */}
       <div className="rounded-lg border border-gray-200">
         <div className="grid gap-1 border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] font-mono uppercase tracking-wide text-gray-500" style={{ gridTemplateColumns: gridTemplate }}>
-          {cols.name && <span>Name</span>}
-          {cols.number && <span>Number</span>}
-          {cols.title && <span>Title</span>}
-          <span>Size</span><span>Qty</span><span />
+          {cols.name && <span>{t('nn.col_name', 'Name')}</span>}
+          {cols.number && <span>{t('nn.col_number', 'Number')}</span>}
+          {cols.title && <span>{t('nn.col_title', 'Title')}</span>}
+          <span>{t('nn.col_size', 'Size')}</span><span>{t('nn.col_qty', 'Qty')}</span><span />
         </div>
         <div className="max-h-[46vh] overflow-y-auto">
           {rows.map((r, i) => (
             <div key={i} className="grid items-center gap-1 border-b border-gray-100 px-2 py-1 last:border-b-0" style={{ gridTemplateColumns: gridTemplate }}>
               {cols.name && (
-                <input value={r.name} onChange={e => update(i, { name: e.target.value.toUpperCase() })} placeholder="SMITH"
+                <input value={r.name} onChange={e => update(i, { name: e.target.value.toUpperCase() })} placeholder={t('nn.ph_name', 'SMITH')}
                   className="w-full rounded border border-gray-200 px-1.5 py-1 text-xs uppercase outline-none focus:border-[#dd3333]" />
               )}
               {cols.number && (
-                <input value={r.number} onChange={e => update(i, { number: e.target.value })} placeholder="12"
+                <input value={r.number} onChange={e => update(i, { number: e.target.value })} placeholder={t('nn.ph_number', '12')}
                   className="w-full rounded border border-gray-200 px-1.5 py-1 text-xs outline-none focus:border-[#dd3333]" />
               )}
               {cols.title && (
-                <input value={r.title} onChange={e => update(i, { title: e.target.value.toUpperCase() })} placeholder="CAPTAIN"
+                <input value={r.title} onChange={e => update(i, { title: e.target.value.toUpperCase() })} placeholder={t('nn.ph_title', 'CAPTAIN')}
                   className="w-full rounded border border-gray-200 px-1.5 py-1 text-xs uppercase outline-none focus:border-[#dd3333]" />
               )}
               {sizes.length ? (
@@ -153,12 +157,12 @@ export default function NamesNumbersPanel({
                   {sizes.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               ) : (
-                <input value={r.size} onChange={e => update(i, { size: e.target.value })} placeholder="L"
+                <input value={r.size} onChange={e => update(i, { size: e.target.value })} placeholder={t('nn.ph_size', 'L')}
                   className="w-full rounded border border-gray-200 px-1.5 py-1 text-xs outline-none focus:border-[#dd3333]" />
               )}
               <input type="number" min={1} value={r.qty} onChange={e => update(i, { qty: Math.max(1, parseInt(e.target.value) || 1) })}
                 className="w-full rounded border border-gray-200 px-1 py-1 text-xs outline-none focus:border-[#dd3333]" />
-              <button type="button" onClick={() => removeRow(i)} title="Remove" className="flex justify-center text-gray-400 hover:text-[#dd3333]">
+              <button type="button" onClick={() => removeRow(i)} title={t('nn.row_remove', 'Remove')} className="flex justify-center text-gray-400 hover:text-[#dd3333]">
                 <Trash2 size={14} />
               </button>
             </div>
@@ -169,9 +173,9 @@ export default function NamesNumbersPanel({
       {/* PRIMARY = the row-by-row table above + Add row. Paste is a SECONDARY shortcut (small link). */}
       <div className="flex items-center gap-2">
         <button type="button" onClick={addRow} className="flex items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
-          <Plus size={13} /> Add row
+          <Plus size={13} /> {t('nn.add_row', 'Add row')}
         </button>
-        <span className="ml-auto text-xs font-medium text-gray-600">{count} shirt{count === 1 ? '' : 's'}</span>
+        <span className="ml-auto text-xs font-medium text-gray-600">{count} {count === 1 ? t('nn.shirt_one', 'shirt') : t('nn.shirt_many', 'shirts')}</span>
       </div>
 
       {/* Live preview — cycle each roster entry onto the shirt so the customer sees the real thing
@@ -180,23 +184,23 @@ export default function NamesNumbersPanel({
         preview.index === null ? (
           <button type="button" onClick={preview.onStart}
             className="flex items-center justify-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">
-            <Eye size={14} /> Preview on shirt
+            <Eye size={14} /> {t('nn.preview_start', 'Preview on shirt')}
           </button>
         ) : (() => {
           const e = preview.entries[preview.index]
           const label = e ? [e.name, e.number].filter(v => v && v.trim()).join(' · ') : ''
           return (
             <div className="flex items-center gap-1 rounded-lg border border-gray-800 bg-gray-100 px-1.5 py-1.5">
-              <button type="button" onClick={() => preview.onStep(-1)} title="Previous"
+              <button type="button" onClick={() => preview.onStep(-1)} title={t('nn.preview_prev', 'Previous')}
                 className="flex h-7 w-7 items-center justify-center rounded text-gray-600 hover:bg-white hover:text-gray-900"><ChevronLeft size={16} /></button>
               <div className="flex-1 text-center">
                 <div className="truncate text-xs font-semibold text-gray-900">{label || '—'}</div>
                 <div className="text-[10px] font-mono text-gray-500">{preview.index + 1} / {preview.entries.length}</div>
               </div>
-              <button type="button" onClick={() => preview.onStep(1)} title="Next"
+              <button type="button" onClick={() => preview.onStep(1)} title={t('nn.preview_next', 'Next')}
                 className="flex h-7 w-7 items-center justify-center rounded text-gray-600 hover:bg-white hover:text-gray-900"><ChevronRight size={16} /></button>
-              <button type="button" onClick={preview.onExit} title="Exit preview"
-                className="ml-1 rounded px-2 py-1 text-[11px] font-medium text-gray-500 hover:text-gray-900">Done</button>
+              <button type="button" onClick={preview.onExit} title={t('nn.preview_exit', 'Exit preview')}
+                className="ml-1 rounded px-2 py-1 text-[11px] font-medium text-gray-500 hover:text-gray-900">{t('nn.preview_done', 'Done')}</button>
             </div>
           )
         })()
@@ -207,18 +211,18 @@ export default function NamesNumbersPanel({
           and numbers render differently even in the same font). */}
       {selectedRole && style && (() => {
         const fontLabel = style.fonts.find(f => f.value === style.selectedFont)?.label ?? style.selectedFont
-        const roleLabel = selectedRole === 'name' ? 'Name' : selectedRole === 'title' ? 'Title' : 'Number'
-        const roleSample = selectedRole === 'name' ? 'NAME' : selectedRole === 'title' ? 'TITLE' : '00'
+        const roleLabel = selectedRole === 'name' ? t('nn.role_name', 'Name') : selectedRole === 'title' ? t('nn.role_title', 'Title') : t('nn.role_number', 'Number')
+        const roleSample = selectedRole === 'name' ? t('nn.sample_name', 'NAME') : selectedRole === 'title' ? t('nn.sample_title', 'TITLE') : t('nn.sample_number', '00')
         return (
           <div className="flex flex-col gap-2 rounded-lg border border-gray-300 bg-gray-50 p-2.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold">
-                Style the {roleLabel} field <span className="font-normal text-gray-500">— {fontLabel}</span>
+                {t('nn.style_the', 'Style the')} {roleLabel} {t('nn.style_field', 'field')} <span className="font-normal text-gray-500">— {fontLabel}</span>
               </span>
-              <button type="button" onClick={style.onDeselect} className="text-[11px] text-gray-500 underline underline-offset-2 hover:text-gray-900">Done</button>
+              <button type="button" onClick={style.onDeselect} className="text-[11px] text-gray-500 underline underline-offset-2 hover:text-gray-900">{t('nn.style_done', 'Done')}</button>
             </div>
             <div>
-              <label className="text-[10px] font-mono uppercase tracking-wide text-gray-500">Font</label>
+              <label className="text-[10px] font-mono uppercase tracking-wide text-gray-500">{t('nn.font_label', 'Font')}</label>
               {/* Same picker the Text panel uses — each font renders its own name, previewing the
                   placeholder's sample ("NAME"/"00"). */}
               <FontPicker
@@ -230,7 +234,7 @@ export default function NamesNumbersPanel({
               />
             </div>
             <div>
-              <label className="text-[10px] font-mono uppercase tracking-wide text-gray-500">Color <span className="normal-case text-gray-400">— one ink, all fields</span></label>
+              <label className="text-[10px] font-mono uppercase tracking-wide text-gray-500">{t('nn.color_label', 'Color')} <span className="normal-case text-gray-400">{t('nn.color_hint', '— one ink, all fields')}</span></label>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {style.colors.map(c => {
                   const active = style.textColor.toLowerCase() === c.hex.toLowerCase()
@@ -243,20 +247,19 @@ export default function NamesNumbersPanel({
               </div>
             </div>
             <p className="text-[10px] leading-snug text-gray-400">
-              Font &amp; color only — position and size are set automatically to the jersey layout (long
-              names shrink to fit). Every {selectedRole} on your roster prints this way.
+              {t('nn.style_note_a', 'Font & color only — position and size are set automatically to the jersey layout (long names shrink to fit). Every')}{' '}{selectedRole}{' '}{t('nn.style_note_b', 'on your roster prints this way.')}
             </p>
           </div>
         )
       })()}
 
       <div className="flex items-center gap-3 text-[11px] text-gray-400">
-        <span>Have a spreadsheet?</span>
+        <span>{t('nn.paste_prompt', 'Have a spreadsheet?')}</span>
         <button type="button" onClick={() => setPasteOpen(v => !v)} className="inline-flex items-center gap-1 text-gray-500 underline underline-offset-2 hover:text-gray-900">
-          <ClipboardPaste size={11} /> Paste a list
+          <ClipboardPaste size={11} /> {t('nn.paste_link', 'Paste a list')}
         </button>
         <a href="/roster-template.xlsx" download className="inline-flex items-center gap-1 text-gray-500 underline underline-offset-2 hover:text-gray-900">
-          <Download size={11} /> Template
+          <Download size={11} /> {t('nn.template_link', 'Template')}
         </a>
       </div>
 
@@ -264,16 +267,16 @@ export default function NamesNumbersPanel({
         <div className="flex flex-col gap-1.5 rounded-lg border border-gray-200 bg-gray-50 p-2">
           {/* Format guidance right at the moment of need — for coaches who already have a roster. */}
           <p className="text-[11px] leading-snug text-gray-600">
-            One shirt per line: <span className="font-mono text-gray-800">Name, Number, Size, Qty, Title</span> — Title is optional, e.g. <span className="font-mono text-gray-800">SMITH, 12, L, 1, CAPTAIN</span>
+            {t('nn.paste_format_a', 'One shirt per line:')} <span className="font-mono text-gray-800">{t('nn.paste_format_cols', 'Name, Number, Size, Qty, Title')}</span> {t('nn.paste_format_b', '— Title is optional, e.g.')} <span className="font-mono text-gray-800">{t('nn.paste_format_example', 'SMITH, 12, L, 1, CAPTAIN')}</span>
           </p>
           <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={4}
-            placeholder={'SMITH, 12, L, 1, CAPTAIN\nJONES, 8, M, 1\nDE LA CRUZ, 24, XL, 2'}
+            placeholder={t('nn.paste_placeholder', 'SMITH, 12, L, 1, CAPTAIN\nJONES, 8, M, 1\nDE LA CRUZ, 24, XL, 2')}
             className="w-full rounded-lg border border-gray-300 bg-white p-2 font-mono text-xs outline-none focus:border-[#dd3333]" />
           <div className="flex gap-2">
-            <button type="button" onClick={applyPaste} className="rounded-lg bg-[#dd3333] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#c62828]">Apply list</button>
-            <button type="button" onClick={() => { setPasteOpen(false); setPasteText('') }} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-700">Cancel</button>
+            <button type="button" onClick={applyPaste} className="rounded-lg bg-[#dd3333] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#c62828]">{t('nn.paste_apply', 'Apply list')}</button>
+            <button type="button" onClick={() => { setPasteOpen(false); setPasteText('') }} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-700">{t('nn.paste_cancel', 'Cancel')}</button>
           </div>
-          <p className="text-[10px] text-gray-400">Tab or comma separated (a spreadsheet copy works). Replaces the current list.</p>
+          <p className="text-[10px] text-gray-400">{t('nn.paste_note', 'Tab or comma separated (a spreadsheet copy works). Replaces the current list.')}</p>
         </div>
       )}
     </div>

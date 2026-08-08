@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, type RefObject } from 'react'
 import { Type, Upload, Shapes } from 'lucide-react'
+import { useT } from './StringsProvider'
 
 type PrintAreaPct = { xPct: number; yPct: number; widthPct: number; heightPct: number }
 
@@ -38,6 +39,7 @@ export default function CanvasStage({
   onReady: (canvas: any) => void
   emptyState?: EmptyState | null
 }) {
+  const t = useT()
   // D0 step 2: CanvasStage owns the Fabric canvas LIFECYCLE — creation here,
   // disposal on unmount. The parent wires every handler/control/geometry in its
   // onReady(canvas) callback, invoked once right after creation, preserving the
@@ -64,7 +66,7 @@ export default function CanvasStage({
     <div className="relative" style={{ width: 680, height: 850 }}>
       <img
         ref={shirtImgRef}
-        alt="Shirt preview"
+        alt={t('designer.canvas.shirt_alt', 'Shirt preview')}
         crossOrigin="anonymous"
         style={{
           position: 'absolute',
@@ -113,8 +115,8 @@ export default function CanvasStage({
           <div className="flex w-[220px] flex-col items-center gap-3 rounded-xl bg-white/95 px-5 py-4 text-center shadow-lg ring-1 ring-black/5">
             {emptyState.showGreeting && (
               <div>
-                <p className="text-lg font-black tracking-tight text-gray-900">Let&apos;s build it.</p>
-                <p className="mt-1 text-xs leading-relaxed text-gray-500">{emptyState.onUpload ? 'Add text, upload your art, or browse designs to get started.' : 'Add text or browse designs to get started.'}</p>
+                <p className="text-lg font-black tracking-tight text-gray-900">{t('designer.empty.build_heading', "Let's build it.")}</p>
+                <p className="mt-1 text-xs leading-relaxed text-gray-500">{emptyState.onUpload ? t('designer.empty.sub_with_upload', 'Add text, upload your art, or browse designs to get started.') : t('designer.empty.sub_no_upload', 'Add text or browse designs to get started.')}</p>
               </div>
             )}
             <div className="flex w-full flex-col gap-2">
@@ -125,21 +127,21 @@ export default function CanvasStage({
                 onClick={emptyState.onAddText}
                 className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"
               >
-                <Type size={16} strokeWidth={1.75} /> Add Text
+                <Type size={16} strokeWidth={1.75} /> {t('designer.empty.add_text', 'Add Text')}
               </button>
               {emptyState.onUpload && (
                 <button
                   onClick={emptyState.onUpload}
                   className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"
                 >
-                  <Upload size={16} strokeWidth={1.75} /> Upload
+                  <Upload size={16} strokeWidth={1.75} /> {t('designer.empty.upload', 'Upload')}
                 </button>
               )}
               <button
                 onClick={emptyState.onAddArt}
                 className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"
               >
-                <Shapes size={16} strokeWidth={1.75} /> Add Art
+                <Shapes size={16} strokeWidth={1.75} /> {t('designer.empty.add_art', 'Add Art')}
               </button>
             </div>
           </div>

@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { useT } from './StringsProvider'
 import type { Tables } from '@/types/database'
 
 type Category = Pick<Tables<'clipart_categories'>, 'id' | 'name'>
@@ -28,6 +29,7 @@ interface Props {
 // search, so an embroidery product only ever sees embroidery-capable art. Customers find art by
 // category or by searching a name / Decal #.
 export default function ClipartPanel({ printMethod, onSelect, horizontal = false, showSearch = true }: Props) {
+  const t = useT() // admin-editable wording (Language editor)
   const [categories, setCategories] = useState<Category[]>([])
   const [allItems, setAllItems] = useState<ClipartItem[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>('')
@@ -93,7 +95,7 @@ export default function ClipartPanel({ printMethod, onSelect, horizontal = false
       {showSearch && (
         <input
           type="text"
-          placeholder="Search art or Decal #..."
+          placeholder={t('designer.art.search_placeholder', 'Search art or Decal #...')}
           value={search}
           onChange={e => setSearch(e.target.value)}
           className={horizontal
@@ -145,9 +147,9 @@ export default function ClipartPanel({ printMethod, onSelect, horizontal = false
 
       {/* Art tiles — horizontal row (mobile) / vertical grid (desktop) */}
       {loading ? (
-        <p className="text-xs text-gray-600 text-center py-4">Loading...</p>
+        <p className="text-xs text-gray-600 text-center py-4">{t('designer.art.loading', 'Loading...')}</p>
       ) : filtered.length === 0 ? (
-        <p className="text-xs text-gray-600 text-center py-4">No art found</p>
+        <p className="text-xs text-gray-600 text-center py-4">{t('designer.art.empty', 'No art found')}</p>
       ) : horizontal ? (
         <div className="flex min-h-0 flex-1 items-center gap-2 overflow-x-auto pb-1">
           {filtered.map(item => (

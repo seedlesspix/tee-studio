@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { getFeaturedImages } from '../lib/shopify'
+import { useT } from './StringsProvider'
 
 // D2 Design Portability — pick a target garment to re-fit a saved design onto ("Use on another
 // product"). Lists the active templated products (the only ones the designer + cut pipeline
@@ -26,6 +27,7 @@ export default function ProductPickerModal({
 }) {
   const [products, setProducts] = useState<TemplateProduct[]>([])
   const [loading, setLoading] = useState(true)
+  const t = useT()
 
   useEffect(() => {
     if (!open) return
@@ -72,15 +74,15 @@ export default function ProductPickerModal({
       <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
       <div role="dialog" aria-label="Use on another product" className="relative w-full max-w-sm rounded-xl bg-white shadow-2xl">
         <header className="flex items-center justify-between px-4 h-12 border-b border-gray-200">
-          <span className="text-xs font-mono uppercase tracking-widest text-gray-900">Use on another product</span>
-          <button onClick={onClose} aria-label="Close" className="flex h-7 w-7 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">✕</button>
+          <span className="text-xs font-mono uppercase tracking-widest text-gray-900">{t('designer.product_picker.title', 'Use on another product')}</span>
+          <button onClick={onClose} aria-label={t('designer.close', 'Close')} className="flex h-7 w-7 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">✕</button>
         </header>
         <div className="p-3">
           {subtitle && <p className="mb-2 text-[11px] text-gray-500">{subtitle}</p>}
           {loading ? (
-            <p className="py-8 text-center font-mono text-xs text-gray-400">Loading…</p>
+            <p className="py-8 text-center font-mono text-xs text-gray-400">{t('designer.product_picker.loading', 'Loading…')}</p>
           ) : list.length === 0 ? (
-            <p className="py-8 text-center text-xs text-gray-500">No other products available.</p>
+            <p className="py-8 text-center text-xs text-gray-500">{t('designer.product_picker.empty', 'No other products available.')}</p>
           ) : (
             <ul className="flex flex-col gap-1.5">
               {list.map(p => (
@@ -106,7 +108,7 @@ export default function ProductPickerModal({
             </ul>
           )}
           <p className="mt-3 text-[11px] leading-snug text-gray-400">
-            Your design re-fits onto the new garment automatically — a starting point you can nudge.
+            {t('designer.product_picker.refit_hint', 'Your design re-fits onto the new garment automatically — a starting point you can nudge.')}
           </p>
         </div>
       </div>

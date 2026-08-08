@@ -2958,7 +2958,7 @@ export default function DesignerCanvas({
         { name: item.fileName, url: item.url, type: item.fileType || 'image' },
       ]
     } catch {
-      alert('Could not add that image. Please try again.')
+      alert(t('designer.upload_add_failed', 'Could not add that image. Please try again.'))
     }
   }
 
@@ -3089,7 +3089,7 @@ export default function DesignerCanvas({
         if (!uploaded) notices.push(`We couldn't save your PDF upload — please try again, or email the file to us at ${SUPPORT_EMAIL}.`)
         if (notices.length) alert(notices.join('\n\n'))
       } catch (err) {
-        alert('Could not load PDF. Make sure it is a valid PDF file.')
+        alert(t('designer.pdf_load_failed', 'Could not load PDF. Make sure it is a valid PDF file.'))
       } finally {
         setImageEditBusy(false)
       }
@@ -3265,7 +3265,7 @@ export default function DesignerCanvas({
       img._editIdx = img._editHist.length - 1
       setEditHistTick(t => t + 1)
     } catch {
-      alert("We couldn't edit this image — it may be blocked by the source server. Try re-uploading it, then edit.")
+      alert(t('designer.image_edit_failed', "We couldn't edit this image — it may be blocked by the source server. Try re-uploading it, then edit."))
     } finally {
       setImageEditBusy(false)
     }
@@ -3289,7 +3289,7 @@ export default function DesignerCanvas({
     const img: any = fabricCanvas?.getActiveObject()
     if (!img || String(img.type).toLowerCase() !== 'image') return
     let imgData: ImageData | null = null
-    try { imgData = elementToImageData(img.getElement()) } catch { alert("We couldn't read this image (it may be blocked by the source server). Try re-uploading it."); return }
+    try { imgData = elementToImageData(img.getElement()) } catch { alert(t('designer.image_read_failed', "We couldn't read this image (it may be blocked by the source server). Try re-uploading it.")); return }
     if (!imgData) return
     knockoutWhiteFromEdges(imgData.data, imgData.width, imgData.height, 40)
     await applyEditedImage(img, imageDataToPngDataUrl(imgData))
@@ -3303,7 +3303,7 @@ export default function DesignerCanvas({
     // Send the image's HOSTED Cloudinary URL — remove.bg fetches it itself. Never ship the bytes:
     // Vercel caps this function's request+response at ~4.5MB and any real phone photo exceeds it.
     const src = String(img._uploadSrc || '')
-    if (!/^https?:\/\//.test(src)) { alert('Please wait a moment for the upload to finish (or re-upload the image), then try Remove Background again.'); return }
+    if (!/^https?:\/\//.test(src)) { alert(t('designer.removebg_wait', 'Please wait a moment for the upload to finish (or re-upload the image), then try Remove Background again.')); return }
     setImageEditBusy(true)
     try {
       const res = await fetch('/api/remove-bg', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageUrl: src }) })
@@ -3317,7 +3317,7 @@ export default function DesignerCanvas({
       }
       if (ct.includes('application/json')) {
         const data = await res.json().catch(() => ({} as { url?: string }))
-        if (!data?.url) { alert('Background removal returned no image.'); return }
+        if (!data?.url) { alert(t('designer.removebg_no_image', 'Background removal returned no image.')); return }
         await applyEditedImage(img, data.url, undefined, { preserveSize: true }) // cutout already re-hosted on Cloudinary; keep on-shirt size
       } else if (ct.includes('image')) {
         const blob = await res.blob()
@@ -3327,7 +3327,7 @@ export default function DesignerCanvas({
         await applyEditedImage(img, resultUrl, undefined, { preserveSize: true })
       } else {
         const text = await res.text().catch(() => '')
-        alert(`Background removal returned an unexpected response.${text ? ` — ${text.slice(0, 140)}` : ''}`)
+        alert(t('designer.removebg_unexpected', 'Background removal returned an unexpected response.') + (text ? ` — ${text.slice(0, 140)}` : ''))
       }
     } catch (e: any) {
       alert(`Background removal error: ${e?.message || e}`)
@@ -3361,7 +3361,7 @@ export default function DesignerCanvas({
       const local = util.transformPoint(pointer, util.invertTransform(img.calcTransformMatrix()))
       const nx = local.x + img.width / 2, ny = local.y + img.height / 2 // -> natural pixel coords
       let original: ImageData | null = null
-      try { original = elementToImageData(img.getElement()) } catch { alert("We couldn't read this image (it may be blocked by the source server). Try re-uploading it."); setEyedropperActive(false); return }
+      try { original = elementToImageData(img.getElement()) } catch { alert(t('designer.image_read_failed', "We couldn't read this image (it may be blocked by the source server). Try re-uploading it.")); setEyedropperActive(false); return }
       if (!original) { setEyedropperActive(false); return }
       colorPreviewRef.current = { obj: img, original, originalSrc: img.getSrc?.() ?? img._element?.src ?? '', pickedColor: sampleColorAt(original, nx, ny) }
       setEyedropperActive(false)
@@ -3966,7 +3966,7 @@ export default function DesignerCanvas({
       } catch (err) { console.error('[designer] switch snapshot failed:', err) }
       // If we couldn't snapshot the in-progress design, DON'T navigate away — that would silently lose
       // the customer's work. Keep them on the current garment and let them retry.
-      if (!draftId) { alert("Couldn't switch products just now — please try again."); return }
+      if (!draftId) { alert(t('designer.switch_failed', "Couldn't switch products just now — please try again.")); return }
       params.set('design_id', draftId)
       params.set('refit', '1')
       if (selectedColor) params.set('color', selectedColor)
@@ -4016,7 +4016,7 @@ export default function DesignerCanvas({
   const handleSaveDesign = async (): Promise<{ restoreUrl: string } | null> => {
     const state = snapshotDesignState()
     if (!state) {
-      alert('Please add a design before saving. Add text, clipart, or upload an image.')
+      alert(t('designer.save_empty', 'Please add a design before saving. Add text, clipart, or upload an image.'))
       return null
     }
     const pngFront = await exportFrontThumbnail(crypto.randomUUID())
@@ -4117,16 +4117,16 @@ export default function DesignerCanvas({
     // currently-visible canvas (a back-only design viewed from the empty front
     // should still pass).
     if (!canvas || (!frontHasContent && !backHasContent)) {
-      alert('Please add a design before continuing. Add text, clipart, or upload an image.')
+      alert(t('designer.next_empty', 'Please add a design before continuing. Add text, clipart, or upload an image.'))
       return
     }
     // Deselect all objects so handles don't show in preview
     canvas.discardActiveObject()
     canvas.renderAll()
     const btn = document.querySelector('[data-cart-btn]') as HTMLButtonElement
-    if (btn) { btn.textContent = 'Saving...'; (btn as any).disabled = true }
+    if (btn) { btn.textContent = t('designer.saving', 'Saving...'); (btn as any).disabled = true }
     const result = await saveDesignAndAddToCart()
-    if (btn) { btn.textContent = 'Next Step →'; (btn as any).disabled = false }
+    if (btn) { btn.textContent = t('designer.next_step', 'Next Step →'); (btn as any).disabled = false }
     if (result && result.orderId) {
       // Stamp the designer's history entry so browser-Back from the order page
       // rehydrates the FULL design: design_id restores the canvas (front + back),
@@ -4143,7 +4143,7 @@ export default function DesignerCanvas({
       } catch { /* ignore */ }
       window.location.href = `/order?design_id=${result.orderId}`
     } else {
-      alert('Error saving design. Please try again.')
+      alert(t('designer.save_error', 'Error saving design. Please try again.'))
     }
   }
 
@@ -4165,8 +4165,8 @@ export default function DesignerCanvas({
   }
   const layerLabel = (o: any, kind: LayerKind): string => {
     if (kind === 'text') {
-      const t = String(o._originalText ?? o.text ?? '').replace(/\s+/g, ' ').trim()
-      return t || 'Text'
+      const raw = String(o._originalText ?? o.text ?? '').replace(/\s+/g, ' ').trim()
+      return raw || t('designer.layer_text', 'Text')
     }
     if (o._decalName) return String(o._decalName)
     if (o._uploadSrc) {
@@ -4174,9 +4174,9 @@ export default function DesignerCanvas({
         const base = decodeURIComponent(String(o._uploadSrc).split('?')[0].split('/').pop() || '')
         if (base) return base
       } catch { /* fall through to generic */ }
-      return 'Upload'
+      return t('designer.layer_upload', 'Upload')
     }
-    return kind === 'art' ? 'Art' : 'Image'
+    return kind === 'art' ? t('designer.layer_art', 'Art') : t('designer.layer_image', 'Image')
   }
   const layerObjById = (id: string): any =>
     fabricCanvasRef.current?.getObjects().find((o: any) => o._layerId === id) || null
@@ -4192,7 +4192,7 @@ export default function DesignerCanvas({
       if (o[NN_ROLE_PROP]) {
         if (!nnPushed) {
           nnPushed = true
-          rows.push({ id: NN_ROW_ID, kind: 'nn', label: 'Names & Numbers', selected: !!(active && active[NN_ROLE_PROP]) })
+          rows.push({ id: NN_ROW_ID, kind: 'nn', label: t('designer.layer_names_numbers', 'Names & Numbers'), selected: !!(active && active[NN_ROLE_PROP]) })
         }
         continue // collapse the whole N&N stack into one row
       }
@@ -4445,7 +4445,7 @@ export default function DesignerCanvas({
 
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center text-gray-800 text-sm z-10">
-              Loading canvas...
+              {t('designer.loading_canvas', 'Loading canvas...')}
             </div>
           )}
 
@@ -4462,11 +4462,11 @@ export default function DesignerCanvas({
                 if (!canU && !canR) return null
                 return (
                   <>
-                    <button type="button" title="Undo" onClick={undoImageEdit} disabled={!canU || imageEditBusy}
+                    <button type="button" title={t('designer.undo', 'Undo')} onClick={undoImageEdit} disabled={!canU || imageEditBusy}
                       className="flex items-center justify-center rounded-full border border-gray-200 bg-white/90 p-2 text-gray-700 shadow-sm backdrop-blur disabled:opacity-40">
                       <Undo2 size={15} strokeWidth={2} />
                     </button>
-                    <button type="button" title="Redo" onClick={redoImageEdit} disabled={!canR || imageEditBusy}
+                    <button type="button" title={t('designer.redo', 'Redo')} onClick={redoImageEdit} disabled={!canR || imageEditBusy}
                       className="flex items-center justify-center rounded-full border border-gray-200 bg-white/90 p-2 text-gray-700 shadow-sm backdrop-blur disabled:opacity-40">
                       <Redo2 size={15} strokeWidth={2} />
                     </button>
@@ -4476,7 +4476,7 @@ export default function DesignerCanvas({
               {canvasObjectCount > 0 && (
                 <button type="button" onClick={handleClearAll}
                   className="rounded-full border border-gray-200 bg-white/90 px-3 py-1.5 text-xs text-[#dd3333] shadow-sm backdrop-blur">
-                  Clear all
+                  {t('designer.clear_all_mobile', 'Clear all')}
                 </button>
               )}
             </div>
@@ -4494,12 +4494,12 @@ export default function DesignerCanvas({
               const canR = !!(im?._editHist && im._editIdx < im._editHist.length - 1)
               return (
                 <>
-                  <button title="Undo image edit" disabled={!canU || imageEditBusy}
+                  <button title={t('designer.undo_image_edit', 'Undo image edit')} disabled={!canU || imageEditBusy}
                     onPointerDown={e => { e.preventDefault(); undoImageEdit() }}
                     className="flex items-center justify-center px-2 py-1.5 rounded bg-gray-100 border border-gray-200 text-gray-700 hover:border-[#dd3333] hover:text-gray-900 transition-all disabled:opacity-40 disabled:hover:border-gray-200">
                     <Undo2 size={16} strokeWidth={1.75} />
                   </button>
-                  <button title="Redo image edit" disabled={!canR || imageEditBusy}
+                  <button title={t('designer.redo_image_edit', 'Redo image edit')} disabled={!canR || imageEditBusy}
                     onPointerDown={e => { e.preventDefault(); redoImageEdit() }}
                     className="flex items-center justify-center px-2 py-1.5 rounded bg-gray-100 border border-gray-200 text-gray-700 hover:border-[#dd3333] hover:text-gray-900 transition-all disabled:opacity-40 disabled:hover:border-gray-200">
                     <Redo2 size={16} strokeWidth={1.75} />
@@ -4508,17 +4508,17 @@ export default function DesignerCanvas({
                 </>
               )
             })()}
-            <span className="text-xs text-gray-800 font-mono uppercase tracking-widest mr-1">Align:</span>
+            <span className="text-xs text-gray-800 font-mono uppercase tracking-widest mr-1">{t('designer.align_label', 'Align:')}</span>
             {[
               // Object-alignment glyphs (Illustrator "Align" panel — boxes against a guide), distinct
               // from the Text sheet's paragraph-align (lines). Left/center/right position the object
               // horizontally; top/middle/bottom vertically, within the print area.
-              { Icon: AlignStartVertical, title: 'Align Left', fn: 'left' },
-              { Icon: AlignCenterVertical, title: 'Align Center', fn: 'center' },
-              { Icon: AlignEndVertical, title: 'Align Right', fn: 'right' },
-              { Icon: AlignStartHorizontal, title: 'Align Top', fn: 'top' },
-              { Icon: AlignCenterHorizontal, title: 'Align Middle', fn: 'middle' },
-              { Icon: AlignEndHorizontal, title: 'Align Bottom', fn: 'bottom' },
+              { Icon: AlignStartVertical, title: t('designer.align_left', 'Align Left'), fn: 'left' },
+              { Icon: AlignCenterVertical, title: t('designer.align_center', 'Align Center'), fn: 'center' },
+              { Icon: AlignEndVertical, title: t('designer.align_right', 'Align Right'), fn: 'right' },
+              { Icon: AlignStartHorizontal, title: t('designer.align_top', 'Align Top'), fn: 'top' },
+              { Icon: AlignCenterHorizontal, title: t('designer.align_middle', 'Align Middle'), fn: 'middle' },
+              { Icon: AlignEndHorizontal, title: t('designer.align_bottom', 'Align Bottom'), fn: 'bottom' },
             ].map(({ Icon, title, fn }) => (
               <button key={fn} title={title}
                 onPointerDown={e => {
@@ -4531,10 +4531,10 @@ export default function DesignerCanvas({
             ))}
             <span className="w-px h-4 bg-gray-200 mx-1" />
             <button
-              title="Clear all objects from canvas"
+              title={t('designer.clear_all_title', 'Clear all objects from canvas')}
               onPointerDown={e => { e.preventDefault(); handleClearAll() }}
               className="px-2 py-1 rounded text-xs font-mono bg-gray-100 border border-gray-200 text-red-500 hover:border-red-700 hover:bg-red-900/20 transition-all">
-              Clear All
+              {t('designer.clear_all', 'Clear All')}
             </button>
           </div>
           )}
@@ -4560,7 +4560,7 @@ export default function DesignerCanvas({
               <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/45 backdrop-blur-[1px]">
                 <div className="flex flex-col items-center gap-2 rounded-xl bg-white/90 px-5 py-4 shadow-lg">
                   <div className="h-7 w-7 animate-spin rounded-full border-2 border-gray-300 border-t-[#dd3333]" />
-                  <span className="text-xs font-mono text-gray-600">Working…</span>
+                  <span className="text-xs font-mono text-gray-600">{t('designer.working', 'Working…')}</span>
                 </div>
               </div>
             )}
@@ -4579,7 +4579,7 @@ export default function DesignerCanvas({
                   : 'bg-white text-gray-800 border border-gray-200'
               }`}
             >
-              FRONT
+              {t('designer.front', 'FRONT')}
             </button>
             {hasBackImages && shirtView === 'front' && frontObjectsRef.current.length > 0 && (
               <button
@@ -4594,7 +4594,7 @@ export default function DesignerCanvas({
                   })
                 }}
                 className="px-3 py-1.5 rounded-full text-xs font-mono tracking-widest bg-white text-gray-800 border border-gray-200 hover:border-[#dd3333] hover:text-gray-900 transition-all">
-                Copy to Back
+                {t('designer.copy_to_back', 'Copy to Back')}
               </button>
             )}
             {hasBackImages && shirtView === 'back' && backObjectsRef.current.length > 0 && (
@@ -4610,7 +4610,7 @@ export default function DesignerCanvas({
                   })
                 }}
                 className="px-3 py-1.5 rounded-full text-xs font-mono tracking-widest bg-white text-gray-800 border border-gray-200 hover:border-[#dd3333] hover:text-gray-900 transition-all">
-                Copy to Front
+                {t('designer.copy_to_front', 'Copy to Front')}
               </button>
             )}
             {hasBackImages && (
@@ -4622,7 +4622,7 @@ export default function DesignerCanvas({
                     : 'bg-white text-gray-800 border border-gray-200'
                 }`}
               >
-                BACK
+                {t('designer.back', 'BACK')}
               </button>
             )}
           </div>
@@ -4630,15 +4630,15 @@ export default function DesignerCanvas({
 
         {/* Right panel */}
         <aside className="w-64 bg-white border-l border-gray-200 hidden lg:flex lg:flex-col gap-4 p-4 overflow-y-auto shrink-0">
-          <h2 className="font-black text-lg tracking-widest">PRODUCT</h2>
+          <h2 className="font-black text-lg tracking-widest">{t('designer.product_heading', 'PRODUCT')}</h2>
 
           <div className="flex flex-col gap-2 text-sm">
             <div className="flex justify-between text-gray-800">
-              <span>Product</span>
+              <span>{t('designer.product_label', 'Product')}</span>
               <span className="text-gray-900 text-right text-xs max-w-[120px] truncate">{productTitle}</span>
             </div>
             <div className="flex justify-between text-gray-800">
-              <span>Color</span>
+              <span>{t('designer.color_label', 'Color')}</span>
               <span className="text-gray-900 text-xs">{selectedColor || '—'}</span>
             </div>
             {/* Color swatches */}
@@ -4719,7 +4719,7 @@ export default function DesignerCanvas({
         open={switchOpen}
         onClose={() => setSwitchOpen(false)}
         excludeProductId={product?.id ?? null}
-        subtitle="Switch this design to another garment — it re-fits onto:"
+        subtitle={t('designer.switch_subtitle', 'Switch this design to another garment — it re-fits onto:')}
         onPick={(target) => { void switchToProduct(target) }}
       />
     </div>

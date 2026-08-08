@@ -1,5 +1,6 @@
 'use client'
 import { Layers, ChevronUp, ChevronDown, Trash2, Type, Image as ImageIcon, Shapes, Hash } from 'lucide-react'
+import { useT } from './StringsProvider'
 
 export type LayerKind = 'text' | 'image' | 'art' | 'nn'
 export type LayerRow = { id: string; kind: LayerKind; label: string; selected: boolean }
@@ -22,14 +23,15 @@ export default function LayersPanel({
   onMove: (id: string, dir: 'up' | 'down') => void
   onDelete: (id: string) => void
 }) {
+  const t = useT()
   return (
     <div className="flex flex-col gap-2 px-3">
       <div className="flex items-center gap-1.5 text-xs text-gray-800 uppercase tracking-widest font-mono">
-        <Layers size={14} strokeWidth={1.75} /> Layers
+        <Layers size={14} strokeWidth={1.75} /> {t('designer.layers_heading', 'Layers')}
       </div>
       {rows.length === 0 ? (
         <p className="py-6 text-center text-xs text-gray-500">
-          Nothing on this side yet. Add text or art and it shows up here.
+          {t('designer.layers_empty', 'Nothing on this side yet. Add text or art and it shows up here.')}
         </p>
       ) : (
         <div className="flex flex-col gap-1.5">
@@ -53,7 +55,7 @@ export default function LayersPanel({
                   <Icon size={16} strokeWidth={1.75} className="shrink-0 text-gray-500" />
                   <span className="truncate text-sm text-gray-900">{row.label}</span>
                   {row.kind === 'nn' && (
-                    <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-gray-400">locked</span>
+                    <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-gray-400">{t('designer.layers_locked', 'locked')}</span>
                   )}
                 </button>
 
@@ -62,7 +64,7 @@ export default function LayersPanel({
                   <div className="flex shrink-0 items-center gap-0.5">
                     <button
                       type="button"
-                      title="Bring forward"
+                      title={t('designer.layers_forward', 'Bring forward')}
                       onClick={() => onMove(row.id, 'up')}
                       disabled={isTop}
                       className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-25 disabled:hover:bg-transparent"
@@ -71,7 +73,7 @@ export default function LayersPanel({
                     </button>
                     <button
                       type="button"
-                      title="Send backward"
+                      title={t('designer.layers_backward', 'Send backward')}
                       onClick={() => onMove(row.id, 'down')}
                       disabled={isBottom}
                       className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-25 disabled:hover:bg-transparent"
@@ -80,7 +82,7 @@ export default function LayersPanel({
                     </button>
                     <button
                       type="button"
-                      title="Delete"
+                      title={t('designer.layers_delete', 'Delete')}
                       onClick={() => onDelete(row.id)}
                       className="rounded p-1 text-red-500 hover:bg-red-50 hover:text-red-700"
                     >

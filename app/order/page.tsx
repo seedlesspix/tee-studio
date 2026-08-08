@@ -37,7 +37,7 @@ function OrderPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then((payload) => {
         const data = payload?.order as DesignOrder | undefined
-        if (!data) { setError('Design not found'); setLoading(false); return }
+        if (!data) { setError(t('order.error_not_found', 'Design not found')); setLoading(false); return }
         const order = data
         setDesign(order)
         setNotes(order.notes ?? '')
@@ -100,7 +100,7 @@ function OrderPage() {
   // from /cart when they finish shopping. One honest line per size; the old
   // Print Charge line-item machinery stays gone.
   const handleAddToCart = async () => {
-    if (!design || totalQty === 0) { setError('Please select at least one size and quantity.'); return }
+    if (!design || totalQty === 0) { setError(t('order.error_select_size', 'Please select at least one size and quantity.')); return }
     setAdding(true)
     setError('')
 
@@ -112,7 +112,7 @@ function OrderPage() {
 
     if (!res || !res.ok) {
       const detail = res ? await res.json().catch(() => null) : null
-      setError(detail?.error ?? 'Could not add to cart — please try again.')
+      setError(detail?.error ?? t('order.error_add_failed', 'Could not add to cart — please try again.'))
       setAdding(false)
       return
     }
@@ -123,7 +123,7 @@ function OrderPage() {
 
   if (loading) return (
     <div className="min-h-screen bg-white flex items-center justify-center">
-      <p className="text-white font-mono">Loading your design...</p>
+      <p className="text-white font-mono">{t('order.loading', 'Loading your design...')}</p>
     </div>
   )
 
@@ -157,7 +157,7 @@ function OrderPage() {
       <div className="max-w-6xl mx-auto px-6 py-8 flex gap-8">
         {/* Left - Design Preview */}
         <div className="flex-1">
-          <h2 className="text-lg font-bold font-mono mb-4">Your Design</h2>
+          <h2 className="text-lg font-bold font-mono mb-4">{t('order.your_design', 'Your Design')}</h2>
           {(() => {
             // One designed side → a single centered, smaller preview (no blank-
             // side noise). Both sides → a side-by-side pair. Each PNG already
@@ -169,7 +169,7 @@ function OrderPage() {
             if (sides.length === 0) {
               return (
                 <div className="aspect-square flex items-center justify-center text-gray-800 font-mono border border-gray-200 rounded-xl">
-                  No preview available
+                  {t('order.no_preview', 'No preview available')}
                 </div>
               )
             }
@@ -177,7 +177,7 @@ function OrderPage() {
               <div className={sides.length === 2 ? 'grid grid-cols-2 gap-4' : 'max-w-xs mx-auto'}>
                 {sides.map(s => (
                   <div key={s.label} className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
-                    <p className="text-xs font-mono text-gray-900 px-3 pt-3">{s.label}</p>
+                    <p className="text-xs font-mono text-gray-900 px-3 pt-3">{s.label === 'FRONT' ? t('order.side_front', 'FRONT') : t('order.side_back', 'BACK')}</p>
                     <img src={s.src} alt={`Your design - ${s.label.toLowerCase()}`} className="w-full object-contain" />
                   </div>
                 ))}
@@ -187,7 +187,7 @@ function OrderPage() {
           {/* Edit design link */}
           <a href={editUrl}
             className="mt-4 inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-mono font-medium text-gray-900 hover:border-[#dd3333] hover:text-[#dd3333] transition-all">
-            ← Edit Design
+            {t('order.edit_design', '← Edit Design')}
           </a>
         </div>
 
@@ -196,15 +196,15 @@ function OrderPage() {
 
           {/* Product Info */}
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-            <p className="text-xs font-mono text-gray-900 uppercase tracking-widest mb-1">Product</p>
+            <p className="text-xs font-mono text-gray-900 uppercase tracking-widest mb-1">{t('order.product_label', 'Product')}</p>
             <p className="text-lg font-bold text-gray-900">{design?.product_title}</p>
-            <p className="text-sm text-gray-900 mt-1">Color: {design?.selected_color}</p>
-            <p className="text-sm text-gray-900">Method: {design?.print_method === 'screen_print' ? 'Print' : (design?.print_method?.replace('_', ' ') || 'Print')}</p>
+            <p className="text-sm text-gray-900 mt-1">{t('order.color_label', 'Color:')} {design?.selected_color}</p>
+            <p className="text-sm text-gray-900">{t('order.method_label', 'Method:')} {design?.print_method === 'screen_print' ? t('order.method_print', 'Print') : (design?.print_method?.replace('_', ' ') || t('order.method_print', 'Print'))}</p>
           </div>
 
           {/* Pricing */}
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-            <p className="text-xs font-mono text-gray-900 uppercase tracking-widest mb-3">Pricing</p>
+            <p className="text-xs font-mono text-gray-900 uppercase tracking-widest mb-3">{t('order.pricing_label', 'Pricing')}</p>
             <div className="flex flex-col gap-2 text-sm">
               <div className="flex justify-between text-gray-900">
                 <span>{t('order.blank_line')}</span>
@@ -212,24 +212,24 @@ function OrderPage() {
               </div>
               {frontCharge > 0 && (
                 <div className="flex justify-between text-gray-900">
-                  <span>Front Print</span>
+                  <span>{t('order.front_print', 'Front Print')}</span>
                   <span className="text-gray-900">+${frontCharge.toFixed(2)}</span>
                 </div>
               )}
               {backCharge > 0 && (
                 <div className="flex justify-between text-gray-900">
-                  <span>Back Print</span>
+                  <span>{t('order.back_print', 'Back Print')}</span>
                   <span className="text-gray-900">+${backCharge.toFixed(2)}</span>
                 </div>
               )}
               {nnActive && (
                 <div className="flex justify-between text-gray-600 text-xs italic">
-                  <span>Personalization (names &amp; numbers)</span>
-                  <span>included in print</span>
+                  <span>{t('order.nn_personalization', 'Personalization (names & numbers)')}</span>
+                  <span>{t('order.nn_included', 'included in print')}</span>
                 </div>
               )}
               <div className="flex justify-between font-bold border-t border-gray-200 pt-2">
-                <span className="text-gray-900 font-bold">Price per item</span>
+                <span className="text-gray-900 font-bold">{t('order.price_per_item', 'Price per item')}</span>
                 <span className="text-[#dd3333]">${pricePerItem.toFixed(2)}</span>
               </div>
             </div>
@@ -238,11 +238,11 @@ function OrderPage() {
           {/* Size Quantities — or, for a Names & Numbers order, the roster manifest (read-only: the
               list is edited in the designer, and it's the source of truth for who gets which shirt). */}
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-            <p className="text-xs font-mono text-gray-900 uppercase tracking-widest mb-3">{nnActive ? 'Names & Numbers' : 'Sizes & Quantities'}</p>
+            <p className="text-xs font-mono text-gray-900 uppercase tracking-widest mb-3">{nnActive ? t('order.nn_heading', 'Names & Numbers') : t('order.sizes_heading', 'Sizes & Quantities')}</p>
             {nnActive ? (
               <div className="flex flex-col">
                 <div className="grid gap-2 border-b border-gray-200 pb-1 text-[10px] font-mono uppercase tracking-wide text-gray-500" style={{ gridTemplateColumns: nnGrid }}>
-                  <span>Name</span><span>Number</span>{nnHasTitle && <span>Title</span>}<span>Size</span><span className="text-right">Qty</span>
+                  <span>{t('order.roster_name', 'Name')}</span><span>{t('order.roster_number', 'Number')}</span>{nnHasTitle && <span>{t('order.roster_title', 'Title')}</span>}<span>{t('order.roster_size', 'Size')}</span><span className="text-right">{t('order.roster_qty', 'Qty')}</span>
                 </div>
                 <div className="max-h-72 overflow-y-auto">
                   {rosterEntries.map((e, i) => (
@@ -255,7 +255,7 @@ function OrderPage() {
                     </div>
                   ))}
                 </div>
-                <p className="mt-2 text-[11px] text-gray-500">Edit this list in the designer — it sets the shirts and quantities.</p>
+                <p className="mt-2 text-[11px] text-gray-500">{t('order.roster_hint', 'Edit this list in the designer — it sets the shirts and quantities.')}</p>
               </div>
             ) : (
               <div className="flex flex-col gap-2">
@@ -283,11 +283,11 @@ function OrderPage() {
             {/* Totals */}
             <div className="border-t border-gray-200 mt-4 pt-4 flex flex-col gap-2">
               <div className="flex justify-between text-sm text-gray-900">
-                <span>Total quantity</span>
+                <span>{t('order.total_quantity', 'Total quantity')}</span>
                 <span className="text-gray-900">{totalQty}</span>
               </div>
               <div className="flex justify-between font-bold">
-                <span className="text-gray-900 font-bold">Order total</span>
+                <span className="text-gray-900 font-bold">{t('order.order_total', 'Order total')}</span>
                 <span className="text-[#dd3333] text-lg">${total}</span>
               </div>
             </div>
@@ -301,28 +301,28 @@ function OrderPage() {
               const nxt = nextTier(totalQty, volumeTiers)
               return (
                 <div className="border-t border-gray-200 mt-4 pt-4">
-                  <p className="text-xs font-mono text-gray-900 uppercase tracking-widest mb-2">Volume savings</p>
+                  <p className="text-xs font-mono text-gray-900 uppercase tracking-widest mb-2">{t('order.volume_savings', 'Volume savings')}</p>
                   <div className="flex flex-wrap gap-1.5 mb-2">
-                    {volumeTiers.map(t => {
-                      const active = cur?.minQty === t.minQty
+                    {volumeTiers.map(tier => {
+                      const active = cur?.minQty === tier.minQty
                       return (
-                        <span key={t.minQty}
+                        <span key={tier.minQty}
                           className={`rounded-full border px-2.5 py-1 text-xs font-mono ${
                             active ? 'border-emerald-400 bg-emerald-50 text-emerald-800 font-bold' : 'border-gray-200 bg-white text-gray-600'
                           }`}>
-                          {t.minQty}+ save {t.pct}%
+                          {tier.minQty}+ {t('order.volume_tier_save', 'save')} {tier.pct}%
                         </span>
                       )
                     })}
                   </div>
                   {nxt ? (
                     <p className="text-sm text-emerald-700">
-                      Add <span className="font-bold">{nxt.needed}</span> more to save <span className="font-bold">{nxt.tier.pct}%</span> on your order.
+                      {t('order.volume_add', 'Add')} <span className="font-bold">{nxt.needed}</span> {t('order.volume_more_to_save', 'more to save')} <span className="font-bold">{nxt.tier.pct}%</span> {t('order.volume_on_order', 'on your order.')}
                     </p>
                   ) : cur ? (
-                    <p className="text-sm text-emerald-700">You’re getting <span className="font-bold">{cur.pct}% off</span> — the top tier. 🎉</p>
+                    <p className="text-sm text-emerald-700">{t('order.volume_youre_getting', 'You’re getting')} <span className="font-bold">{cur.pct}{t('order.volume_pct_off', '% off')}</span> {t('order.volume_top_tier', '— the top tier. 🎉')}</p>
                   ) : null}
-                  <p className="mt-1 text-[11px] text-gray-500">Discount applied automatically at checkout.</p>
+                  <p className="mt-1 text-[11px] text-gray-500">{t('order.volume_auto_checkout', 'Discount applied automatically at checkout.')}</p>
                 </div>
               )
             })()}
@@ -332,14 +332,14 @@ function OrderPage() {
               and surfaced in admin. */}
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
             <label htmlFor="design-notes" className="block text-xs font-mono text-gray-900 uppercase tracking-widest mb-2">
-              Design Notes <span className="text-gray-500 normal-case">(optional)</span>
+              {t('order.notes_label', 'Design Notes')} <span className="text-gray-500 normal-case">{t('order.notes_optional', '(optional)')}</span>
             </label>
             <textarea
               id="design-notes"
               value={notes}
               onChange={e => setNotes(e.target.value)}
               rows={3}
-              placeholder="Printing details for our team — e.g. exact ink color, placement notes…"
+              placeholder={t('order.notes_placeholder', 'Printing details for our team — e.g. exact ink color, placement notes…')}
               className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333] resize-y placeholder-gray-400"
             />
           </div>
@@ -351,11 +351,11 @@ function OrderPage() {
               alongside other designs and off-the-shelf products */}
           <button onClick={handleAddToCart} disabled={adding || totalQty === 0}
             className="w-full py-4 rounded-xl bg-[#dd3333] text-white font-black text-lg tracking-wide hover:bg-red-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-            {adding ? 'Adding to Cart...' : `Add to Cart → ${totalQty > 0 ? `(${totalQty} item${totalQty > 1 ? 's' : ''})` : ''}`}
+            {adding ? t('order.adding_to_cart', 'Adding to Cart...') : `${t('order.add_to_cart', 'Add to Cart →')} ${totalQty > 0 ? `(${totalQty} item${totalQty > 1 ? 's' : ''})` : ''}`}
           </button>
 
           <p className="text-xs text-gray-800 font-mono text-center">
-            Keep shopping or check out from your cart when you&apos;re ready
+            {t('order.keep_shopping', 'Keep shopping or check out from your cart when you\'re ready')}
           </p>
         </div>
       </div>
