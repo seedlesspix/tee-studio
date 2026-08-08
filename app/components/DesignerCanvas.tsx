@@ -1216,6 +1216,12 @@ export default function DesignerCanvas({
 
   useEffect(() => { void refreshEmbroideryLook() }, [refreshEmbroideryLook, configMethod, canvasObjectCount])
 
+  // Live ref so the curve-bake path (an effect that doesn't depend on printMethod, and which swaps the
+  // object in place = net-zero canvasObjectCount) can re-apply the embroidery look to the freshly-baked
+  // curved image without a stale closure or an effect-dependency loop.
+  const refreshEmbLookRef = useRef(refreshEmbroideryLook)
+  useEffect(() => { refreshEmbLookRef.current = refreshEmbroideryLook }, [refreshEmbroideryLook])
+
   useEffect(() => {
     fabricCanvasRef.current = fabricCanvas
   }, [fabricCanvas])
@@ -2054,6 +2060,7 @@ export default function DesignerCanvas({
     lastActiveObjectRef.current = rebaked
     _activeObj = rebaked
     canvas.renderAll()
+    void refreshEmbLookRef.current() // re-apply the embroidery look to the re-baked curved image
     markDirty()
   }
 
@@ -2098,6 +2105,7 @@ export default function DesignerCanvas({
         lastActiveObjectRef.current = next
         _activeObj = next
         canvas.renderAll()
+        void refreshEmbLookRef.current() // re-apply the embroidery look to the swapped-in curved image / IText
       }
 
       // curve === 0 → back to an editable IText
