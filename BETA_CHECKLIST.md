@@ -71,16 +71,17 @@ CLAUDE.md backlog; this file is the "these are NOT optional" promotion of them.
   product image usually needs a page refresh to show up. Should appear
   immediately. *(New item — needs diagnosis: likely image generation/upload
   timing vs. cart page caching.)*
-- [ ] **14. Volume pricing discount on the Order Page.** 🟡 HALF DONE
-  2026-08-07. **Display built + gated OFF:** the Order Page shows a tier ladder
-  (6+→10%, 12+→15%, 24+→20%) + an "add N more to save X%" nudge, driven by
-  `app/lib/volumeTiers.ts` (tested). It only renders when `VOLUME_DISCOUNT.enabled`
-  is true — deliberately false until enforcement is live, so it can never show a
-  discount checkout won't apply (the old bug). **Remaining (Denise):** install a
-  Shopify quantity-tier discount APP (cart-quantity, applies automatically at
-  checkout, all products), set the same 6/12/24→10/15/20 tiers, confirm it
-  discounts at checkout — THEN flip `enabled: true` (and keep the numbers in sync).
-  If no app fits, fall back to a Shopify discount Function.
+- [x] **14. Volume pricing discount on the Order Page.** ✅ Shipped 2026-08-08,
+  full path confirmed at checkout (applies + re-tiers on quantity edits), enabled ON.
+  Landed as **PER-PRODUCT, per-METHOD** tiers (not a flat cart-wide ladder): each
+  garment carries its own ladder in `product_templates.volume_tiers` (+ an optional
+  `volume_tiers_embroidery` override for dual-method products, since embroidery
+  amortizes differently), set in Admin → Product Templates. Enforced at checkout by
+  a Shopify **discount Function** (`shopify/volume-discount-function/`, unified
+  2026-07 API) reading a `volume.tiers` metafield the app stamps per design at
+  add-to-cart — resolved by method so what the Order-Page ladder shows equals what
+  checkout charges. Off switches stay independent: `VOLUME_DISCOUNT.enabled` hides
+  the ladder; Admin → Discounts deactivates the charge.
 
 ## Admin
 
