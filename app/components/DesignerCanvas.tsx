@@ -1191,11 +1191,19 @@ export default function DesignerCanvas({
     if (!canvas) return
     const emb = printMethod === 'embroidery'
     const { Shadow } = await import('fabric')
+    // Text, vector + raster clip art, and baked curved text all get the look; uploads (print-only) and
+    // N&N placeholders (kept plain) do not. Any non-upload image in embroidery mode is clip art or a
+    // curved-text bake (uploads are hidden in embroidery), so include images broadly minus _uploadSrc.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const isArt = (o: any) =>
-      o && !o.excludeFromExport && !o[NN_ROLE_PROP] &&
-      (o.type === 'i-text' || o.type === 'textbox' || o.type === 'group' || o.type === 'path' ||
-        (o.type === 'image' && o._isCurvedText))
+      o && !o.excludeFromExport && !o[NN_ROLE_PROP] && !o._uploadSrc &&
+      (o.type === 'i-text' || o.type === 'textbox' || o.type === 'group' || o.type === 'path' || o.type === 'image')
+    // Thread tint: a baked curved text carries its real color in _curveFill (its image `fill` is a default
+    // string that would wrongly win), so read _curveFill FIRST; else the object's own fill; else the thread.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const embInk = (o: any): string =>
+      (o._isCurvedText && typeof o._curveFill === 'string' && o._curveFill) ? o._curveFill
+        : (typeof o.fill === 'string' && o.fill) ? o.fill : textColor
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const seen = new Set<any>()
     for (const o of [...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current]) {
@@ -1203,8 +1211,7 @@ export default function DesignerCanvas({
       seen.add(o)
       if (!isArt(o)) continue
       if (emb) {
-        const ink = typeof o.fill === 'string' ? o.fill : (typeof o._curveFill === 'string' ? o._curveFill : textColor)
-        applyEmbroideryLook(o, ink)
+        applyEmbroideryLook(o, embInk(o))
         if (!o._embShadow) { o.set('shadow', new Shadow({ color: 'rgba(0,0,0,0.45)', blur: 3, offsetX: 0, offsetY: 2 })); o._embShadow = true }
       } else {
         removeEmbroideryLook(o)
