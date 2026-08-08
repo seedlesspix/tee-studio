@@ -1,6 +1,6 @@
 'use client'
 import { type Dispatch, type SetStateAction, type RefObject, type ChangeEventHandler, type DragEventHandler } from 'react'
-import { AlignLeft, AlignCenter, AlignRight, Bold, Italic, CaseUpper, MoveHorizontal, MoveVertical, Upload } from 'lucide-react'
+import { AlignLeft, AlignCenter, AlignRight, AlignJustify, Bold, Italic, CaseUpper, MoveHorizontal, MoveVertical, Upload } from 'lucide-react'
 import ClipartPanel, { type ArtMeta } from './ClipartPanel'
 import MyUploadsPanel, { type UploadItem } from './MyUploadsPanel'
 import FontPicker from './FontPicker'
@@ -59,7 +59,7 @@ type SelectionPanelProps = {
     setCurveAmount: Dispatch<SetStateAction<number>>
     textIsMultiline: boolean
     textAlign: string
-    handleTextAlign: (align: 'left' | 'center' | 'right') => void
+    handleTextAlign: (align: 'left' | 'center' | 'right' | 'justify') => void
     isBold: boolean
     setIsBold: Dispatch<SetStateAction<boolean>>
     isItalic: boolean
@@ -208,41 +208,6 @@ export default function SelectionPanel({
                   </div>
                 )}
                 <div>
-                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Text Color</label>
-                  <div className="flex gap-2 mt-2 flex-wrap items-center">
-                    {(dbColors.length > 0 ? dbColors : [
-                      { label: 'White', hex: '#ffffff' },
-                      { label: 'Black', hex: '#000000' },
-                    ]).map(c => (
-                      <button key={c.hex} onClick={() => setTextColor(c.hex)}
-                        title={c.label}
-                        style={{
-                          background: c.hex,
-                          border: c.hex === '#ffffff' ? '1px solid #555' : 'none'
-                        }}
-                        className={`w-8 h-8 rounded-full transition-transform hover:scale-110 ${
-                          textColor === c.hex
-                            ? 'ring-2 ring-gray-900 ring-offset-1 ring-offset-white'
-                            : ''
-                        }`}
-                      />
-                    ))}
-                    {/* NO custom color picker — customers choose ONLY from the admin-set colors (Denise).
-                        Same rule for Print and Embroidery. */}
-                  </div>
-                  {/* Chosen-color indicator: a larger SQUARE swatch of the CURRENT color + its name, so it
-                      reads clearly different from the round pickable swatches. Same in both modes. */}
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className="h-6 w-6 shrink-0 rounded-md border border-gray-300"
-                      style={{ background: textColor }} aria-hidden="true" />
-                    <span className="text-xs text-gray-800 font-mono">
-                      {(dbColors.length > 0 ? dbColors : [{ label: 'White', hex: '#ffffff' }, { label: 'Black', hex: '#000000' }])
-                        .find(c => c.hex?.toLowerCase() === textColor?.toLowerCase())?.label || textColor || 'Custom'}
-                    </span>
-                  </div>
-                </div>
-
-                <div>
                   <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Direction</label>
                   <div className="grid grid-cols-2 gap-2 mt-1">
                     <button onClick={() => setTextDirection('horizontal')} disabled={selectedIsCurved}
@@ -304,8 +269,10 @@ export default function SelectionPanel({
                       <CaseUpper size={18} strokeWidth={2.5} />
                     </button>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 mt-2">
-                    {([['left', AlignLeft], ['center', AlignCenter], ['right', AlignRight]] as const).map(([align, Icon]) => (
+                  {/* Paragraph alignment (text-align glyphs — lines), incl. justify. Distinct from the
+                      OBJECT-align cluster in the toolbar (which positions the whole object). */}
+                  <div className="grid grid-cols-4 gap-2 mt-2">
+                    {([['left', AlignLeft], ['center', AlignCenter], ['right', AlignRight], ['justify', AlignJustify]] as const).map(([align, Icon]) => (
                       <button key={align} onClick={() => handleTextAlign(align)} disabled={selectedIsCurved} title={`Align ${align}`}
                         className={`flex items-center justify-center py-2 rounded border transition-all disabled:opacity-40 disabled:cursor-default ${
                           textAlign === align ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'
@@ -318,6 +285,41 @@ export default function SelectionPanel({
                   {selectedIsCurved && (
                     <p className="text-[10px] text-gray-500 mt-2">Curved text: straighten to change case, direction, or alignment.</p>
                   )}
+                </div>
+                {/* Text Color — LAST of the text controls (Denise: all text options sit ABOVE color). */}
+                <div>
+                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Text Color</label>
+                  <div className="flex gap-2 mt-2 flex-wrap items-center">
+                    {(dbColors.length > 0 ? dbColors : [
+                      { label: 'White', hex: '#ffffff' },
+                      { label: 'Black', hex: '#000000' },
+                    ]).map(c => (
+                      <button key={c.hex} onClick={() => setTextColor(c.hex)}
+                        title={c.label}
+                        style={{
+                          background: c.hex,
+                          border: c.hex === '#ffffff' ? '1px solid #555' : 'none'
+                        }}
+                        className={`w-8 h-8 rounded-full transition-transform hover:scale-110 ${
+                          textColor === c.hex
+                            ? 'ring-2 ring-gray-900 ring-offset-1 ring-offset-white'
+                            : ''
+                        }`}
+                      />
+                    ))}
+                    {/* NO custom color picker — customers choose ONLY from the admin-set colors (Denise).
+                        Same rule for Print and Embroidery. */}
+                  </div>
+                  {/* Chosen-color indicator: a larger SQUARE swatch of the CURRENT color + its name, so it
+                      reads clearly different from the round pickable swatches. Same in both modes. */}
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="h-6 w-6 shrink-0 rounded-md border border-gray-300"
+                      style={{ background: textColor }} aria-hidden="true" />
+                    <span className="text-xs text-gray-800 font-mono">
+                      {(dbColors.length > 0 ? dbColors : [{ label: 'White', hex: '#ffffff' }, { label: 'Black', hex: '#000000' }])
+                        .find(c => c.hex?.toLowerCase() === textColor?.toLowerCase())?.label || textColor || 'Custom'}
+                    </span>
+                  </div>
                 </div>
                 {/* Delete belongs to EDIT, not the empty add-surface. */}
                 {selectedObjectType === 'text' && (

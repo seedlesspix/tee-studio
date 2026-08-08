@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { AlignLeft, AlignCenter, AlignRight, MoveHorizontal, MoveVertical } from 'lucide-react'
+import { AlignLeft, AlignCenter, AlignRight, AlignJustify, MoveHorizontal, MoveVertical } from 'lucide-react'
 import MobileAlignRow from './MobileAlignRow'
 
 // MobileTextBand — BLOCKER-2 mobile rework, Stage 2. The Text tool's controls laid
@@ -189,7 +189,7 @@ export default function MobileTextBand({
             <MobileAlignRow alignObject={alignObject} onDelete={deleteSelected} />
             {/* Text justify (within the box) + effects */}
             <div className="flex items-center gap-1.5">
-              {([['left', AlignLeft], ['center', AlignCenter], ['right', AlignRight]] as const).map(([a, Icon]) => (
+              {([['left', AlignLeft], ['center', AlignCenter], ['right', AlignRight], ['justify', AlignJustify]] as const).map(([a, Icon]) => (
                 <button
                   key={a}
                   onClick={() => handleTextAlign(a)}

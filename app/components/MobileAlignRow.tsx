@@ -1,17 +1,17 @@
 'use client'
 import {
-  AlignLeft, AlignCenter, AlignRight,
+  AlignStartVertical, AlignCenterVertical, AlignEndVertical,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
 } from 'lucide-react'
 
-// MobileAlignRow — compact align icons + a pinned Delete, for the tool bands' edit
-// mode. Uses the UNIVERSAL text-editor align bars for left/center/right and the
-// matching vertical bars for top/middle/bottom (shared with the desktop toolbar so
-// both layouts look the same). Delete is shrink-0 so it never overlaps the icons.
-const ITEMS: { Icon: typeof AlignLeft; title: string; fn: string }[] = [
-  { Icon: AlignLeft, title: 'Align left', fn: 'left' },
-  { Icon: AlignCenter, title: 'Align center', fn: 'center' },
-  { Icon: AlignRight, title: 'Align right', fn: 'right' },
+// MobileAlignRow — compact OBJECT-alignment icons + a pinned Delete, for the tool bands' edit mode.
+// Illustrator "Align" panel glyphs (boxes against a guide) — left/center/right position the object
+// horizontally, top/middle/bottom vertically; shared with the desktop toolbar so both layouts match.
+// Distinct from the Text sheet's paragraph-align (lines). Delete is shrink-0 so it never overlaps.
+const ITEMS: { Icon: typeof AlignStartVertical; title: string; fn: string }[] = [
+  { Icon: AlignStartVertical, title: 'Align left', fn: 'left' },
+  { Icon: AlignCenterVertical, title: 'Align center', fn: 'center' },
+  { Icon: AlignEndVertical, title: 'Align right', fn: 'right' },
   { Icon: AlignStartHorizontal, title: 'Align top', fn: 'top' },
   { Icon: AlignCenterHorizontal, title: 'Align middle', fn: 'middle' },
   { Icon: AlignEndHorizontal, title: 'Align bottom', fn: 'bottom' },

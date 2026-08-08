@@ -49,7 +49,7 @@ import MobileUploadBand from './MobileUploadBand'
 import MobileArtBand from './MobileArtBand'
 import { type UploadItem } from './MyUploadsPanel'
 import {
-  AlignLeft, AlignCenter, AlignRight,
+  AlignStartVertical, AlignCenterVertical, AlignEndVertical,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
   Undo2, Redo2,
 } from 'lucide-react'
@@ -293,7 +293,7 @@ export default function DesignerCanvas({
   // True once the customer has used the method toggle, so the (async) product-load resolution can't
   // clobber their choice if they toggle during the load window.
   const userToggledMethodRef = useRef(false)
-  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center')
+  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right' | 'justify'>('center')
   const [selectedSvgColor, setSelectedSvgColor] = useState<string>('#000000')
   const [printPricing, setPrintPricing] = useState<Record<number, number>>({1: 12, 2: 20})
   const [dbFonts, setDbFonts] = useState<{ label: string; value: string; category?: string | null }[]>([])
@@ -998,7 +998,7 @@ export default function DesignerCanvas({
     setIsBold(obj.fontWeight === 'bold' || obj.fontWeight === 700)
     setIsItalic(obj.fontStyle === 'italic')
     setIsUppercase(uppercase)
-    setTextAlign(obj.textAlign === 'left' || obj.textAlign === 'right' ? obj.textAlign : 'center')
+    setTextAlign(obj.textAlign === 'left' || obj.textAlign === 'right' || obj.textAlign === 'justify' ? obj.textAlign : 'center')
     setTextDirection(obj.angle === 90 ? 'vertical' : 'horizontal')
     setCurveAmount(0)
   }
@@ -3996,7 +3996,7 @@ export default function DesignerCanvas({
   // VERBATIM out of the panel JSX into named handlers, so Stage 2 can move the
   // panel as a dumb view. handleTextAlign = the A9 align button's inline onClick;
   // handleClipartSelect = ClipartPanel's inline onSelect closure. Logic unchanged.
-  const handleTextAlign = (align: 'left' | 'center' | 'right') => {
+  const handleTextAlign = (align: 'left' | 'center' | 'right' | 'justify') => {
     setTextAlign(align)
     const canvas = fabricCanvasRef.current
     const obj = canvas?.getActiveObject()
@@ -4442,9 +4442,12 @@ export default function DesignerCanvas({
             })()}
             <span className="text-xs text-gray-800 font-mono uppercase tracking-widest mr-1">Align:</span>
             {[
-              { Icon: AlignLeft, title: 'Align Left', fn: 'left' },
-              { Icon: AlignCenter, title: 'Align Center', fn: 'center' },
-              { Icon: AlignRight, title: 'Align Right', fn: 'right' },
+              // Object-alignment glyphs (Illustrator "Align" panel — boxes against a guide), distinct
+              // from the Text sheet's paragraph-align (lines). Left/center/right position the object
+              // horizontally; top/middle/bottom vertically, within the print area.
+              { Icon: AlignStartVertical, title: 'Align Left', fn: 'left' },
+              { Icon: AlignCenterVertical, title: 'Align Center', fn: 'center' },
+              { Icon: AlignEndVertical, title: 'Align Right', fn: 'right' },
               { Icon: AlignStartHorizontal, title: 'Align Top', fn: 'top' },
               { Icon: AlignCenterHorizontal, title: 'Align Middle', fn: 'middle' },
               { Icon: AlignEndHorizontal, title: 'Align Bottom', fn: 'bottom' },
