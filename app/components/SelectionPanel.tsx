@@ -208,19 +208,6 @@ export default function SelectionPanel({
                   </div>
                 )}
                 <div>
-                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Direction</label>
-                  <div className="grid grid-cols-2 gap-2 mt-1">
-                    <button onClick={() => setTextDirection('horizontal')} disabled={selectedIsCurved}
-                      className={`flex items-center justify-center gap-1.5 py-2 rounded text-xs font-mono transition-all disabled:opacity-40 disabled:cursor-default border ${textDirection === 'horizontal' ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'}`}>
-                      <MoveHorizontal size={14} /> Horizontal
-                    </button>
-                    <button onClick={() => setTextDirection('vertical')} disabled={selectedIsCurved}
-                      className={`flex items-center justify-center gap-1.5 py-2 rounded text-xs font-mono transition-all disabled:opacity-40 disabled:cursor-default border ${textDirection === 'vertical' ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'}`}>
-                      <MoveVertical size={14} /> Vertical
-                    </button>
-                  </div>
-                </div>
-                <div>
                   <div className="flex justify-between items-center">
                     <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Curve</label>
                     <div className="flex items-center gap-2">
@@ -285,6 +272,19 @@ export default function SelectionPanel({
                   {selectedIsCurved && (
                     <p className="text-[10px] text-gray-500 mt-2">Curved text: straighten to change case, direction, or alignment.</p>
                   )}
+                </div>
+                <div>
+                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Direction</label>
+                  <div className="grid grid-cols-2 gap-2 mt-1">
+                    <button onClick={() => setTextDirection('horizontal')} disabled={selectedIsCurved}
+                      className={`flex items-center justify-center gap-1.5 py-2 rounded text-xs font-mono transition-all disabled:opacity-40 disabled:cursor-default border ${textDirection === 'horizontal' ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'}`}>
+                      <MoveHorizontal size={14} /> Horizontal
+                    </button>
+                    <button onClick={() => setTextDirection('vertical')} disabled={selectedIsCurved}
+                      className={`flex items-center justify-center gap-1.5 py-2 rounded text-xs font-mono transition-all disabled:opacity-40 disabled:cursor-default border ${textDirection === 'vertical' ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'}`}>
+                      <MoveVertical size={14} /> Vertical
+                    </button>
+                  </div>
                 </div>
                 {/* Text Color — LAST of the text controls (Denise: all text options sit ABOVE color). */}
                 <div>
