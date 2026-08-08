@@ -17,6 +17,9 @@ that reads those tiers and takes the % off in the cart/checkout.
 
 - The app writes a `volume.tiers` metafield (JSON like `[{"minQty":6,"pct":10},…]`) onto each design
   product when it's added to cart, copied from that garment's tiers in **Admin → Product Templates**.
+  On a **dual-method** product (e.g. Dad Hats) the app resolves Print vs. Embroidery tiers *before*
+  stamping, so the metafield always holds the final ladder — **the Function stays method-agnostic and
+  this guide's steps are unchanged either way.**
 - The Order Page shows the ladder + "add N more to save" nudge — but it stays **hidden** until you flip
   one switch (last step), so customers never see a discount before checkout actually applies it.
 - Set each garment's tiers now in **Admin → Product Templates → Edit → Volume discount tiers** (e.g.

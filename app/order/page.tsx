@@ -5,7 +5,7 @@ import type { Tables } from '@/types/database'
 import { type RosterEntry } from '@/app/lib/namesNumbers'
 import Stepper from '@/app/components/Stepper'
 import { supabase } from '@/app/lib/supabase'
-import { VOLUME_DISCOUNT, currentTier, nextTier, normalizeTiers, type VolumeTier } from '@/app/lib/volumeTiers'
+import { VOLUME_DISCOUNT, currentTier, nextTier, resolveTiers, type VolumeTier } from '@/app/lib/volumeTiers'
 
 type DesignOrder = Omit<Tables<'design_orders'>, 'quantities'> & {
   quantities: Record<string, number> | null
@@ -52,10 +52,11 @@ function OrderPage() {
         setOrderedSizes(sizesToUse)
         setQuantities(initQty)
         setLoading(false)
-        // This garment's volume ladder (public-read template row). Non-blocking; no tiers → no display.
+        // This garment's volume ladder (public-read template row), resolved by THIS design's method so
+        // the shown ladder matches what checkout charges. Non-blocking; no tiers → no display.
         if (order.template_id) {
-          supabase.from('product_templates').select('volume_tiers').eq('id', order.template_id).maybeSingle()
-            .then(({ data }) => setVolumeTiers(normalizeTiers(data?.volume_tiers)))
+          supabase.from('product_templates').select('volume_tiers, volume_tiers_embroidery').eq('id', order.template_id).maybeSingle()
+            .then(({ data }) => setVolumeTiers(resolveTiers(order.print_method, data?.volume_tiers, data?.volume_tiers_embroidery)))
         }
       })
   }, [designId])

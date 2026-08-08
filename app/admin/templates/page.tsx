@@ -18,6 +18,8 @@ type Draft = {
   supports_names_numbers: boolean
   is_active: boolean
   volume_tiers: VolumeTier[]
+  volume_tiers_embroidery: VolumeTier[]
+  embroideryOverride: boolean // dual-method only: give embroidery its own ladder
 }
 
 const EMPTY_DRAFT: Draft = {
@@ -28,6 +30,8 @@ const EMPTY_DRAFT: Draft = {
   supports_names_numbers: true,
   is_active: true,
   volume_tiers: [],
+  volume_tiers_embroidery: [],
+  embroideryOverride: false,
 }
 
 export default function TemplatesAdmin() {
@@ -99,6 +103,7 @@ export default function TemplatesAdmin() {
 
   const openNew = () => { setDraft(EMPTY_DRAFT); setEditing({ id: null }) }
   const openEdit = (t: Template) => {
+    const embTiers = normalizeTiers(t.volume_tiers_embroidery)
     setDraft({
       name: t.name,
       shopify_product_id: t.shopify_product_id,
@@ -107,17 +112,52 @@ export default function TemplatesAdmin() {
       supports_names_numbers: t.supports_names_numbers ?? true,
       is_active: t.is_active,
       volume_tiers: normalizeTiers(t.volume_tiers),
+      volume_tiers_embroidery: embTiers,
+      embroideryOverride: embTiers.length > 0,
     })
     setEditing({ id: t.id })
   }
 
-  // Volume-tier editor helpers (per-garment ladder). Rows stay in draft freeform; normalizeTiers
-  // (sort/validate/de-dupe) runs on SAVE so a half-typed row never corrupts the stored ladder.
-  const addTier = () => setDraft(p => ({ ...p, volume_tiers: [...p.volume_tiers, { minQty: 0, pct: 0 }] }))
-  const updateTier = (i: number, field: 'minQty' | 'pct', value: number) =>
-    setDraft(p => ({ ...p, volume_tiers: p.volume_tiers.map((t, j) => j === i ? { ...t, [field]: value } : t) }))
-  const removeTier = (i: number) =>
-    setDraft(p => ({ ...p, volume_tiers: p.volume_tiers.filter((_, j) => j !== i) }))
+  // Volume-tier editor helpers, parameterized by ladder (default vs. the dual-method embroidery
+  // override). Rows stay freeform in the draft; normalizeTiers (sort/validate/de-dupe) runs on SAVE so a
+  // half-typed row never corrupts the stored ladder.
+  type Ladder = 'volume_tiers' | 'volume_tiers_embroidery'
+  const addTier = (field: Ladder) => setDraft(p => ({ ...p, [field]: [...p[field], { minQty: 0, pct: 0 }] }))
+  const updateTier = (field: Ladder, i: number, key: 'minQty' | 'pct', value: number) =>
+    setDraft(p => ({ ...p, [field]: p[field].map((t, j) => j === i ? { ...t, [key]: value } : t) }))
+  const removeTier = (field: Ladder, i: number) =>
+    setDraft(p => ({ ...p, [field]: p[field].filter((_, j) => j !== i) }))
+
+  // Dual-method = supports embroidery AND at least one other method, so "default vs. embroidery" is a
+  // real distinction. Embroidery-only (or print-only) templates use the single default ladder — the
+  // override UI stays hidden there (don't complicate single-method products).
+  const isDualMethod = (d: Draft) => d.supported_print_methods.includes('embroidery') && d.supported_print_methods.length > 1
+
+  // One tier-ladder editor (rows of "buy N → save P%", + Add). Shared by the default and the
+  // dual-method embroidery ladders so they can't drift.
+  const ladderRows = (field: Ladder) => (
+    <div className="mt-2 flex flex-col gap-2">
+      {draft[field].map((t, i) => (
+        <div key={i} className="flex items-center gap-2 text-sm font-mono text-black">
+          <span className="text-gray-500 text-xs w-8">Buy</span>
+          <input type="number" min={2} value={t.minQty || ''} placeholder="6"
+            onChange={e => updateTier(field, i, 'minQty', parseInt(e.target.value) || 0)}
+            className="w-20 bg-white border border-gray-300 rounded px-2 py-1 text-sm text-black outline-none focus:border-[#dd3333]" />
+          <span className="text-gray-500 text-xs">or more → save</span>
+          <input type="number" min={1} max={99} value={t.pct || ''} placeholder="10"
+            onChange={e => updateTier(field, i, 'pct', parseInt(e.target.value) || 0)}
+            className="w-16 bg-white border border-gray-300 rounded px-2 py-1 text-sm text-black outline-none focus:border-[#dd3333]" />
+          <span className="text-gray-500 text-xs">%</span>
+          <button onClick={() => removeTier(field, i)} title="Remove tier"
+            className="ml-1 text-gray-400 hover:text-[#dd3333] text-lg leading-none px-1">×</button>
+        </div>
+      ))}
+      <button onClick={() => addTier(field)}
+        className="self-start mt-1 px-3 py-1 rounded text-xs bg-white text-black border border-gray-300 hover:bg-gray-50 font-mono">
+        + Add tier
+      </button>
+    </div>
+  )
 
   const toggleSupported = (key: string) => {
     setDraft(prev => {
@@ -161,6 +201,12 @@ export default function TemplatesAdmin() {
       is_active: draft.is_active,
       // Normalize on save (sort asc, drop invalid, de-dupe); empty ladder → null = no volume discount.
       volume_tiers: normalizeTiers(draft.volume_tiers).length ? normalizeTiers(draft.volume_tiers) : null,
+      // Embroidery override: only when the toggle is on AND it has real rows; otherwise clear it (embroidery
+      // falls back to the default ladder). Meaningless on non-dual-method templates, so also null there.
+      volume_tiers_embroidery:
+        draft.embroideryOverride && isDualMethod(draft) && normalizeTiers(draft.volume_tiers_embroidery).length
+          ? normalizeTiers(draft.volume_tiers_embroidery)
+          : null,
     }
     if (editing?.id) {
       const { data, error } = await supabase
@@ -354,35 +400,42 @@ export default function TemplatesAdmin() {
 
               {/* Volume discount ladder for THIS garment (per-product). Empty = no volume discount.
                   Enforced at checkout by the Shopify discount Function via the volume.tiers metafield;
-                  also drives the Order-Page incentive ladder. Rows validate/sort on save. */}
+                  also drives the Order-Page incentive ladder. Rows validate/sort on save. On a dual-method
+                  product the default ladder applies to Print, and Embroidery can override it below. */}
               <div className="mt-5 border-t border-gray-100 pt-4">
                 <label className="text-[10px] text-gray-600 font-mono uppercase">
-                  Volume discount tiers <span className="text-gray-400 normal-case">(this garment — leave empty for none)</span>
+                  Volume discount tiers{' '}
+                  <span className="text-gray-400 normal-case">
+                    {isDualMethod(draft) ? '(default — applies to Print, and Embroidery unless overridden below)' : '(this garment — leave empty for none)'}
+                  </span>
                 </label>
                 <p className="text-[11px] text-gray-500 mt-1">
                   Buy N or more of this design → % off, applied automatically at checkout. e.g. 6 → 10%, 12 → 15%, 24 → 20%.
                 </p>
-                <div className="mt-2 flex flex-col gap-2">
-                  {draft.volume_tiers.map((t, i) => (
-                    <div key={i} className="flex items-center gap-2 text-sm font-mono text-black">
-                      <span className="text-gray-500 text-xs w-8">Buy</span>
-                      <input type="number" min={2} value={t.minQty || ''} placeholder="6"
-                        onChange={e => updateTier(i, 'minQty', parseInt(e.target.value) || 0)}
-                        className="w-20 bg-white border border-gray-300 rounded px-2 py-1 text-sm text-black outline-none focus:border-[#dd3333]" />
-                      <span className="text-gray-500 text-xs">or more → save</span>
-                      <input type="number" min={1} max={99} value={t.pct || ''} placeholder="10"
-                        onChange={e => updateTier(i, 'pct', parseInt(e.target.value) || 0)}
-                        className="w-16 bg-white border border-gray-300 rounded px-2 py-1 text-sm text-black outline-none focus:border-[#dd3333]" />
-                      <span className="text-gray-500 text-xs">%</span>
-                      <button onClick={() => removeTier(i)} title="Remove tier"
-                        className="ml-1 text-gray-400 hover:text-[#dd3333] text-lg leading-none px-1">×</button>
-                    </div>
-                  ))}
-                  <button onClick={addTier}
-                    className="self-start mt-1 px-3 py-1 rounded text-xs bg-white text-black border border-gray-300 hover:bg-gray-50 font-mono">
-                    + Add tier
-                  </button>
-                </div>
+                {ladderRows('volume_tiers')}
+
+                {/* Embroidery override — dual-method only. Embroidery amortizes differently, so it can
+                    carry its own (usually flatter) ladder; unchecked = embroidery uses the default above. */}
+                {isDualMethod(draft) && (
+                  <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                    <label className="flex items-center gap-2 text-sm font-mono text-black">
+                      <input type="checkbox" checked={draft.embroideryOverride}
+                        onChange={e => setDraft(p => ({ ...p, embroideryOverride: e.target.checked }))}
+                        className="accent-[#dd3333]" />
+                      Set different tiers for Embroidery
+                    </label>
+                    {draft.embroideryOverride ? (
+                      <>
+                        <p className="text-[11px] text-gray-500 mt-1">
+                          Used when this product is designed in <span className="font-semibold">Embroidery</span> mode. Leave empty to fall back to the default ladder.
+                        </p>
+                        {ladderRows('volume_tiers_embroidery')}
+                      </>
+                    ) : (
+                      <p className="text-[11px] text-gray-500 mt-1">Embroidery uses the default ladder above.</p>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="mt-4 flex items-end gap-6 flex-wrap">

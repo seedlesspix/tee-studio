@@ -38,6 +38,23 @@ export function normalizeTiers(raw: unknown): VolumeTier[] {
   return [...byMin.entries()].map(([minQty, pct]) => ({ minQty, pct })).sort((a, b) => a.minQty - b.minQty)
 }
 
+// Resolve the effective ladder for a design's print method (per-product, per-method). Embroidery uses
+// its OWN ladder only when a dual-method template sets one (volume_tiers_embroidery); everything else —
+// and embroidery with no override — uses the default `volume_tiers`. This resolution runs in the APP
+// (at add-to-cart stamp time + the Order-Page display), so the design product's volume.tiers metafield
+// always carries the final, method-correct ladder and the checkout discount Function stays method-agnostic.
+export function resolveTiers(
+  method: string | null | undefined,
+  defaultTiers: unknown,
+  embroideryTiers: unknown,
+): VolumeTier[] {
+  if (method === 'embroidery') {
+    const emb = normalizeTiers(embroideryTiers)
+    if (emb.length) return emb
+  }
+  return normalizeTiers(defaultTiers)
+}
+
 // The tier that applies at a given cart quantity (the highest threshold met), or null below the first.
 export function currentTier(qty: number, tiers: VolumeTier[]): VolumeTier | null {
   let best: VolumeTier | null = null

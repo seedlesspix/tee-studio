@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { currentTier, nextTier, normalizeTiers, type VolumeTier } from '../app/lib/volumeTiers'
+import { currentTier, nextTier, normalizeTiers, resolveTiers, type VolumeTier } from '../app/lib/volumeTiers'
 
 const TIERS: VolumeTier[] = [
   { minQty: 6, pct: 10 },
@@ -47,6 +47,28 @@ describe('normalizeTiers', () => {
     expect(normalizeTiers('not json')).toEqual([])
     expect(normalizeTiers({})).toEqual([])
     expect(normalizeTiers(42)).toEqual([])
+  })
+})
+
+describe('resolveTiers (per-method)', () => {
+  const def: VolumeTier[] = [{ minQty: 6, pct: 10 }, { minQty: 12, pct: 15 }, { minQty: 24, pct: 20 }]
+  const emb: VolumeTier[] = [{ minQty: 12, pct: 8 }] // flatter/fewer, as embroidery would
+
+  it('embroidery uses its override when set', () => {
+    expect(resolveTiers('embroidery', def, emb)).toEqual(emb)
+  })
+  it('embroidery falls back to the default when no override (null or empty)', () => {
+    expect(resolveTiers('embroidery', def, null)).toEqual(def)
+    expect(resolveTiers('embroidery', def, [])).toEqual(def)
+  })
+  it('print (and any non-embroidery method) always uses the default, even if an override exists', () => {
+    expect(resolveTiers('screen_print', def, emb)).toEqual(def)
+    expect(resolveTiers(null, def, emb)).toEqual(def)
+    expect(resolveTiers(undefined, def, emb)).toEqual(def)
+  })
+  it('parses jsonb/string forms and returns [] when nothing applies', () => {
+    expect(resolveTiers('embroidery', null, '[{"minQty":6,"pct":10}]')).toEqual([{ minQty: 6, pct: 10 }])
+    expect(resolveTiers('screen_print', null, emb)).toEqual([])
   })
 })
 

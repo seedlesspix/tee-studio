@@ -8,7 +8,7 @@ import {
   waitForMediaReady,
 } from '../../../../lib/design-products'
 import { type RosterEntry, entryHasContent, rosterValue, rosterShirtCount, rosterSizeQuantities } from '../../../../lib/namesNumbers'
-import { normalizeTiers, type VolumeTier } from '../../../../lib/volumeTiers'
+import { resolveTiers, type VolumeTier } from '../../../../lib/volumeTiers'
 
 export const runtime = 'nodejs'
 
@@ -207,16 +207,18 @@ export async function POST(
   )
 
   // This garment's per-product volume ladder → stamped on the design product as the volume.tiers
-  // metafield the discount Function reads at checkout. Best-effort: a missing template / no tiers just
-  // means no volume discount for this order (never blocks the cart-add).
+  // metafield the discount Function reads at checkout. Resolved BY METHOD here (embroidery uses the
+  // template's embroidery override when set; everything else uses the default ladder) so the metafield
+  // carries the final ladder and the Function stays method-agnostic. Best-effort: a missing template /
+  // no tiers just means no volume discount for this order (never blocks the cart-add).
   let volumeTiers: VolumeTier[] = []
   if (design.template_id) {
     const { data: tmpl } = await supabase
       .from('product_templates')
-      .select('volume_tiers')
+      .select('volume_tiers, volume_tiers_embroidery')
       .eq('id', design.template_id)
       .maybeSingle()
-    volumeTiers = normalizeTiers(tmpl?.volume_tiers)
+    volumeTiers = resolveTiers(design.print_method, tmpl?.volume_tiers, tmpl?.volume_tiers_embroidery)
   }
 
   // 1. Ephemeral product (per-size variants, folded price, seo.hidden, volume.tiers).

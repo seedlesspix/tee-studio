@@ -677,6 +677,7 @@ export type Database = {
           supports_names_numbers: boolean
           updated_at: string
           volume_tiers: Json | null
+          volume_tiers_embroidery: Json | null
         }
         Insert: {
           created_at?: string
@@ -690,6 +691,7 @@ export type Database = {
           supports_names_numbers?: boolean
           updated_at?: string
           volume_tiers?: Json | null
+          volume_tiers_embroidery?: Json | null
         }
         Update: {
           created_at?: string
@@ -703,6 +705,7 @@ export type Database = {
           supports_names_numbers?: boolean
           updated_at?: string
           volume_tiers?: Json | null
+          volume_tiers_embroidery?: Json | null
         }
         Relationships: [
           {
