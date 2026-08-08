@@ -334,6 +334,24 @@ export const UI_STRINGS = {
   'order.adding_to_cart': { default: "Adding to Cart...", group: "Order page", desc: "Add-to-cart button label while the request is in progress." },
   'order.add_to_cart': { default: "Add to Cart →", group: "Order page", desc: "Primary add-to-cart button label (an item count is appended after it)." },
   'order.keep_shopping': { default: "Keep shopping or check out from your cart when you're ready", group: "Order page", desc: "Reassurance note below the add-to-cart button that the customer can keep shopping." },
+  // ── Notifications / errors (interpolated — {placeholders} are filled in at runtime) ──
+  'notify.method_switch_confirm': { default: 'Switching to {method} will {actions}. Continue?', group: 'Notifications', desc: 'Confirmation before a print-method switch that changes the design ({method} = Print/Embroidery, {actions} = what will change).' },
+  'notify.switch_remove_uploads': { default: 'uploaded images', group: 'Notifications', desc: 'Phrase for uploaded images inside the method-switch confirmation.' },
+  'notify.switch_remove_art': { default: "art that isn't available for {method}", group: 'Notifications', desc: "Phrase for art that won't carry to the new method, inside the method-switch confirmation." },
+  'notify.switch_remove_prefix': { default: 'remove your {items}', group: 'Notifications', desc: 'Wraps the list of things removed on a method switch (e.g. "remove your uploaded images").' },
+  'notify.switch_restyle_text': { default: 'set your text to an embroidery font + thread color', group: 'Notifications', desc: 'Phrase for restyling text when switching to embroidery, in the method-switch confirmation.' },
+  'notify.file_too_large': { default: "That file is {size} MB, but the largest we can upload here is {max} MB.\n\nPlease upload a smaller version — or email the original file to us at {email} and we'll add it to your order.", group: 'Notifications', desc: 'Alert when an uploaded file is over the size limit.' },
+  'notify.eps_unsupported': { default: "We can't process EPS files here — please email the file to us at {email} and we'll add it to your order.", group: 'Notifications', desc: 'Alert when an EPS file (unsupported) is uploaded.' },
+  'notify.convert_failed': { default: "We couldn't process your {ext} file: {error}\n\nPlease try a different file, or email the original to us at {email} and we'll add it to your order.", group: 'Notifications', desc: 'Alert when an AI/PSD file conversion fails.' },
+  'notify.pdf_multipage': { default: 'Your PDF has {pages} pages — only page 1 was added to the design. If you need a different page, please upload just that page.', group: 'Notifications', desc: 'Notice when a multi-page PDF is uploaded (only page 1 is used).' },
+  'notify.pdf_original_lost': { default: "We added your design, but couldn't save the original PDF at full quality for production. Please email the original to us at {email} and we'll attach it to your order.", group: 'Notifications', desc: 'Notice when the design was added but the original PDF could not be saved.' },
+  'notify.pdf_save_failed': { default: "We couldn't save your PDF upload — please try again, or email the file to us at {email}.", group: 'Notifications', desc: 'Notice when a PDF upload fails entirely.' },
+  'notify.bg_removal_failed': { default: 'Background removal failed (HTTP {status}).', group: 'Notifications', desc: 'Alert when the background-removal request fails (server detail may be appended).' },
+  'notify.bg_removal_error': { default: 'Background removal error: {error}', group: 'Notifications', desc: 'Alert when background removal throws an unexpected error.' },
+  // ── Designer — Upload (guidance + low-res warnings) ──
+  'upload.guidance': { default: 'Vector or high-resolution artwork (300 DPI or more) will look best. Max size {max} MB.', group: 'Designer — Upload', desc: 'Guidance under the upload dropzone about ideal artwork + the size limit.' },
+  'upload.lowres_small': { default: '⚠ This image is low-resolution and may print blurry. For the sharpest print use 300 DPI or higher — or email us your original file.', group: 'Designer — Upload', desc: 'Warning shown when an uploaded image is low-resolution.' },
+  'upload.lowres_placed': { default: '⚠ Low resolution at this size — may print blurry. Try making it smaller, use a higher-resolution image, or email us your original.', group: 'Designer — Upload', desc: 'Warning shown when an image is scaled larger than its resolution supports.' },
 } as const satisfies Record<string, UiStringDef>
 
 export type UiStringKey = keyof typeof UI_STRINGS
@@ -348,6 +366,13 @@ export function resolveString(
   if (fallback !== undefined) return fallback
   const def = (UI_STRINGS as Record<string, UiStringDef>)[key]
   return def ? def.default : key
+}
+
+// Interpolate {name} placeholders in a resolved template — for error/notice wording that embeds live
+// values, e.g. format(t('upload.oversize', 'That file is {size} MB, max {max} MB.'), { size: 12, max: 25 }).
+// A placeholder with no matching var is left literally as {name} (visible, never blank).
+export function format(template: string, vars: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (_, k) => (k in vars ? String(vars[k]) : `{${k}}`))
 }
 
 // Grouped view of the registry for the admin Language page (stable group order = first-seen).

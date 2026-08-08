@@ -53,7 +53,8 @@ export default function LanguageAdmin() {
   }
 
   return (
-    <div>
+    <div className="p-6">
+      <div className="max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-1">
         <h1 className="text-2xl font-mono font-bold text-black">Language</h1>
         {message && (
@@ -106,6 +107,7 @@ export default function LanguageAdmin() {
           ))}
         </div>
       )}
+      </div>
     </div>
   )
 }

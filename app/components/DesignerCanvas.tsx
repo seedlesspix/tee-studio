@@ -19,6 +19,7 @@ import { type RosterEntry, type NnRole, NN_ROLE_PROP, entryHasContent, condensed
 import { renderCurvedArc } from '../lib/curvedArc'
 import { applyEmbroideryLook, removeEmbroideryLook } from '../lib/embroideryLook'
 import { useT } from './StringsProvider'
+import { format } from '../lib/uiStrings'
 import { refitSide, rebakeCurveParams, type RefitBox, type CanvasObj } from '../lib/refitEngine'
 import { boxFromSnapshot, isSnapshot, boxFromPct } from '../lib/boxSnapshot'
 
@@ -95,7 +96,6 @@ const MAX_UPLOAD_MB = 10
 // Upload-box guidance (customer-facing). EDITABLE STRING — destined for the labels-as-data /
 // language editor (not built yet); until it exists, tune the wording here. The size interpolates
 // MAX_UPLOAD_MB so it ALWAYS matches the real limit (shows 10 MB now, 20 MB after the launch bump).
-const UPLOAD_GUIDANCE = `Vector or high-resolution artwork (300 DPI or more) will look best. Max size ${MAX_UPLOAD_MB} MB.`
 // Low-resolution WARNING (never blocks — a quality nudge, unlike the hard MAX_UPLOAD_MB cap). Two tiers,
 // two tailored messages (Denise 2026-08-06). The tier MATH + thresholds live in ../lib/lowRes (shared
 // with the OrderInfo.txt bench flag so they can't disagree); only these EDITABLE customer STRINGS live
@@ -280,6 +280,7 @@ export default function DesignerCanvas({
   // Method DISPLAY name via the Language editor ("Print"/"Embroidery"); falls back to the hardcoded map
   // for any method key not registered. Internal keys (screen_print/embroidery) are unaffected.
   const tMethod = (m: string) => { const s = t('method.' + m); return s.startsWith('method.') ? methodLabel(m) : s }
+  const uploadGuidanceText = format(t('upload.guidance', 'Vector or high-resolution artwork (300 DPI or more) will look best. Max size {max} MB.'), { max: MAX_UPLOAD_MB })
   const [printMethod, setPrintMethod] = useState<string>('')
   // Embroidery mode (2026-08-06): a product's template can support MULTIPLE print methods (e.g. a hat =
   // print OR embroidery). supportedMethods drives the in-designer Print/Embroidery toggle; a single
@@ -2274,7 +2275,7 @@ export default function DesignerCanvas({
     const placedInW = placedInches(obj.getScaledWidth?.() || 0, boxW, Number(snap?.width_in) || 0)
     const placedInH = placedInches(obj.getScaledHeight?.() || 0, boxH, Number(snap?.height_in) || 0)
     const tier = lowResTier(srcW, srcH, placedInW, placedInH)
-    return tier === 'small' ? LOWRES_MSG_SMALL : tier === 'placed' ? LOWRES_MSG_PLACED : null
+    return tier === 'small' ? t('upload.lowres_small', LOWRES_MSG_SMALL) : tier === 'placed' ? t('upload.lowres_placed', LOWRES_MSG_PLACED) : null
   }
   const refreshLowRes = (obj: any) => setLowResWarning(lowResMessageFor(obj))
 
@@ -2684,14 +2685,14 @@ export default function DesignerCanvas({
 
     if (toRemove.length || willRestyleText) {
       const removeLabel = [
-        uploadsRemoved && 'uploaded images',
-        clipartRemoved && `art that isn't available for ${tMethod(m)}`,
+        uploadsRemoved && t('notify.switch_remove_uploads', 'uploaded images'),
+        clipartRemoved && format(t('notify.switch_remove_art', "art that isn't available for {method}"), { method: tMethod(m) }),
       ].filter(Boolean).join(' and ')
       const bits = [
-        removeLabel && `remove your ${removeLabel}`,
-        willRestyleText && 'set your text to an embroidery font + thread color',
+        removeLabel && format(t('notify.switch_remove_prefix', 'remove your {items}'), { items: removeLabel }),
+        willRestyleText && t('notify.switch_restyle_text', 'set your text to an embroidery font + thread color'),
       ].filter(Boolean)
-      if (bits.length && !window.confirm(`Switching to ${tMethod(m)} will ${bits.join(' and ')}. Continue?`)) return
+      if (bits.length && !window.confirm(format(t('notify.method_switch_confirm', 'Switching to {method} will {actions}. Continue?'), { method: tMethod(m), actions: bits.join(' and ') }))) return
       if (toRemove.length) {
         const rm = new Set(toRemove)
         toRemove.forEach((o: any) => canvas?.remove(o))
@@ -2972,11 +2973,10 @@ export default function DesignerCanvas({
     // immediately and we never store an absent/damaged original.
     if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
       const mb = (file.size / (1024 * 1024)).toFixed(1)
-      alert(
-        `That file is ${mb} MB, but the largest we can upload here is ${MAX_UPLOAD_MB} MB.\n\n` +
-        `Please upload a smaller version — or email the original file to us at ${SUPPORT_EMAIL} ` +
-        `and we'll add it to your order.`,
-      )
+      alert(format(
+        t('notify.file_too_large', "That file is {size} MB, but the largest we can upload here is {max} MB.\n\nPlease upload a smaller version — or email the original file to us at {email} and we'll add it to your order."),
+        { size: mb, max: MAX_UPLOAD_MB, email: SUPPORT_EMAIL },
+      ))
       e.target.value = ''
       return
     }
@@ -2989,7 +2989,7 @@ export default function DesignerCanvas({
     // (security), so f_png would fail regardless of plan. Not advertised; if one still slips in
     // (e.g. drag-dropped), send the customer to the email valve instead of a broken upload.
     if (ext === 'eps') {
-      alert(`We can't process EPS files here — please email the file to us at ${SUPPORT_EMAIL} and we'll add it to your order.`)
+      alert(format(t('notify.eps_unsupported', "We can't process EPS files here — please email the file to us at {email} and we'll add it to your order."), { email: SUPPORT_EMAIL }))
       return
     }
     const cloudinaryFormats = ['ai', 'psd']
@@ -3034,7 +3034,7 @@ export default function DesignerCanvas({
           name: file.name, url: pngUrl, type: 'image/png', originalUrl, originalFormat: ext,
         }]
       } catch (err: any) {
-        alert(`We couldn't process your ${ext.toUpperCase()} file: ${err.message}\n\nPlease try a different file, or email the original to us at ${SUPPORT_EMAIL} and we'll add it to your order.`)
+        alert(format(t('notify.convert_failed', "We couldn't process your {ext} file: {error}\n\nPlease try a different file, or email the original to us at {email} and we'll add it to your order."), { ext: ext.toUpperCase(), error: err.message, email: SUPPORT_EMAIL }))
       } finally {
         setImageEditBusy(false)
       }
@@ -3084,9 +3084,9 @@ export default function DesignerCanvas({
         }
         // Never silently drop the original or hide the page loss — tell the customer now.
         const notices: string[] = []
-        if (pageCount > 1) notices.push(`Your PDF has ${pageCount} pages — only page 1 was added to the design. If you need a different page, please upload just that page.`)
-        if (uploaded && !original) notices.push(`We added your design, but couldn't save the original PDF at full quality for production. Please email the original to us at ${SUPPORT_EMAIL} and we'll attach it to your order.`)
-        if (!uploaded) notices.push(`We couldn't save your PDF upload — please try again, or email the file to us at ${SUPPORT_EMAIL}.`)
+        if (pageCount > 1) notices.push(format(t('notify.pdf_multipage', 'Your PDF has {pages} pages — only page 1 was added to the design. If you need a different page, please upload just that page.'), { pages: pageCount }))
+        if (uploaded && !original) notices.push(format(t('notify.pdf_original_lost', "We added your design, but couldn't save the original PDF at full quality for production. Please email the original to us at {email} and we'll attach it to your order."), { email: SUPPORT_EMAIL }))
+        if (!uploaded) notices.push(format(t('notify.pdf_save_failed', "We couldn't save your PDF upload — please try again, or email the file to us at {email}."), { email: SUPPORT_EMAIL }))
         if (notices.length) alert(notices.join('\n\n'))
       } catch (err) {
         alert(t('designer.pdf_load_failed', 'Could not load PDF. Make sure it is a valid PDF file.'))
@@ -3312,7 +3312,7 @@ export default function DesignerCanvas({
         const text = await res.text().catch(() => '')
         let msg = ''
         try { msg = JSON.parse(text)?.error || '' } catch { /* not JSON */ }
-        alert(msg || `Background removal failed (HTTP ${res.status}).${text ? ` — ${text.slice(0, 140)}` : ''}`)
+        alert(msg || (format(t('notify.bg_removal_failed', 'Background removal failed (HTTP {status}).'), { status: res.status }) + (text ? ` — ${text.slice(0, 140)}` : '')))
         return
       }
       if (ct.includes('application/json')) {
@@ -3330,7 +3330,7 @@ export default function DesignerCanvas({
         alert(t('designer.removebg_unexpected', 'Background removal returned an unexpected response.') + (text ? ` — ${text.slice(0, 140)}` : ''))
       }
     } catch (e: any) {
-      alert(`Background removal error: ${e?.message || e}`)
+      alert(format(t('notify.bg_removal_error', 'Background removal error: {error}'), { error: e?.message || e }))
     } finally { setImageEditBusy(false) }
   }
 
@@ -4251,7 +4251,7 @@ export default function DesignerCanvas({
       dbColors={dbColors}
       deleteSelected={deleteSelected}
       text={textProps}
-      upload={{ handleImageUpload, handleImageDrop, uploadGuidance: UPLOAD_GUIDANCE, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload, removeWhite: removeWhiteFromSelected, removeBackground: removeBackgroundFromSelected, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy, colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop: cleanupCrop, lowResWarning }}
+      upload={{ handleImageUpload, handleImageDrop, uploadGuidance: uploadGuidanceText, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload, removeWhite: removeWhiteFromSelected, removeBackground: removeBackgroundFromSelected, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy, colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop: cleanupCrop, lowResWarning }}
       clipart={{ printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor }}
     />
   )
@@ -4337,7 +4337,7 @@ export default function DesignerCanvas({
     : activeTab === 'upload' ? (
       <MobileUploadBand
         handleImageUpload={handleImageUpload}
-        uploadGuidance={UPLOAD_GUIDANCE}
+        uploadGuidance={uploadGuidanceText}
         libraryUploads={libraryUploads}
         libraryLoading={libraryLoading}
         pickLibraryUpload={pickLibraryUpload}
