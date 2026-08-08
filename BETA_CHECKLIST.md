@@ -7,11 +7,13 @@ CLAUDE.md backlog; this file is the "these are NOT optional" promotion of them.
 
 ## Designer (customer-facing)
 
-- [ ] **1. Align icons match Illustrator's.** Replace the current align icons on
-  the design canvas with the standard Illustrator-style glyphs (align left /
-  center / right / justify-distribute). Denise has a clipart reference uploaded
-  and can provide more detail. *(Already logged as the "universal icon set"
-  backlog item — this promotes it to pre-beta.)*
+- [ ] **1. Align icons match Illustrator's.** 🟡 FIRST PASS shipped 2026-08-08.
+  Swapped the hand-rolled align SVGs for the shared **Lucide AlignLeft/Center/Right**
+  glyphs (the standard Illustrator paragraph-align vocabulary), desktop + mobile.
+  **Awaiting Denise:** share the clipart reference to fine-tune the exact glyph look
+  if Lucide's aren't the intended set, and confirm whether to ADD a **justify**
+  option (the app currently offers left/center/right only). *(Universal-icon-set
+  backlog item, promoted to pre-beta.)*
 - [x] **2. Text line spacing + character spacing controls.** ✅ Shipped
   2026-08-07. Added a **Line Spacing** slider (multi-line text; hidden on curved),
   and **Letter Spacing now works on curved text** too (it was disabled before).
@@ -44,9 +46,13 @@ CLAUDE.md backlog; this file is the "these are NOT optional" promotion of them.
   reorder in /admin/templates (writes product_templates.sort_order, which the
   picker sorts by).
 
-- [ ] **12. Text panel cleanup.** The Text "sheet" is clunky — icons, buttons,
-  and their order need a tidy-up pass. *(New item; overlaps item 1's
-  Illustrator-style icon work — do them together.)*
+- [ ] **12. Text panel cleanup.** 🟡 FIRST PASS shipped 2026-08-08. Merged the
+  separate "Text Align" + "Effects" blocks into one consistent **Format** toolbar
+  (Bold / Italic / UPPERCASE + align, one button treatment, titled), and cleaned
+  the ad-hoc glyphs (Direction —/↕ → icons; upload ⬆ → Upload icon). Kept the
+  overall control order. **Awaiting Denise:** what specifically feels clunky about
+  the ORDER (so the deeper reorder matches her intent, not a guess). *(Overlaps
+  item 1's icon work — shipped together.)*
 - [x] **13. Designs vs. Clipart split + decal numbers on orders.** ✅ Done
   2026-08-10 as the unified Art Library (per-art method toggles, Decal # on
   every art, multi-category labels, search by Decal #, automatic capture in
@@ -89,10 +95,13 @@ CLAUDE.md backlog; this file is the "these are NOT optional" promotion of them.
   PNG/SVG downloads are now named `<orderNumber>-<LastName>` (e.g. "1042-Smith")
   via a shared, tested `app/lib/orderFiles.ts` helper. Falls back to the order
   number alone (no name), or a short id for drafts with no order number yet.
-- [ ] **8. Font management in admin.** Add fonts AND font categories through
-  the admin — the full "admin owns all fonts" setup that still needs to be
-  built. *(Already scoped as the Font Management sub-project, ~4–7 dev-days —
-  promoted to pre-beta.)*
+- [x] **8. Font management in admin.** ✅ Shipped 2026-08-07 (Phase A+B),
+  verified by Denise (upload → designer → cut file all working). `designer_fonts`
+  is the single source of truth: admin **uploads** font files (→ fonts bucket +
+  DB), assigns a **category**, and the designer serves them at runtime; the 58
+  bundled fonts were migrated name-byte-stable and the hardcoded declarations
+  retired. The customer **font picker** is now grouped-by-category + searchable +
+  current-font-obvious (2026-08-08). *(Was scoped ~4–7 dev-days.)*
 - [ ] **9. Language editor in admin.** A "Language" section in admin so
   customer-facing wording in the design tool can be re-worded without code
   changes (folds in the "Screen Print" → "Print" rename so it can't regress).
