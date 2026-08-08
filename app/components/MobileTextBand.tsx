@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { AlignLeft, AlignCenter, AlignRight, MoveHorizontal, MoveVertical } from 'lucide-react'
 import MobileAlignRow from './MobileAlignRow'
 
 // MobileTextBand — BLOCKER-2 mobile rework, Stage 2. The Text tool's controls laid
@@ -188,16 +189,17 @@ export default function MobileTextBand({
             <MobileAlignRow alignObject={alignObject} onDelete={deleteSelected} />
             {/* Text justify (within the box) + effects */}
             <div className="flex items-center gap-1.5">
-              {(['left', 'center', 'right'] as const).map(a => (
+              {([['left', AlignLeft], ['center', AlignCenter], ['right', AlignRight]] as const).map(([a, Icon]) => (
                 <button
                   key={a}
                   onClick={() => handleTextAlign(a)}
                   disabled={selectedIsCurved}
-                  className={`flex-1 rounded py-1.5 text-xs font-mono transition-all disabled:opacity-40 ${
+                  title={`Align ${a}`}
+                  className={`flex flex-1 items-center justify-center rounded py-1.5 transition-all disabled:opacity-40 ${
                     textAlign === a ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 border border-gray-200'
                   }`}
                 >
-                  {a === 'left' ? '⇤' : a === 'center' ? '↔' : '⇥'}
+                  <Icon size={15} strokeWidth={2.5} />
                 </button>
               ))}
               <button
@@ -238,13 +240,13 @@ export default function MobileTextBand({
               <button
                 onClick={() => setTextDirection('horizontal')}
                 disabled={selectedIsCurved}
-                className={`flex-1 rounded py-1.5 text-xs font-mono transition-all disabled:opacity-40 ${textDirection === 'horizontal' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 border border-gray-200'}`}
-              >— Horizontal</button>
+                className={`flex flex-1 items-center justify-center gap-1.5 rounded py-1.5 text-xs font-mono transition-all disabled:opacity-40 ${textDirection === 'horizontal' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 border border-gray-200'}`}
+              ><MoveHorizontal size={14} /> Horizontal</button>
               <button
                 onClick={() => setTextDirection('vertical')}
                 disabled={selectedIsCurved}
-                className={`flex-1 rounded py-1.5 text-xs font-mono transition-all disabled:opacity-40 ${textDirection === 'vertical' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 border border-gray-200'}`}
-              >↕ Vertical</button>
+                className={`flex flex-1 items-center justify-center gap-1.5 rounded py-1.5 text-xs font-mono transition-all disabled:opacity-40 ${textDirection === 'vertical' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 border border-gray-200'}`}
+              ><MoveVertical size={14} /> Vertical</button>
             </div>
           </div>
         )}

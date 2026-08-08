@@ -1,5 +1,6 @@
 'use client'
 import { type Dispatch, type SetStateAction, type RefObject, type ChangeEventHandler, type DragEventHandler } from 'react'
+import { AlignLeft, AlignCenter, AlignRight, Bold, Italic, CaseUpper, MoveHorizontal, MoveVertical, Upload } from 'lucide-react'
 import ClipartPanel, { type ArtMeta } from './ClipartPanel'
 import MyUploadsPanel, { type UploadItem } from './MyUploadsPanel'
 import FontPicker from './FontPicker'
@@ -245,12 +246,12 @@ export default function SelectionPanel({
                   <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Direction</label>
                   <div className="grid grid-cols-2 gap-2 mt-1">
                     <button onClick={() => setTextDirection('horizontal')} disabled={selectedIsCurved}
-                      className={`py-2 rounded text-xs font-mono transition-all disabled:opacity-40 disabled:cursor-default ${textDirection === 'horizontal' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
-                      — Horizontal
+                      className={`flex items-center justify-center gap-1.5 py-2 rounded text-xs font-mono transition-all disabled:opacity-40 disabled:cursor-default border ${textDirection === 'horizontal' ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'}`}>
+                      <MoveHorizontal size={14} /> Horizontal
                     </button>
                     <button onClick={() => setTextDirection('vertical')} disabled={selectedIsCurved}
-                      className={`py-2 rounded text-xs font-mono transition-all disabled:opacity-40 disabled:cursor-default ${textDirection === 'vertical' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
-                      ↕ Vertical
+                      className={`flex items-center justify-center gap-1.5 py-2 rounded text-xs font-mono transition-all disabled:opacity-40 disabled:cursor-default border ${textDirection === 'vertical' ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'}`}>
+                      <MoveVertical size={14} /> Vertical
                     </button>
                   </div>
                 </div>
@@ -284,59 +285,38 @@ export default function SelectionPanel({
                     </div>
                   )}
                 </div>
+                {/* Format — style + alignment in one tidy toolbar (Illustrator-style glyphs from the
+                    shared Lucide set). Bold/Italic re-bake on curved text; UPPERCASE + Align don't apply
+                    to a baked curve, so they disable there. */}
                 <div>
-                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Text Align</label>
-                  <div className="flex gap-1">
-                    {(['left', 'center', 'right'] as const).map(align => (
-                      <button key={align}
-                        onClick={() => handleTextAlign(align)} disabled={selectedIsCurved}
-                        className={`flex-1 py-1.5 rounded text-xs font-mono border transition-all disabled:opacity-40 disabled:cursor-default ${
-                          textAlign === align
-                            ? 'bg-gray-800 text-white border-gray-800'
-                            : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
+                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Format</label>
+                  <div className="grid grid-cols-3 gap-2 mt-1">
+                    <button onClick={() => setIsBold(b => !b)} title="Bold"
+                      className={`flex items-center justify-center py-2 rounded border transition-all ${isBold ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'}`}>
+                      <Bold size={16} strokeWidth={2.5} />
+                    </button>
+                    <button onClick={() => setIsItalic(i => !i)} title="Italic"
+                      className={`flex items-center justify-center py-2 rounded border transition-all ${isItalic ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'}`}>
+                      <Italic size={16} strokeWidth={2.5} />
+                    </button>
+                    <button onClick={() => setIsUppercase(u => !u)} disabled={selectedIsCurved} title="UPPERCASE"
+                      className={`flex items-center justify-center py-2 rounded border transition-all disabled:opacity-40 disabled:cursor-default ${isUppercase ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'}`}>
+                      <CaseUpper size={18} strokeWidth={2.5} />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 mt-2">
+                    {([['left', AlignLeft], ['center', AlignCenter], ['right', AlignRight]] as const).map(([align, Icon]) => (
+                      <button key={align} onClick={() => handleTextAlign(align)} disabled={selectedIsCurved} title={`Align ${align}`}
+                        className={`flex items-center justify-center py-2 rounded border transition-all disabled:opacity-40 disabled:cursor-default ${
+                          textAlign === align ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'
                         }`}>
-                        {align === 'left' ? (
-                          <svg width="14" height="12" viewBox="0 0 14 12" fill="currentColor">
-                            <rect x="0" y="0" width="14" height="2"/>
-                            <rect x="0" y="5" width="10" height="2"/>
-                            <rect x="0" y="10" width="12" height="2"/>
-                          </svg>
-                        ) : align === 'center' ? (
-                          <svg width="14" height="12" viewBox="0 0 14 12" fill="currentColor">
-                            <rect x="0" y="0" width="14" height="2"/>
-                            <rect x="2" y="5" width="10" height="2"/>
-                            <rect x="1" y="10" width="12" height="2"/>
-                          </svg>
-                        ) : (
-                          <svg width="14" height="12" viewBox="0 0 14 12" fill="currentColor">
-                            <rect x="0" y="0" width="14" height="2"/>
-                            <rect x="4" y="5" width="10" height="2"/>
-                            <rect x="2" y="10" width="12" height="2"/>
-                          </svg>
-                        )}
+                        <Icon size={16} strokeWidth={2.5} />
                       </button>
                     ))}
                   </div>
-                  <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">Effects</label>
-                  <div className="grid grid-cols-3 gap-2 mt-1">
-                    <button onClick={() => setIsBold(b => !b)}
-                      className={`py-2 rounded text-xs font-bold transition-all ${isBold ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
-                      Bold
-                    </button>
-                    <button onClick={() => setIsItalic(i => !i)}
-                      className={`py-2 rounded text-xs italic transition-all ${isItalic ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
-                      Italic
-                    </button>
-                    <button onClick={() => setIsUppercase(u => !u)} disabled={selectedIsCurved}
-                      className={`py-2 rounded text-xs font-mono transition-all disabled:opacity-40 disabled:cursor-default ${isUppercase ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
-                      AA
-                    </button>
-
-                  </div>
-                  {/* These four (spacing / case / direction / align) don't apply to a
-                      curved text — it's a baked image; only the re-bake props work. */}
+                  {/* Case / direction / align don't apply to a curved text — it's a baked image. */}
                   {selectedIsCurved && (
-                    <p className="text-[10px] text-gray-500 mt-2">Curved text: straighten to change case, direction, or align.</p>
+                    <p className="text-[10px] text-gray-500 mt-2">Curved text: straighten to change case, direction, or alignment.</p>
                   )}
                 </div>
                 {/* Delete belongs to EDIT, not the empty add-surface. */}
@@ -356,7 +336,7 @@ export default function SelectionPanel({
                   onDragOver={e => e.preventDefault()}
                   onDrop={handleImageDrop}
                   className="mt-2 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-xl p-8 cursor-pointer hover:border-[#dd3333] hover:bg-[#dd3333]/5 transition-all">
-                  <span className="text-3xl mb-3">⬆</span>
+                  <Upload size={28} className="mb-3 text-gray-500" strokeWidth={1.75} />
                   <span className="text-sm text-gray-800 text-center">
                     Drop image here<br />
                     <span className="text-xs opacity-60">JPG · PNG · SVG · AI · PSD · PDF</span>
