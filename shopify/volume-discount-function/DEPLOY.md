@@ -101,14 +101,46 @@ shopify app deploy
 
 Follow the prompts to push the function to the store's app.
 
-## Step 6 — Turn the discount on in Admin
+## Step 6 — Turn the discount on (API only — the function has no settings UI)
 
-A deployed function does nothing until an **automatic discount** runs it:
+A deployed function does nothing until an **automatic discount** runs it. This function has no config
+UI, so it does **not** appear as selectable under Admin → Discounts → "Select discount type" — the
+discount must be created via the Admin API, and specifically **by the tshirtdeli-discounts app**, because
+`discountAutomaticAppCreate` needs the `write_discounts` scope that app has AND `functionHandle` only
+resolves within the app that owns the function. (Confirmed: the main site app can't do it — ACCESS_DENIED.)
 
-1. **Shopify Admin → Discounts → Create discount → Automatic discount**
-2. Choose the **"volume-tier-discount"** function (it appears once deployed).
-3. Give it a title (customers may see it, e.g. "Volume discount"), set it **Active**, no end date.
-4. Save.
+**Run the helper (with tshirtdeli-discounts credentials):**
+
+```bash
+# a ready Admin token for the app…
+STORE_DOMAIN=your-store.myshopify.com DISCOUNTS_APP_TOKEN=shpat_xxx \
+  node create-automatic-discount.mjs
+# …or client-credentials, if enabled for the app:
+STORE_DOMAIN=your-store.myshopify.com DISCOUNTS_CLIENT_ID=xxx DISCOUNTS_CLIENT_SECRET=xxx \
+  node create-automatic-discount.mjs
+```
+
+It prints `✅ CREATED { discountId, title:"Volume discount", status:"ACTIVE" }`. Or run the raw mutation
+in any GraphiQL authenticated as **tshirtdeli-discounts** (API version 2026-07):
+
+```graphql
+mutation {
+  discountAutomaticAppCreate(automaticAppDiscount: {
+    title: "Volume discount"
+    functionHandle: "volume-tier-discount"
+    discountClasses: [PRODUCT]
+    startsAt: "2026-08-08T00:00:00Z"
+    combinesWith: { orderDiscounts: true, productDiscounts: false, shippingDiscounts: true }
+  }) {
+    automaticAppDiscount { discountId title status }
+    userErrors { field message }
+  }
+}
+```
+
+Note the 2026-07 shape: **`functionHandle`** (not `functionId`) + **`discountClasses: [PRODUCT]`**.
+`combinesWith.productDiscounts:false` keeps the volume discount from stacking with other product
+discounts — flip any of these later in Admin → Discounts.
 
 ## Step 7 — Test the full path (before flipping the display)
 
