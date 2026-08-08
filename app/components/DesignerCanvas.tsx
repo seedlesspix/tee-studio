@@ -296,7 +296,7 @@ export default function DesignerCanvas({
   const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center')
   const [selectedSvgColor, setSelectedSvgColor] = useState<string>('#000000')
   const [printPricing, setPrintPricing] = useState<Record<number, number>>({1: 12, 2: 20})
-  const [dbFonts, setDbFonts] = useState<{ label: string; value: string }[]>([])
+  const [dbFonts, setDbFonts] = useState<{ label: string; value: string; category?: string | null }[]>([])
   const [dbColors, setDbColors] = useState<{ label: string; hex: string }[]>([])
   // The method dbFonts/dbColors were loaded FOR. Both methods have non-empty sets, so "is the embroidery
   // palette loaded yet?" can't be answered by length — the warn+convert restyle must wait until this
@@ -503,7 +503,7 @@ export default function DesignerCanvas({
     const [{ data: fontData }, { data: colorData }] = await Promise.all([
       supabase
         .from('designer_fonts')
-        .select('label, value')
+        .select('label, value, category')
         .eq('print_method_key', method)
         .eq('is_active', true)
         .order('sort_order'),

@@ -38,7 +38,7 @@ export default function NamesNumbersPanel({
   // never enter the generic text-edit flow.
   selectedRole?: 'name' | 'number' | 'title' | null
   style?: {
-    fonts: { label: string; value: string }[]
+    fonts: { label: string; value: string; category?: string | null }[]
     selectedFont: string
     setSelectedFont: (f: string) => void
     colors: { label: string; hex: string }[]
