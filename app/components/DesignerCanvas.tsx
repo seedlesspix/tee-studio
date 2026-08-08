@@ -17,6 +17,7 @@ import { maxScaleForRotation } from '../lib/rotationFit'
 import NamesNumbersPanel from './NamesNumbersPanel'
 import { type RosterEntry, type NnRole, NN_ROLE_PROP, entryHasContent, condensedScaleX, rosterShirtCount, rosterSizeQuantities, rosterValue, jerseyStackLayout } from '../lib/namesNumbers'
 import { renderCurvedArc } from '../lib/curvedArc'
+import { applyEmbroideryLook, removeEmbroideryLook } from '../lib/embroideryLook'
 import { refitSide, rebakeCurveParams, type RefitBox, type CanvasObj } from '../lib/refitEngine'
 import { boxFromSnapshot, isSnapshot, boxFromPct } from '../lib/boxSnapshot'
 
@@ -1179,6 +1180,41 @@ export default function DesignerCanvas({
     else applyConversion()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [printMethod, configMethod, dbFonts, dbColors])
+
+  // Embroidery-look preview (BETA item 10, v1): in embroidery mode, give text + vector art the satin-thread
+  // texture + a raised shadow — the fill stays the solid ink color, so cut/save are untouched (see
+  // embroideryLook.ts). Runs across BOTH sides' objects so a flip keeps it, and re-applies on method/color
+  // change (deps), config load, and object add/remove (canvasObjectCount). N&N placeholders keep their own
+  // styling in v1.
+  const refreshEmbroideryLook = useCallback(async () => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    const emb = printMethod === 'embroidery'
+    const { Shadow } = await import('fabric')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const isArt = (o: any) =>
+      o && !o.excludeFromExport && !o[NN_ROLE_PROP] &&
+      (o.type === 'i-text' || o.type === 'textbox' || o.type === 'group' || o.type === 'path' ||
+        (o.type === 'image' && o._isCurvedText))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const seen = new Set<any>()
+    for (const o of [...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current]) {
+      if (!o || seen.has(o)) continue
+      seen.add(o)
+      if (!isArt(o)) continue
+      if (emb) {
+        const ink = typeof o.fill === 'string' ? o.fill : (typeof o._curveFill === 'string' ? o._curveFill : textColor)
+        applyEmbroideryLook(o, ink)
+        if (!o._embShadow) { o.set('shadow', new Shadow({ color: 'rgba(0,0,0,0.45)', blur: 3, offsetX: 0, offsetY: 2 })); o._embShadow = true }
+      } else {
+        removeEmbroideryLook(o)
+        if (o._embShadow) { o.set('shadow', null); o._embShadow = false }
+      }
+    }
+    canvas.requestRenderAll()
+  }, [printMethod, textColor])
+
+  useEffect(() => { void refreshEmbroideryLook() }, [refreshEmbroideryLook, configMethod, canvasObjectCount])
 
   useEffect(() => {
     fabricCanvasRef.current = fabricCanvas
@@ -4241,24 +4277,36 @@ export default function DesignerCanvas({
   // Print/Embroidery segmented control (embroidery mode) — shared by the desktop aside header AND the
   // mobile band so BOTH surfaces can switch method. Only when the product supports >1. Active = quiet
   // dark (red-vocab: red is action-only, never selected-state).
-  const methodToggle = supportedMethods.length > 1 ? (
-    <div className="flex gap-1.5">
-      {supportedMethods.map(m => {
-        const active = printMethod === m
-        return (
-          <button
-            key={m}
-            type="button"
-            onClick={() => handleMethodSwitch(m)}
-            aria-pressed={active}
-            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-              active ? 'bg-gray-900 text-white' : 'border border-gray-300 text-gray-700 hover:border-gray-400'
-            }`}
-          >
-            {methodLabel(m)}
-          </button>
-        )
-      })}
+  // Honesty note for the embroidery-look preview (shows in embroidery mode even on embroidery-only
+  // products, so it rides with the method toggle rather than being tied to it).
+  const embNote = printMethod === 'embroidery' ? (
+    <p className="flex items-center gap-1.5 text-[11px] text-gray-500">
+      <span aria-hidden="true">🧵</span> Preview — final stitching may vary.
+    </p>
+  ) : null
+  const methodToggle = (supportedMethods.length > 1 || embNote) ? (
+    <div className="flex flex-col gap-1.5">
+      {supportedMethods.length > 1 && (
+        <div className="flex gap-1.5">
+          {supportedMethods.map(m => {
+            const active = printMethod === m
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => handleMethodSwitch(m)}
+                aria-pressed={active}
+                className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                  active ? 'bg-gray-900 text-white' : 'border border-gray-300 text-gray-700 hover:border-gray-400'
+                }`}
+              >
+                {methodLabel(m)}
+              </button>
+            )
+          })}
+        </div>
+      )}
+      {embNote}
     </div>
   ) : null
 
