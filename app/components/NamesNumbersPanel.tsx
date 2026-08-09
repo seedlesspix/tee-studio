@@ -2,7 +2,7 @@
 // Names & Numbers roster panel (the `names` rail tab). Presentational + controlled: the parent
 // (DesignerCanvas) owns the roster array + the placeholder objects on the canvas. Light designer-
 // panel palette; red = ACTION only (per the locked red-vocabulary rule).
-import { useState } from 'react'
+import { type KeyboardEvent as ReactKeyboardEvent, useState } from 'react'
 import { Plus, Trash2, Type, Hash, Tag, ClipboardPaste, Download, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
 import { type RosterEntry, emptyEntry, parseBulkRoster, rosterShirtCount } from '../lib/namesNumbers'
 import FontPicker from './FontPicker'
@@ -67,6 +67,10 @@ export default function NamesNumbersPanel({
     onChange(rows.map((r, k) => (k === i ? { ...r, ...patch } : r)))
   const addRow = () => onChange([...rows, emptyEntry(sizes[0] ?? '')])
   const removeRow = (i: number) => onChange(rows.filter((_, k) => k !== i).length ? rows.filter((_, k) => k !== i) : [emptyEntry(sizes[0] ?? '')])
+  // Native feel (Denise round 2): Enter in a roster field adds another row.
+  const onRowKeyDown = (e: ReactKeyboardEvent) => {
+    if (e.key === 'Enter') { e.preventDefault(); addRow() }
+  }
   const applyPaste = () => {
     const parsed = parseBulkRoster(pasteText, sizes[0] ?? '')
     if (parsed.length) onChange(parsed)
@@ -139,15 +143,15 @@ export default function NamesNumbersPanel({
           {rows.map((r, i) => (
             <div key={i} className="grid items-center gap-1 border-b border-gray-100 px-2 py-1 last:border-b-0" style={{ gridTemplateColumns: gridTemplate }}>
               {cols.name && (
-                <input value={r.name} onChange={e => update(i, { name: e.target.value.toUpperCase() })} placeholder={t('nn.ph_name', 'SMITH')}
+                <input value={r.name} onChange={e => update(i, { name: e.target.value.toUpperCase() })} onKeyDown={onRowKeyDown} placeholder={t('nn.ph_name', 'SMITH')}
                   className="w-full rounded border border-gray-200 px-1.5 py-1 text-xs uppercase outline-none focus:border-[#dd3333]" />
               )}
               {cols.number && (
-                <input value={r.number} onChange={e => update(i, { number: e.target.value })} placeholder={t('nn.ph_number', '12')}
+                <input value={r.number} onChange={e => update(i, { number: e.target.value })} onKeyDown={onRowKeyDown} placeholder={t('nn.ph_number', '12')}
                   className="w-full rounded border border-gray-200 px-1.5 py-1 text-xs outline-none focus:border-[#dd3333]" />
               )}
               {cols.title && (
-                <input value={r.title} onChange={e => update(i, { title: e.target.value.toUpperCase() })} placeholder={t('nn.ph_title', 'CAPTAIN')}
+                <input value={r.title} onChange={e => update(i, { title: e.target.value.toUpperCase() })} onKeyDown={onRowKeyDown} placeholder={t('nn.ph_title', 'CAPTAIN')}
                   className="w-full rounded border border-gray-200 px-1.5 py-1 text-xs uppercase outline-none focus:border-[#dd3333]" />
               )}
               {sizes.length ? (
@@ -160,7 +164,7 @@ export default function NamesNumbersPanel({
                 <input value={r.size} onChange={e => update(i, { size: e.target.value })} placeholder={t('nn.ph_size', 'L')}
                   className="w-full rounded border border-gray-200 px-1.5 py-1 text-xs outline-none focus:border-[#dd3333]" />
               )}
-              <input type="number" min={1} value={r.qty} onChange={e => update(i, { qty: Math.max(1, parseInt(e.target.value) || 1) })}
+              <input type="number" min={1} value={r.qty} onChange={e => update(i, { qty: Math.max(1, parseInt(e.target.value) || 1) })} onKeyDown={onRowKeyDown}
                 className="w-full rounded border border-gray-200 px-1 py-1 text-xs outline-none focus:border-[#dd3333]" />
               <button type="button" onClick={() => removeRow(i)} title={t('nn.row_remove', 'Remove')} className="flex justify-center text-gray-400 hover:text-[#dd3333]">
                 <Trash2 size={14} />

@@ -126,6 +126,7 @@ export const UI_STRINGS = {
   'designer.empty.add_text': { default: "Add Text", group: "Designer — General", desc: "Button on the blank shirt that starts adding a line of text." },
   'designer.empty.upload': { default: "Upload", group: "Designer — General", desc: "Button on the blank shirt that opens the artwork upload flow." },
   'designer.empty.add_art': { default: "Add Art", group: "Designer — General", desc: "Button on the blank shirt that opens the art/clipart browser." },
+  'designer.empty.names': { default: "Names & Numbers", group: "Designer — General", desc: "Button on the blank shirt that opens the Names & Numbers (roster/jersey) tool." },
   'designer.empty.login_tip': { default: 'Designing as a guest — your work stays for this visit. Log in to save it to your account and pick it back up next time.', group: "Designer — General", desc: "Tip in the blank-shirt box telling guests to log in so their design is saved to their account (hidden once logged in — BETA #25)." },
   'designer.product_picker.title': { default: "Use on another product", group: "Designer — General", desc: "Header title of the modal for re-fitting a saved design onto a different garment." },
   'designer.close': { default: "Close", group: "Designer — General", desc: "Accessible label for the X button that closes the product-picker modal." },

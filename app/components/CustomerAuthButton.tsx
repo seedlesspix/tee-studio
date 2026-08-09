@@ -80,14 +80,14 @@ export function CustomerAuthButton({ variant = 'default', onBeforeLogin }: Props
   if (!loggedIn || !customer) {
     const anonClass =
       variant === 'quiet'
-        ? 'border border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
+        ? 'border border-gray-300 text-gray-800 hover:border-[#dd3333] hover:text-[#dd3333]'
         : 'bg-[#dd3333] text-white hover:bg-[#c22a2a]'
     return (
       <button
         type="button"
         onClick={startLogin}
         disabled={busy}
-        className={`inline-flex h-8 items-center rounded px-3 text-sm font-medium disabled:opacity-60 ${anonClass}`}
+        className={`inline-flex h-8 items-center rounded px-3 text-sm font-medium transition-colors disabled:opacity-60 ${anonClass}`}
       >
         {busy ? t('designer.auth.saving', 'Saving…') : t('designer.auth.log_in', 'Log in')}
       </button>

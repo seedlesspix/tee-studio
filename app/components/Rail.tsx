@@ -95,8 +95,8 @@ export default function Rail({
               !enabled
                 ? 'text-gray-300 cursor-default'
                 : active
-                  ? `${horizontal ? 'bg-gray-100' : 'bg-white'} text-gray-900 font-semibold ${marker} border-gray-900`
-                  : `${horizontal ? 'text-gray-400' : 'text-gray-500'} hover:text-gray-900 hover:bg-gray-100 ${marker} border-transparent`
+                  ? `${horizontal ? 'bg-gray-100' : 'bg-white'} text-gray-900 font-semibold ${marker} ${horizontal ? 'border-[#dd3333]' : 'border-gray-900'}`
+                  : `${horizontal ? 'text-gray-600 font-medium' : 'text-gray-500'} hover:text-gray-900 hover:bg-gray-100 ${marker} border-transparent`
             }`}
           >
             <Icon size={20} strokeWidth={1.75} />

@@ -79,7 +79,7 @@ export default function ActionBar({
           <SaveDesignControl onSave={onSave} loggedIn={loggedIn} dirty={dirty} />
           <button
             onClick={onOpenDesigns}
-            className="px-3 py-1.5 rounded text-sm text-gray-600 hover:text-[#dd3333] transition-colors whitespace-nowrap"
+            className="px-3 py-1.5 rounded text-sm border border-gray-300 text-gray-800 hover:border-[#dd3333] hover:text-[#dd3333] transition-colors whitespace-nowrap"
           >
             {t('designer.my_designs', 'My Designs')}{savedDesignsCount > 0 ? ` (${savedDesignsCount})` : ''}
           </button>
@@ -111,12 +111,14 @@ export default function ActionBar({
             <div className="px-4 py-2" onClick={() => setMenuOpen(false)}>
               <SaveDesignControl onSave={onSave} loggedIn={loggedIn} dirty={dirty} />
             </div>
-            <button
-              onClick={() => { onOpenDesigns(); setMenuOpen(false) }}
-              className="block w-full px-4 py-2 text-left text-sm text-gray-800 hover:bg-gray-50"
-            >
-              {t('designer.my_designs', 'My Designs')}{savedDesignsCount > 0 ? ` (${savedDesignsCount})` : ''}
-            </button>
+            <div className="px-4 py-2">
+              <button
+                onClick={() => { onOpenDesigns(); setMenuOpen(false) }}
+                className="inline-flex items-center rounded border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-800 hover:bg-gray-50"
+              >
+                {t('designer.my_designs', 'My Designs')}{savedDesignsCount > 0 ? ` (${savedDesignsCount})` : ''}
+              </button>
+            </div>
           </div>
         </>
       )}

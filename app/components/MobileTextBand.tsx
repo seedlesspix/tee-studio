@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AlignLeft, AlignCenter, AlignRight, AlignJustify, MoveHorizontal, MoveVertical } from 'lucide-react'
 import MobileAlignRow from './MobileAlignRow'
 import { useT } from './StringsProvider'
@@ -48,12 +48,25 @@ export default function MobileTextBand({
 
   const [sub, setSub] = useState<SubTool>('type')
   const [fontQuery, setFontQuery] = useState('')
+  const [fontCat, setFontCat] = useState('All')
+
+  const OTHER = 'Other'
+  const catOf = (f: { category?: string | null }) => (f.category && f.category.trim()) || OTHER
 
   const selectedIsCurved = selectedObjectType === 'text' && curveAmount !== 0
-  const allFonts = (dbFonts.length > 0 ? dbFonts : fonts) as { label: string; value: string }[]
-  const fontList = fontQuery
-    ? allFonts.filter(f => f.label.toLowerCase().includes(fontQuery.toLowerCase()))
-    : allFonts
+  // Keep `category` so the mobile picker can filter by it — parity with the desktop FontPicker.
+  const allFonts = (dbFonts.length > 0 ? dbFonts : fonts) as { label: string; value: string; category?: string | null }[]
+  const fontCategories = useMemo(() => {
+    const seen: string[] = []
+    for (const f of allFonts) { const c = catOf(f); if (!seen.includes(c)) seen.push(c) }
+    return seen.sort((a, b) => (a === OTHER ? 1 : 0) - (b === OTHER ? 1 : 0))
+  }, [allFonts])
+  const hasCategories = fontCategories.some(c => c !== OTHER)
+  const fq = fontQuery.trim().toLowerCase()
+  const fontList = allFonts.filter(f =>
+    (fontCat === 'All' || catOf(f) === fontCat) &&
+    (!fq || f.label.toLowerCase().includes(fq))
+  )
   const sample = (selectedTextPreview || textInput || t('designer.text.font_sample', 'Abc')).slice(0, 10) || t('designer.text.font_sample', 'Abc')
   const colorList = (dbColors.length > 0 ? dbColors : [
     { label: 'White', hex: '#ffffff' }, { label: 'Black', hex: '#000000' },
@@ -104,16 +117,35 @@ export default function MobileTextBand({
 
         {sub === 'font' && (
           <div className="flex h-full flex-col gap-2">
-            {/* Category chips (single "All" until admin gets a category field) + search */}
-            <div className="flex shrink-0 items-center gap-2">
-              <span className={chip(true)}>{t('designer.text.category_all', 'All')}</span>
-              <input
-                value={fontQuery}
-                onChange={e => setFontQuery(e.target.value)}
-                placeholder={t('designer.text.search_fonts', 'Search fonts')}
-                className="min-w-0 flex-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-sm text-gray-900 outline-none focus:border-gray-500"
-              />
-            </div>
+            {/* Category chips (real admin categories when present, else a single "All")
+                + search — parity with the desktop font picker. */}
+            {hasCategories ? (
+              <div className="flex shrink-0 flex-col gap-1.5">
+                <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+                  {['All', ...fontCategories].map(c => (
+                    <button key={c} type="button" onClick={() => setFontCat(c)} className={chip(fontCat === c)}>
+                      {c === 'All' ? t('designer.text.category_all', 'All') : c}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  value={fontQuery}
+                  onChange={e => setFontQuery(e.target.value)}
+                  placeholder={t('designer.text.search_fonts', 'Search fonts')}
+                  className="min-w-0 rounded-full border border-gray-300 bg-white px-3 py-1 text-sm text-gray-900 outline-none focus:border-gray-500"
+                />
+              </div>
+            ) : (
+              <div className="flex shrink-0 items-center gap-2">
+                <span className={chip(true)}>{t('designer.text.category_all', 'All')}</span>
+                <input
+                  value={fontQuery}
+                  onChange={e => setFontQuery(e.target.value)}
+                  placeholder={t('designer.text.search_fonts', 'Search fonts')}
+                  className="min-w-0 flex-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-sm text-gray-900 outline-none focus:border-gray-500"
+                />
+              </div>
+            )}
             {/* ONE horizontal row of live font previews */}
             <div className="flex min-h-0 flex-1 items-stretch gap-2 overflow-x-auto pb-1">
               {fontList.map(f => (
@@ -146,13 +178,13 @@ export default function MobileTextBand({
             <div className="flex items-center justify-between">
               <span className="font-mono text-xs uppercase tracking-widest text-gray-700">{t('designer.text.size_label', 'Size')}</span>
               <input
-                type="number" min={8} max={120} value={fontSize}
+                type="number" min={24} max={200} value={fontSize}
                 onChange={e => setFontSize(Number(e.target.value))}
                 className="w-16 rounded border border-gray-200 bg-gray-100 px-2 py-1 text-center text-sm text-gray-900 outline-none focus:border-[#dd3333]"
               />
             </div>
             <input
-              type="range" min={8} max={120} value={fontSize}
+              type="range" min={24} max={200} step={2} value={fontSize}
               onChange={e => setFontSize(Number(e.target.value))}
               className="w-full accent-[#dd3333]"
             />

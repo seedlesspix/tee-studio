@@ -276,6 +276,9 @@ export default function DesignerCanvas({
   const [textInput, setTextInput] = useState('')
   const [selectedFont, setSelectedFont] = useState('Arial Black')
   const [textColor, setTextColor] = useState('#ffffff')
+  // Default new-text size. Stays 36 for SSR parity (a lazy mobile initializer would
+  // hydrate-mismatch: server prerenders 36, a phone would hydrate 70). A mount effect
+  // below bumps mobile to 70 (see the fontSize mobile-default effect).
   const [fontSize, setFontSize] = useState(36)
   const t = useT() // admin-editable wording (Language editor, BETA item 9)
   // Method DISPLAY name via the Language editor ("Print"/"Embroidery"); falls back to the hardcoded map
@@ -368,6 +371,16 @@ export default function DesignerCanvas({
     return () => mq.removeEventListener('change', update)
   }, [])
 
+  // fontSize mobile-default: bump the default new-text size to 70 on phones (36 pops
+  // too small on a tiny screen — Denise round 2). Runs ONCE after hydration so there's
+  // no SSR mismatch; the tool band is closed at mount and no text exists yet, so no
+  // visible jump. Desktop keeps 36. A later selection overwrites this with the object's
+  // own size, so it only seeds the FIRST new text.
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 1023px)').matches) setFontSize(70)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // iOS/WebKit only honours a fixed app viewport when the DOCUMENT itself is
   // locked — overflow:hidden on a child div does NOT stop html/body from panning,
   // which was letting the page drift horizontally and rubber-band under the
@@ -381,9 +394,57 @@ export default function DesignerCanvas({
     const body = document.body
     html.classList.add('designer-touch-lock')
     body.classList.add('designer-touch-lock')
+
+    // (a) Block PAGE pinch-zoom. iOS/WebKit deliberately ignores the viewport
+    // maximum-scale / user-scalable=no for USER pinch (accessibility since iOS 10),
+    // so the meta tag alone never stops it — these WebKit-only gesture events are the
+    // real trigger. Preventing them kills page pinch. They do NOT fire for one-finger
+    // scroll or typing, so the keyboard path is untouched. (A future in-app canvas
+    // zoom would be app-level anyway — see the mobile-zoom note.)
+    const blockGesture = (e: Event) => e.preventDefault()
+    document.addEventListener('gesturestart', blockGesture, { passive: false })
+    document.addEventListener('gesturechange', blockGesture, { passive: false })
+    document.addEventListener('gestureend', blockGesture, { passive: false })
+
+    // (b) Block pull-to-refresh WITHOUT locking the document. iOS WebKit ignores
+    // overscroll-behavior for native pull-to-refresh, and the old position:fixed lock
+    // that used to stop it was removed to cure the keyboard black-flash — so we cancel
+    // ONLY the top rubber-band pull: a single-finger downward drag that starts at the
+    // very top and isn't inside a scrollable panel. This adds NO position/overflow/
+    // height/visualViewport changes, so it can't reintroduce the black-flash.
+    let startY = 0
+    const onTouchStart = (e: TouchEvent) => { startY = e.touches[0]?.clientY ?? 0 }
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return
+      // Canvas drags happen in the touch-none stage — they can't pull-to-refresh, so
+      // skip the whole guard (and its per-frame ancestor walk) for them.
+      if ((e.target as HTMLElement)?.closest?.('.touch-none')) return
+      // Never fight the on-screen keyboard: if a field is focused, leave scrolling to iOS.
+      const ae = document.activeElement as HTMLElement | null
+      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return
+      const atTop = (document.scrollingElement?.scrollTop ?? 0) <= 0
+      const pullingDown = e.touches[0].clientY > startY
+      if (!(atTop && pullingDown)) return
+      // Allow the pull if it started inside a vertically-scrollable panel (e.g. the tool band).
+      let node = e.target as HTMLElement | null
+      while (node && node !== body) {
+        const oy = getComputedStyle(node).overflowY
+        if ((oy === 'auto' || oy === 'scroll') && node.scrollHeight > node.clientHeight) return
+        node = node.parentElement
+      }
+      if (e.cancelable) e.preventDefault()
+    }
+    document.addEventListener('touchstart', onTouchStart, { passive: true })
+    document.addEventListener('touchmove', onTouchMove, { passive: false })
+
     return () => {
       html.classList.remove('designer-touch-lock')
       body.classList.remove('designer-touch-lock')
+      document.removeEventListener('gesturestart', blockGesture)
+      document.removeEventListener('gesturechange', blockGesture)
+      document.removeEventListener('gestureend', blockGesture)
+      document.removeEventListener('touchstart', onTouchStart)
+      document.removeEventListener('touchmove', onTouchMove)
     }
   }, [isMobile])
 
@@ -3654,13 +3715,66 @@ export default function DesignerCanvas({
   }
 
   const deleteSelected = () => {
-    markDirty()
     if (!fabricCanvas) return
-    const active = fabricCanvas.getActiveObject()
-    if (active) { fabricCanvas.remove(active); fabricCanvas.renderAll() }
+    // getActiveObjects() returns [] for none, [obj] for a single selection, and ALL
+    // children for a multi-select ActiveSelection — canvas.remove(theActiveSelection)
+    // would remove nothing (the wrapper isn't in _objects), so iterate the members.
+    const objs = fabricCanvas.getActiveObjects()
+    if (!objs.length) return
+    markDirty()
+    fabricCanvas.discardActiveObject()
+    objs.forEach((o: any) => fabricCanvas.remove(o))
+    fabricCanvas.renderAll()
   }
   // Keep the mobile delete-control's handler pointing at the live deleteSelected.
   useEffect(() => { deleteSelectedRef.current = deleteSelected })
+
+  // Desktop native keyboard (Denise round 2): Backspace/Delete removes the selected
+  // object; arrow keys nudge it (Shift = 10px). GUARDED so it never fires while typing
+  // in any input/textarea/select/contentEditable or while editing an IText on-canvas.
+  // Mobile has no physical keys and uses the on-canvas discs, so this is desktop-only.
+  // Reads the canvas from the stable ref, so [] deps are correct (no re-bind needed).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isMobileRef.current) return
+      const canvas = fabricCanvasRef.current
+      if (!canvas) return
+      const ae = document.activeElement as HTMLElement | null
+      const tag = ae?.tagName
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!ae?.isContentEditable
+      const active = canvas.getActiveObject()
+      if (typing || active?.isEditing) return
+      if (!active) return
+      // Delete / Backspace → remove the selected object
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault()
+        deleteSelectedRef.current()
+        return
+      }
+      // Arrow-key nudge (1px, Shift = 10px). Locked N&N placeholders never move —
+      // check group MEMBERS too, so a multi-select containing a placeholder is skipped
+      // (an ActiveSelection wrapper has no _nnRole, so the bare check would miss it).
+      const members = active.getObjects?.() ?? [active]
+      if (members.some((o: any) => o[NN_ROLE_PROP])) return
+      const step = e.shiftKey ? 10 : 1
+      let dx = 0, dy = 0
+      if (e.key === 'ArrowLeft') dx = -step
+      else if (e.key === 'ArrowRight') dx = step
+      else if (e.key === 'ArrowUp') dy = -step
+      else if (e.key === 'ArrowDown') dy = step
+      else return
+      e.preventDefault()
+      active.set({ left: (active.left || 0) + dx, top: (active.top || 0) + dy })
+      const bounds = getPrintAreaBounds()
+      if (bounds) constrainObject(active, bounds) // re-clamp to the print area, like drag does
+      active.setCoords()
+      canvas.requestRenderAll()
+      markDirty()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── CanvasStage parity harness hook (DEV-ONLY, ?parity=1) ──────────────────
   // READ-ONLY instrumentation for the extraction gate. Exposes the canvas + the
@@ -3730,6 +3844,9 @@ export default function DesignerCanvas({
     // greeting's Upload CTA so it can't confuse customers with an option that does nothing there.
     onUpload: printMethod === 'embroidery' ? undefined : () => { setActiveTab('upload'); setBandOpen(true) },
     onAddArt: () => { setActiveTab('clipart'); setBandOpen(true) },
+    // Names & Numbers CTA — hidden for the same reasons the rail hides the 'names' tab:
+    // embroidery mode, and templates with N&N turned off (see railHiddenKeys).
+    onNames: (printMethod === 'embroidery' || !namesNumbersEnabled) ? undefined : () => { setActiveTab('names'); setBandOpen(true) },
     loggedIn, // #25b: hide the "log in to keep this design" tip once signed in
   } : null
   // Per-side surcharge. designer_pricing.sides is a SIDE IDENTITY (1 = Front,

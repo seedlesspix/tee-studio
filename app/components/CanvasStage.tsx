@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, type RefObject } from 'react'
-import { Type, Upload, Shapes } from 'lucide-react'
+import { Type, Upload, Shapes, Hash } from 'lucide-react'
 import { useT } from './StringsProvider'
 
 type PrintAreaPct = { xPct: number; yPct: number; widthPct: number; heightPct: number }
@@ -13,6 +13,7 @@ type EmptyState = {
   onAddText: () => void
   onUpload?: () => void // omitted in embroidery (no uploads) → the Upload CTA is hidden
   onAddArt: () => void
+  onNames?: () => void // omitted in embroidery and when the product template disables N&N
   loggedIn?: boolean // drives the "log in to keep this design" tip (hidden once logged in)
 }
 
@@ -121,34 +122,42 @@ export default function CanvasStage({
               </div>
             )}
             <div className="flex w-full flex-col gap-2">
-              {/* Three primary start ACTIONS — red = action per the red-vocab rule
-                  (#21: they must read as the strong next step, not blend into browse
-                  content / nav). Equal peers; Add Text leads by order. */}
+              {/* Start ACTIONS — neutral peers (revert of the #21 red fill, Denise round 2).
+                  Red is reserved for the single thin separator below the buttons. Add Text
+                  leads by order, not colour. */}
               <button
                 onClick={emptyState.onAddText}
-                className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[#dd3333] px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700"
+                className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"
               >
                 <Type size={16} strokeWidth={1.75} /> {t('designer.empty.add_text', 'Add Text')}
               </button>
               {emptyState.onUpload && (
                 <button
                   onClick={emptyState.onUpload}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[#dd3333] px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"
                 >
                   <Upload size={16} strokeWidth={1.75} /> {t('designer.empty.upload', 'Upload')}
                 </button>
               )}
               <button
                 onClick={emptyState.onAddArt}
-                className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[#dd3333] px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700"
+                className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"
               >
                 <Shapes size={16} strokeWidth={1.75} /> {t('designer.empty.add_art', 'Add Art')}
               </button>
+              {emptyState.onNames && (
+                <button
+                  onClick={emptyState.onNames}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"
+                >
+                  <Hash size={16} strokeWidth={1.75} /> {t('designer.empty.names', 'Names & Numbers')}
+                </button>
+              )}
             </div>
             {/* Login tip (Denise #25b): distinguishes this-session work from a design saved to your
                 account. Hidden once logged in. Wording is admin-editable (Language editor). */}
             {!emptyState.loggedIn && (
-              <p className="mt-1 w-full border-t border-gray-100 pt-3 text-[11px] font-semibold leading-relaxed text-gray-700">
+              <p className="mt-1 w-full border-t border-[#dd3333] pt-3 text-[11px] font-semibold leading-relaxed text-gray-700">
                 {t('designer.empty.login_tip', 'Designing as a guest — your work stays for this visit. Log in to save it to your account and pick it back up next time.')}
               </p>
             )}

@@ -1,14 +1,14 @@
 // Selection-handle rendering shared by the designer's desktop + mobile control
 // sets (#20). ONE look on both platforms: a white disc (soft shadow + thin neutral
 // ring so it reads on ANY garment colour) with a COLOUR-DIFFERENTIATED icon — RED
-// delete, BLUE rotate, BLUE resize. Bigger than the old dots, with a generous tap
+// delete, BLACK rotate, BLACK resize. Bigger than the old dots, with a generous tap
 // target. Pure 2D-canvas drawing (no Fabric dependency); each platform wraps these
 // in Fabric Control.render closures. NOT serialized and NOT in the PNG/SVG export —
 // pure selection chrome, so saves and parity hashes are unaffected.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export const HANDLE_RED = '#dd3333'  // delete — matches the brand action red
-export const HANDLE_BLUE = '#2563eb' // rotate + resize — a distinct, non-action blue
+export const HANDLE_DARK = '#111827' // rotate + resize — near-black (Denise round 2: black, not blue)
 const RING = 'rgba(17,24,39,0.55)'   // neutral ring: visible on both white and black garments
 
 // White disc centered at the current ctx origin (caller has translated to left/top).
@@ -39,9 +39,9 @@ export function drawDeleteIcon(ctx: any, size: number) {
   ctx.stroke()
 }
 
-// BLUE circular arrow (drawn, not a glyph — the ↻ character renders too small)
+// BLACK circular arrow (drawn, not a glyph — the ↻ character renders too small)
 export function drawRotateIcon(ctx: any, size: number) {
-  ctx.strokeStyle = HANDLE_BLUE
+  ctx.strokeStyle = HANDLE_DARK
   ctx.lineWidth = Math.max(2, size * 0.11)
   ctx.lineCap = 'round'
   const R = size * 0.26
@@ -58,9 +58,9 @@ export function drawRotateIcon(ctx: any, size: number) {
   ctx.stroke()
 }
 
-// BLUE diagonal double-headed arrow (↘↖) — the universal "resize" glyph
+// BLACK diagonal double-headed arrow (↘↖) — the universal "resize" glyph
 export function drawResizeIcon(ctx: any, size: number) {
-  ctx.strokeStyle = HANDLE_BLUE
+  ctx.strokeStyle = HANDLE_DARK
   ctx.lineWidth = Math.max(2, size * 0.1)
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
