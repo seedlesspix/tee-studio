@@ -1,18 +1,17 @@
 import type { Viewport } from 'next'
 
-// Designer-scoped viewport. iOS auto-zooms when you focus any input with
-// font-size < 16px (our text box is 14px), and because the designer locks the
-// document (body position:fixed for the mobile canvas), that zoom-pan doesn't
-// cleanly reset — it left the shirt shifted right after the keyboard closed.
-// maximum-scale=1 stops the auto-zoom entirely. Scoped to /designer via this
-// layout so admin/order pages keep normal pinch-zoom. The designer has its own
-// zoom control, so disabling browser zoom here is acceptable. Server component
-// (the page is a client component and can't export viewport).
+// Designer-scoped viewport. Mobile browsers may PINCH-ZOOM the designer (Denise
+// 2026-08-09 — customers zoom in to inspect their design; Android needs this since
+// Chrome honours maximum-scale/user-scalable, unlike iOS which ignores them for user
+// pinch). So we deliberately do NOT set maximum-scale / user-scalable. The only reason
+// they were here was to suppress iOS auto-zoom-on-focus for inputs < 16px — that is now
+// prevented at the source by forcing every designer input to >= 16px (globals.css,
+// `.designer-mobile-shell input/textarea/select`), which stops the auto-zoom WITHOUT
+// taking zoom away from the customer. Server component (the page is a client component
+// and can't export viewport).
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
 }
 
 export default function DesignerLayout({ children }: { children: React.ReactNode }) {

@@ -47,6 +47,16 @@ body {
   .designer-mobile-shell {
     height: 100dvh;
   }
+  /* Android pinch-zoom pass (Denise 2026-08-09): the designer viewport now allows user
+     zoom (maximum-scale removed), which would let iOS auto-zoom when focusing an input
+     under 16px. Forcing every designer text-entry field to 16px on mobile stops that
+     auto-zoom while KEEPING pinch-zoom for the customer. No designer input uses an inline
+     font-size, so this reliably wins over the Tailwind text-sm/text-xs classes. */
+  .designer-mobile-shell input,
+  .designer-mobile-shell textarea,
+  .designer-mobile-shell select {
+    font-size: 16px;
+  }
 }
 
 
