@@ -39,9 +39,17 @@ export default function AdminsPage() {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { showMessage('Enter a valid email address.', 'error'); return }
     if (admins.some(a => a.email === email)) { showMessage('That email is already an admin.', 'error'); return }
     setBusy(true)
-    const { error } = await supabase.from('admins').insert({ email, is_owner: false, added_by: me })
+    // Server route: adds to the allowlist AND pre-creates their auth account so
+    // their first OTP sign-in works (a direct insert here skips account creation —
+    // that was the #23 "Signups not allowed for otp" bug).
+    const res = await fetch('/api/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    })
+    const json = await res.json().catch(() => ({}))
     setBusy(false)
-    if (error) { showMessage('Error: ' + error.message, 'error'); return }
+    if (!res.ok) { showMessage(json.error || 'Could not add admin.', 'error'); return }
     setNewEmail(''); showMessage(`Added ${email}. They can sign in at the admin login with an emailed code.`)
     load()
   }

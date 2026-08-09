@@ -148,7 +148,7 @@ export default function CanvasStage({
             {/* Login tip (Denise #25b): distinguishes this-session work from a design saved to your
                 account. Hidden once logged in. Wording is admin-editable (Language editor). */}
             {!emptyState.loggedIn && (
-              <p className="text-[11px] leading-relaxed text-gray-500">
+              <p className="mt-1 w-full border-t border-gray-100 pt-3 text-[11px] font-semibold leading-relaxed text-gray-700">
                 {t('designer.empty.login_tip', 'Designing as a guest — your work stays for this visit. Log in to save it to your account and pick it back up next time.')}
               </p>
             )}
