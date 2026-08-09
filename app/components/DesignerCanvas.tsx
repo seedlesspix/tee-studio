@@ -406,8 +406,10 @@ export default function DesignerCanvas({
       // a NEW finger brings the total to 1, never when a finger LIFTS mid-pinch (touchstart doesn't
       // fire on lift), so it can't unlatch an in-progress pinch.
       if (e.touches.length === 1) { gestureRef.current = false; return }
-      if (e.touches.length !== 2) return
+      // 2+ fingers → ALWAYS swallow so no touch (incl. a 3rd finger landing mid-pinch) can reach
+      // Fabric and re-grab/re-select. Only the exact 2-finger case (re)baselines the pinch below.
       e.preventDefault(); e.stopPropagation()
+      if (e.touches.length !== 2) return
       gestureRef.current = true
       cancelFabricGesture() // undo the grab finger 1 already started on Fabric
       pinchRef.current = { startDist: distOf(e.touches) || 1, startMid: midOf(e.touches), startView: { ...viewRef.current } }
