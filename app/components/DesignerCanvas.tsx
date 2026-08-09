@@ -381,72 +381,13 @@ export default function DesignerCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // iOS/WebKit only honours a fixed app viewport when the DOCUMENT itself is
-  // locked — overflow:hidden on a child div does NOT stop html/body from panning,
-  // which was letting the page drift horizontally and rubber-band under the
-  // sheet's drag (three symptoms, one cause: the page ate the touch gestures).
-  // position:fixed on body is the proven iOS lock. Applied via JS ONLY while the
-  // designer is mounted AND on mobile → reverted on unmount/desktop, so no other
-  // page and no desktop layout is affected (isMobile is false on desktop).
-  useEffect(() => {
-    if (!isMobile) return
-    const html = document.documentElement
-    const body = document.body
-    html.classList.add('designer-touch-lock')
-    body.classList.add('designer-touch-lock')
-
-    // (a) Block PAGE pinch-zoom. iOS/WebKit deliberately ignores the viewport
-    // maximum-scale / user-scalable=no for USER pinch (accessibility since iOS 10),
-    // so the meta tag alone never stops it — these WebKit-only gesture events are the
-    // real trigger. Preventing them kills page pinch. They do NOT fire for one-finger
-    // scroll or typing, so the keyboard path is untouched. (A future in-app canvas
-    // zoom would be app-level anyway — see the mobile-zoom note.)
-    const blockGesture = (e: Event) => e.preventDefault()
-    document.addEventListener('gesturestart', blockGesture, { passive: false })
-    document.addEventListener('gesturechange', blockGesture, { passive: false })
-    document.addEventListener('gestureend', blockGesture, { passive: false })
-
-    // (b) Block pull-to-refresh WITHOUT locking the document. iOS WebKit ignores
-    // overscroll-behavior for native pull-to-refresh, and the old position:fixed lock
-    // that used to stop it was removed to cure the keyboard black-flash — so we cancel
-    // ONLY the top rubber-band pull: a single-finger downward drag that starts at the
-    // very top and isn't inside a scrollable panel. This adds NO position/overflow/
-    // height/visualViewport changes, so it can't reintroduce the black-flash.
-    let startY = 0
-    const onTouchStart = (e: TouchEvent) => { startY = e.touches[0]?.clientY ?? 0 }
-    const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length !== 1) return
-      // Canvas drags happen in the touch-none stage — they can't pull-to-refresh, so
-      // skip the whole guard (and its per-frame ancestor walk) for them.
-      if ((e.target as HTMLElement)?.closest?.('.touch-none')) return
-      // Never fight the on-screen keyboard: if a field is focused, leave scrolling to iOS.
-      const ae = document.activeElement as HTMLElement | null
-      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return
-      const atTop = (document.scrollingElement?.scrollTop ?? 0) <= 0
-      const pullingDown = e.touches[0].clientY > startY
-      if (!(atTop && pullingDown)) return
-      // Allow the pull if it started inside a vertically-scrollable panel (e.g. the tool band).
-      let node = e.target as HTMLElement | null
-      while (node && node !== body) {
-        const oy = getComputedStyle(node).overflowY
-        if ((oy === 'auto' || oy === 'scroll') && node.scrollHeight > node.clientHeight) return
-        node = node.parentElement
-      }
-      if (e.cancelable) e.preventDefault()
-    }
-    document.addEventListener('touchstart', onTouchStart, { passive: true })
-    document.addEventListener('touchmove', onTouchMove, { passive: false })
-
-    return () => {
-      html.classList.remove('designer-touch-lock')
-      body.classList.remove('designer-touch-lock')
-      document.removeEventListener('gesturestart', blockGesture)
-      document.removeEventListener('gesturechange', blockGesture)
-      document.removeEventListener('gestureend', blockGesture)
-      document.removeEventListener('touchstart', onTouchStart)
-      document.removeEventListener('touchmove', onTouchMove)
-    }
-  }, [isMobile])
+  // Mobile designer INTENTIONALLY allows normal browser gestures (Denise 2026-08-09):
+  // pinch-zoom to inspect the design, and pull-to-refresh like any normal page. Both are
+  // safe now because the auto-draft snapshot restores the design on reload (see the
+  // autodraft restore effect below — this was the condition the old pull-to-refresh
+  // disable was waiting on). So there is deliberately NO touch-lock: no gesture blocking,
+  // no overscroll lock, no viewport lock. (App-level canvas zoom is a separate future
+  // feature — see the mobile-zoom note; this is just the browser's own page zoom.)
 
   // Mobile tool band (rework, ImprintNext pattern): the tools live in an IN-FLOW
   // fixed-height band at the bottom of the mobile column (MobileToolBand), NOT an
@@ -3729,9 +3670,10 @@ export default function DesignerCanvas({
   // Keep the mobile delete-control's handler pointing at the live deleteSelected.
   useEffect(() => { deleteSelectedRef.current = deleteSelected })
 
-  // Desktop native keyboard (Denise round 2): Backspace/Delete removes the selected
-  // object; arrow keys nudge it (Shift = 10px). GUARDED so it never fires while typing
-  // in any input/textarea/select/contentEditable or while editing an IText on-canvas.
+  // Desktop native keyboard (Denise round 2): Backspace/Delete removes the selection,
+  // arrow keys nudge it (Shift = 10px), Escape deselects, Cmd/Ctrl+D duplicates. GUARDED
+  // so nothing fires while typing in an input/textarea/select/contentEditable or while
+  // editing an IText on-canvas.
   // Mobile has no physical keys and uses the on-canvas discs, so this is desktop-only.
   // Reads the canvas from the stable ref, so [] deps are correct (no re-bind needed).
   useEffect(() => {
@@ -3745,10 +3687,38 @@ export default function DesignerCanvas({
       const active = canvas.getActiveObject()
       if (typing || active?.isEditing) return
       if (!active) return
+      // Crop mode owns the keyboard: never let escape/delete/duplicate/nudge touch the
+      // crop rectangle (Cmd+D would otherwise clone it into a permanent printable phantom;
+      // Escape would strand the dimming scrims). Apply/Cancel Crop are the only exits.
+      if (active._isCropRect) return
+      // Escape → deselect
+      if (e.key === 'Escape') { canvas.discardActiveObject(); canvas.requestRenderAll(); return }
       // Delete / Backspace → remove the selected object
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault()
         deleteSelectedRef.current()
+        return
+      }
+      // Cmd/Ctrl+D → duplicate the selection (offset +15px, re-clamped to the print
+      // area). Clones carry CANVAS_CUSTOM_PROPS so uploads/curved text copy faithfully.
+      // Locked N&N placeholders are managed by the roster, so they're excluded.
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'd' || e.key === 'D')) {
+        e.preventDefault()
+        const objs = canvas.getActiveObjects().filter((o: any) => !o[NN_ROLE_PROP])
+        if (!objs.length) return
+        canvas.discardActiveObject()
+        const b = getPrintAreaBounds()
+        Promise.all(objs.map((o: any) => o.clone(CANVAS_CUSTOM_PROPS))).then((clones: any[]) => {
+          clones.forEach((c: any, idx: number) => {
+            c.set({ left: (objs[idx].left || 0) + 15, top: (objs[idx].top || 0) + 15 })
+            canvas.add(c)
+            if (b) constrainObject(c, b)
+            c.setCoords()
+          })
+          if (clones.length === 1) canvas.setActiveObject(clones[0])
+          canvas.requestRenderAll()
+          markDirty()
+        })
         return
       }
       // Arrow-key nudge (1px, Shift = 10px). Locked N&N placeholders never move —
@@ -4393,12 +4363,12 @@ export default function DesignerCanvas({
     : activeTab === 'names' ? namesPanel
     : selectionPanel
 
-  // Root is a fixed, app-like viewport: no page scroll / pull-to-refresh on
-  // mobile, so touch gestures reach the canvas + sheet instead of the browser.
-  // Desktop keeps h-screen exactly (lg:h-screen) — parity-safe; the overflow /
-  // overscroll locks are no-ops on desktop. dvh accounts for the mobile URL bar.
+  // Root shell. Mobile INTENTIONALLY behaves like a normal browser page — page
+  // scroll, pull-to-refresh, and pinch-zoom are all allowed (auto-draft restores the
+  // design on reload; see the touch note above). There is no overscroll/touch lock.
+  // Desktop keeps h-screen exactly (lg:h-screen/lg:overflow-hidden) — parity-safe.
   return (
-    <div ref={shellRef} className="designer-mobile-shell flex flex-col lg:h-screen lg:overflow-hidden overscroll-none text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
+    <div ref={shellRef} className="designer-mobile-shell flex flex-col lg:h-screen lg:overflow-hidden text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
 
       {/* Header — extracted to <ActionBar> (D0 restructure step 1a, move-not-
           rewrite). Phase 2: becomes the sealed "price + Save + Next" bottom bar

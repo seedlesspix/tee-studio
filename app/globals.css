@@ -32,14 +32,10 @@ body {
    to reveal the focused input. Instead — like ImprintNext, proven on the same
    iPhone/Chrome — the shell uses a STABLE height (.designer-mobile-shell below:
    -webkit-fill-available, 100vh fallback; neither reacts to the keyboard) and lets
-   the browser scroll the focused text box into view natively. This class only
-   disables pull-to-refresh/overscroll (protects an in-progress design); it must NOT
-   set overflow:hidden or position:fixed — either one re-breaks the native keyboard
-   scroll (both were tried and rejected). */
-html.designer-touch-lock,
-body.designer-touch-lock {
-  overscroll-behavior: none;
-}
+   the browser scroll the focused text box into view natively.
+   NOTE (Denise 2026-08-09): the old .designer-touch-lock rule (overscroll-behavior:none,
+   to disable pull-to-refresh) was REMOVED — pull-to-refresh is now wanted (normal-page
+   behavior), and auto-draft restores the design on reload so it's non-destructive. */
 
 /* Mobile designer shell height. `-webkit-fill-available` OVER-reported on iOS Chrome
    (767px vs the real window 653px — the URL-bar-hidden height), making the column

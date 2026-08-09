@@ -117,35 +117,29 @@ export default function MobileTextBand({
 
         {sub === 'font' && (
           <div className="flex h-full flex-col gap-2">
-            {/* Category chips (real admin categories when present, else a single "All")
-                + search — parity with the desktop font picker. */}
-            {hasCategories ? (
-              <div className="flex shrink-0 flex-col gap-1.5">
-                <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+            {/* Category chips + search on ONE row (parity with desktop, but the fixed-
+                height band can't spare a second row — a stacked layout clipped the font
+                previews). Chips scroll horizontally; the search stays compact beside them.
+                Falls back to a single "All" chip when no admin categories exist. */}
+            <div className="flex shrink-0 items-center gap-2">
+              {hasCategories ? (
+                <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto">
                   {['All', ...fontCategories].map(c => (
                     <button key={c} type="button" onClick={() => setFontCat(c)} className={chip(fontCat === c)}>
                       {c === 'All' ? t('designer.text.category_all', 'All') : c}
                     </button>
                   ))}
                 </div>
-                <input
-                  value={fontQuery}
-                  onChange={e => setFontQuery(e.target.value)}
-                  placeholder={t('designer.text.search_fonts', 'Search fonts')}
-                  className="min-w-0 rounded-full border border-gray-300 bg-white px-3 py-1 text-sm text-gray-900 outline-none focus:border-gray-500"
-                />
-              </div>
-            ) : (
-              <div className="flex shrink-0 items-center gap-2">
+              ) : (
                 <span className={chip(true)}>{t('designer.text.category_all', 'All')}</span>
-                <input
-                  value={fontQuery}
-                  onChange={e => setFontQuery(e.target.value)}
-                  placeholder={t('designer.text.search_fonts', 'Search fonts')}
-                  className="min-w-0 flex-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-sm text-gray-900 outline-none focus:border-gray-500"
-                />
-              </div>
-            )}
+              )}
+              <input
+                value={fontQuery}
+                onChange={e => setFontQuery(e.target.value)}
+                placeholder={t('designer.text.search_fonts', 'Search fonts')}
+                className={`${hasCategories ? 'w-28' : 'flex-1'} min-w-0 shrink-0 rounded-full border border-gray-300 bg-white px-3 py-1 text-sm text-gray-900 outline-none focus:border-gray-500`}
+              />
+            </div>
             {/* ONE horizontal row of live font previews */}
             <div className="flex min-h-0 flex-1 items-stretch gap-2 overflow-x-auto pb-1">
               {fontList.map(f => (
