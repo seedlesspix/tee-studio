@@ -3,13 +3,6 @@ import { createClient } from '../lib/supabase/server'
 import SignOutButton from './SignOutButton'
 import AdminTabs from './AdminTabs'
 
-function getAllowedEmails(): string[] {
-  return (process.env.ADMIN_EMAILS || '')
-    .split(',')
-    .map(e => e.trim().toLowerCase())
-    .filter(Boolean)
-}
-
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -18,8 +11,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     redirect('/admin-login')
   }
 
-  const allowed = getAllowedEmails()
-  if (!allowed.includes(user.email.toLowerCase())) {
+  // Admin access is now the `admins` list (BETA #23) — is_admin() checks it by email. is_admin_owner()
+  // gates the owner-only Admins screen. Both are SECURITY DEFINER so they read the list regardless of RLS.
+  const [{ data: isAdmin }, { data: isOwner }] = await Promise.all([
+    supabase.rpc('is_admin'),
+    supabase.rpc('is_admin_owner'),
+  ])
+  if (!isAdmin) {
     await supabase.auth.signOut()
     redirect('/admin-login?error=not_authorized')
   }
@@ -32,7 +30,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             TEE<span className="text-[#dd3333]">STUDIO</span>
             <span className="text-gray-500 font-mono text-xs ml-2">/ ADMIN</span>
           </span>
-          <AdminTabs />
+          <AdminTabs isOwner={!!isOwner} />
         </div>
         <div className="flex items-center gap-4">
           <a href="/designer?product_id=10043960623420&variant_id=51740953837884&title=Unisex+Heavyweight+T&price=2400"

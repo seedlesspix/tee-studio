@@ -25,9 +25,6 @@ import { type RosterEntry, entryHasContent, rosterValue, rosterShirtCount } from
 
 export const runtime = 'nodejs' // opentype.js + local-font fs read (see next.config trace-includes)
 
-const allowed = () =>
-  (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
-
 type UploadedFile = { name?: string; url?: string; type?: string; originalUrl?: string; originalFormat?: string; edited?: boolean }
 
 async function fetchBytes(url: string): Promise<Uint8Array | null> {
@@ -112,7 +109,8 @@ function formatQuantities(q: unknown, order: unknown): { lines: string[]; total:
 export async function GET(req: NextRequest) {
   const sb = await createClient()
   const { data: { user } } = await sb.auth.getUser()
-  if (!user?.email || !allowed().includes(user.email.toLowerCase())) {
+  const { data: isAdmin } = await sb.rpc('is_admin') // admins list, BETA #23
+  if (!user?.email || !isAdmin) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

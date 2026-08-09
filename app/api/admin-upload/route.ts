@@ -8,18 +8,12 @@ const anonClient = createSupabaseAdmin(
   { auth: { persistSession: false } }
 )
 
-function getAllowedEmails(): string[] {
-  return (process.env.ADMIN_EMAILS || '')
-    .split(',')
-    .map(e => e.trim().toLowerCase())
-    .filter(Boolean)
-}
-
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user?.email || !getAllowedEmails().includes(user.email.toLowerCase())) {
+  // Admin gate is now the `admins` list (BETA #23) via is_admin(), not the ADMIN_EMAILS env var.
+  const { data: isAdmin } = await supabase.rpc('is_admin')
+  if (!user?.email || !isAdmin) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

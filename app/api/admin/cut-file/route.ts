@@ -11,14 +11,12 @@ import { orderFileStem } from '../../../lib/orderFiles'
 
 export const runtime = 'nodejs' // trace-includes + fs don't exist on edge
 
-const allowed = () =>
-  (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
-
 export async function GET(req: NextRequest) {
-  // 1. admin gate (same Supabase cookie session as /admin)
+  // 1. admin gate — the `admins` list via is_admin() (BETA #23); same Supabase cookie session as /admin
   const sb = await createClient()
   const { data: { user } } = await sb.auth.getUser()
-  if (!user?.email || !allowed().includes(user.email.toLowerCase())) {
+  const { data: isAdmin } = await sb.rpc('is_admin')
+  if (!user?.email || !isAdmin) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

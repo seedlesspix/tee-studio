@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      admins: {
+        Row: {
+          added_by: string | null
+          created_at: string
+          email: string
+          is_owner: boolean
+          note: string | null
+        }
+        Insert: {
+          added_by?: string | null
+          created_at?: string
+          email: string
+          is_owner?: boolean
+          note?: string | null
+        }
+        Update: {
+          added_by?: string | null
+          created_at?: string
+          email?: string
+          is_owner?: boolean
+          note?: string | null
+        }
+        Relationships: []
+      }
       clipart_categories: {
         Row: {
           created_at: string | null
@@ -803,6 +827,7 @@ export type Database = {
     }
     Functions: {
       is_admin: { Args: never; Returns: boolean }
+      is_admin_owner: { Args: never; Returns: boolean }
     }
     Enums: {
       [_ in never]: never

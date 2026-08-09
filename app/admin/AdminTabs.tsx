@@ -13,11 +13,13 @@ const tabs = [
   { href: '/admin/language', label: 'Language' },
 ]
 
-export default function AdminTabs() {
+// The Admins screen is OWNER-only (BETA #23), so its tab shows only for the owner.
+export default function AdminTabs({ isOwner = false }: { isOwner?: boolean }) {
   const pathname = usePathname()
+  const shown = isOwner ? [...tabs, { href: '/admin/users', label: 'Admins' }] : tabs
   return (
     <nav className="flex gap-1">
-      {tabs.map(tab => {
+      {shown.map(tab => {
         const active = pathname === tab.href || pathname?.startsWith(tab.href + '/')
         return (
           <Link key={tab.href} href={tab.href}
