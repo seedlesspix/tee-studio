@@ -363,6 +363,55 @@ export default function DesignerCanvas({
   // applyControls closure) that can't see React state updates.
   const isMobileRef = useRef(false)
   const [stageScale, setStageScale] = useState(1)
+  // Mobile pinch-to-zoom ON THE SHIRT (Denise 2026-08-09). App-level: a two-finger pinch
+  // CSS-transforms the stage wrapper (view-only — Fabric re-reads the live bounding rect per
+  // pointer event, so object coords stay correct at any zoom, exactly like stageScale). Only
+  // the shirt zooms (not the UI chrome). Single-finger stays with Fabric for object drag.
+  // `view` drives the transform; viewRef mirrors it for the (non-React) gesture handler.
+  const [view, setView] = useState({ zoom: 1, x: 0, y: 0 })
+  const viewRef = useRef(view)
+  useEffect(() => { viewRef.current = view }, [view])
+  const pinchRef = useRef<{ startDist: number; startMid: { x: number; y: number }; startView: { zoom: number; x: number; y: number } } | null>(null)
+  // Capture-phase listeners on the stage so a TWO-finger pinch is intercepted BEFORE Fabric
+  // (whose touch-action:none owns single-finger drags). Zoom is centred; two-finger drag pans;
+  // releasing near 1× snaps back. Mobile only; desktop never attaches these.
+  useEffect(() => {
+    if (!isMobile) return
+    const el = stageAreaRef.current
+    if (!el) return
+    const distOf = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
+    const midOf = (t: TouchList) => ({ x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 })
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return
+      e.preventDefault(); e.stopPropagation()
+      pinchRef.current = { startDist: distOf(e.touches) || 1, startMid: midOf(e.touches), startView: { ...viewRef.current } }
+    }
+    const onMove = (e: TouchEvent) => {
+      if (e.touches.length !== 2 || !pinchRef.current) return
+      e.preventDefault(); e.stopPropagation()
+      const p = pinchRef.current
+      const zoom = Math.min(3, Math.max(1, p.startView.zoom * (distOf(e.touches) / p.startDist)))
+      const m = midOf(e.touches)
+      const x = zoom === 1 ? 0 : p.startView.x + (m.x - p.startMid.x)
+      const y = zoom === 1 ? 0 : p.startView.y + (m.y - p.startMid.y)
+      setView({ zoom, x, y })
+    }
+    const onEnd = (e: TouchEvent) => {
+      if (e.touches.length >= 2) return
+      pinchRef.current = null
+      setView(v => (v.zoom <= 1.02 ? { zoom: 1, x: 0, y: 0 } : v))
+    }
+    el.addEventListener('touchstart', onStart, { passive: false, capture: true })
+    el.addEventListener('touchmove', onMove, { passive: false, capture: true })
+    el.addEventListener('touchend', onEnd, { passive: false, capture: true })
+    el.addEventListener('touchcancel', onEnd, { passive: false, capture: true })
+    return () => {
+      el.removeEventListener('touchstart', onStart, true)
+      el.removeEventListener('touchmove', onMove, true)
+      el.removeEventListener('touchend', onEnd, true)
+      el.removeEventListener('touchcancel', onEnd, true)
+    }
+  }, [isMobile])
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 1023px)')
     const update = () => { isMobileRef.current = mq.matches; setIsMobile(mq.matches) }
@@ -4459,6 +4508,17 @@ export default function DesignerCanvas({
           ref={stageAreaRef}
           className="flex-1 flex flex-col items-center justify-center bg-gray-50 relative overflow-hidden touch-none min-h-0 lg:[min-height:auto]">
 
+          {/* Pinch-zoom reset — only while zoomed in (mobile). */}
+          {isMobile && view.zoom > 1 && (
+            <button
+              type="button"
+              onClick={() => setView({ zoom: 1, x: 0, y: 0 })}
+              className="absolute right-3 top-3 z-30 rounded-full bg-gray-900/85 px-3 py-1.5 text-xs font-mono text-white shadow-lg"
+            >
+              {t('designer.reset_zoom', 'Reset zoom')}
+            </button>
+          )}
+
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center text-gray-800 text-sm z-10">
               {t('designer.loading_canvas', 'Loading canvas...')}
@@ -4565,7 +4625,14 @@ export default function DesignerCanvas({
             overflow), while the canvas stays centered. Its own overflow-hidden keeps
             an over-tall desktop canvas from spilling up over the align row. */}
         <div className="flex w-full min-h-0 flex-1 items-center justify-center overflow-hidden">
-          <div style={{ width: 680 * stageScale, height: 850 * stageScale, position: 'relative' }}>
+          <div style={{
+            width: 680 * stageScale, height: 850 * stageScale, position: 'relative',
+            // Pinch-zoom view transform (mobile). transformOrigin center so it magnifies about
+            // the middle; getBoundingClientRect includes this, so Fabric stays coordinate-correct.
+            transform: view.zoom !== 1 ? `translate(${view.x}px, ${view.y}px) scale(${view.zoom})` : undefined,
+            transformOrigin: 'center center',
+            willChange: view.zoom !== 1 ? 'transform' : undefined,
+          }}>
             <div style={{ width: 680, height: 850, transformOrigin: 'top left', transform: stageScale !== 1 ? `scale(${stageScale})` : undefined }}>
               <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} onReady={handleCanvasReady} emptyState={emptyState} />
             </div>

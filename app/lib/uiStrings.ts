@@ -166,6 +166,7 @@ export const UI_STRINGS = {
   'designer.layer_image': { default: "Image", group: "Designer — General", desc: "Layers panel fallback label for a generic image layer." },
   'designer.layer_names_numbers': { default: "Names & Numbers", group: "Designer — General", desc: "Layers panel label for the collapsed Names & Numbers placeholder row." },
   'designer.loading_canvas': { default: "Loading canvas...", group: "Designer — General", desc: "Overlay text shown while the design canvas is initializing." },
+  'designer.reset_zoom': { default: "Reset zoom", group: "Designer — General", desc: "Button (mobile) shown while pinch-zoomed in, to return the shirt to normal size." },
   'designer.undo': { default: "Undo", group: "Designer — General", desc: "Tooltip for the mobile Undo (image edit) button." },
   'designer.redo': { default: "Redo", group: "Designer — General", desc: "Tooltip for the mobile Redo (image edit) button." },
   'designer.clear_all_mobile': { default: "Clear all", group: "Designer — General", desc: "Mobile button that clears every object from the canvas." },
