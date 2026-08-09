@@ -43,7 +43,7 @@ export default function MobileArtBand({
   // hides while editing so the thumbnail row keeps its height (no clip). Nothing
   // selected → full browser (with search).
   return (
-    <div className="flex h-full flex-col gap-1.5">
+    <div className="flex h-full flex-col gap-1.5 px-3 pt-2">
       {artSelected && (
         <div className="flex shrink-0 flex-col gap-1.5">
           {selectedObjectType === 'svg' && (

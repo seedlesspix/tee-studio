@@ -122,7 +122,7 @@ export default function MobileTextBand({
                   type="button"
                   onClick={() => setSelectedFont(f.value)}
                   className={`flex w-24 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border px-2 py-1.5 transition-colors ${
-                    selectedFont === f.value ? 'border-gray-900 bg-white' : 'border-gray-200 bg-gray-50'
+                    selectedFont === f.value ? 'border-gray-900 bg-white shadow-sm' : 'border-gray-200 bg-white shadow-sm'
                   }`}
                 >
                   <span

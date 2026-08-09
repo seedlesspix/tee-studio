@@ -121,26 +121,26 @@ export default function CanvasStage({
               </div>
             )}
             <div className="flex w-full flex-col gap-2">
-              {/* Three equal start options (red-vocab rule: red = action only, never
-                  a pre-selected look). All neutral peers; Add Text leads by order,
-                  not colour. */}
+              {/* Three primary start ACTIONS — red = action per the red-vocab rule
+                  (#21: they must read as the strong next step, not blend into browse
+                  content / nav). Equal peers; Add Text leads by order. */}
               <button
                 onClick={emptyState.onAddText}
-                className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"
+                className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[#dd3333] px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700"
               >
                 <Type size={16} strokeWidth={1.75} /> {t('designer.empty.add_text', 'Add Text')}
               </button>
               {emptyState.onUpload && (
                 <button
                   onClick={emptyState.onUpload}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[#dd3333] px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700"
                 >
                   <Upload size={16} strokeWidth={1.75} /> {t('designer.empty.upload', 'Upload')}
                 </button>
               )}
               <button
                 onClick={emptyState.onAddArt}
-                className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"
+                className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[#dd3333] px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700"
               >
                 <Shapes size={16} strokeWidth={1.75} /> {t('designer.empty.add_art', 'Add Art')}
               </button>

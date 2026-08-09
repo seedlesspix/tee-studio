@@ -68,11 +68,13 @@ export default function Rail({
 }) {
   const t = useT()
   const horizontal = orientation === 'horizontal'
-  const marker = horizontal ? 'border-b-2' : 'border-l-2'
+  // Bottom bar (mobile): the active marker rides the TOP edge of the item (nearest
+  // the content) so it's visible; the side rail (desktop) keeps its left marker.
+  const marker = horizontal ? 'border-t-2' : 'border-l-2'
   const items = hiddenKeys?.length ? ITEMS.filter(i => !hiddenKeys.includes(i.key)) : ITEMS
   return (
     <nav className={horizontal
-      ? 'flex flex-row items-stretch bg-gray-50 border-b border-gray-200'
+      ? 'flex flex-row items-stretch bg-white border-t border-gray-200'
       : 'w-[76px] shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col py-2'}>
       {items.map(({ key, label, Icon, wired, action }) => {
         // Action items (Products) are enabled only when their handler is supplied; they never
@@ -93,8 +95,8 @@ export default function Rail({
               !enabled
                 ? 'text-gray-300 cursor-default'
                 : active
-                  ? `bg-white text-gray-900 font-semibold ${marker} border-gray-900`
-                  : `text-gray-500 hover:text-gray-900 hover:bg-gray-100 ${marker} border-transparent`
+                  ? `${horizontal ? 'bg-gray-100' : 'bg-white'} text-gray-900 font-semibold ${marker} border-gray-900`
+                  : `${horizontal ? 'text-gray-400' : 'text-gray-500'} hover:text-gray-900 hover:bg-gray-100 ${marker} border-transparent`
             }`}
           >
             <Icon size={20} strokeWidth={1.75} />

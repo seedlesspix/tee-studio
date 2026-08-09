@@ -45,13 +45,15 @@ export default function MobileToolBand({
   children: ReactNode
 }) {
   return (
-    <div className="lg:hidden flex flex-col shrink-0 border-t border-gray-200 bg-white">
+    <div className="lg:hidden flex flex-col shrink-0 border-t border-gray-200 bg-white shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
       {/* Fixed-height controls band — only when OPEN. The keyboard is handled natively
           now (the document scrolls the focused text box above it), so this stays a
-          plain in-flow band. */}
+          plain in-flow band. #21: a light gray CANVAS here (vs the white nav strip
+          below) is the delineation between "content to browse" and "navigation" —
+          white tiles/cards pop against it. */}
       {open && (
         <div
-          className="h-40 overflow-y-auto overscroll-contain touch-pan-y"
+          className="h-40 overflow-y-auto overscroll-contain touch-pan-y bg-gray-50"
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
           {children}

@@ -18,6 +18,7 @@ import NamesNumbersPanel from './NamesNumbersPanel'
 import { type RosterEntry, type NnRole, NN_ROLE_PROP, entryHasContent, condensedScaleX, rosterShirtCount, rosterSizeQuantities, rosterValue, jerseyStackLayout } from '../lib/namesNumbers'
 import { renderCurvedArc } from '../lib/curvedArc'
 import { applyEmbroideryLook, removeEmbroideryLook } from '../lib/embroideryLook'
+import { drawDeleteIcon, drawRotateIcon, drawResizeIcon, makeHandleRender } from '../lib/selectionHandles'
 import { useT } from './StringsProvider'
 import { format } from '../lib/uiStrings'
 import { refitSide, rebakeCurveParams, type RefitBox, type CanvasObj } from '../lib/refitEngine'
@@ -826,76 +827,35 @@ export default function DesignerCanvas({
       if (cancelled) return
       const d = controlsUtils.createObjectDefaultControls()
       const s = stageScale || 1
-      const cornerSize = Math.round(23 / s)       // ~23px visual on screen
-      const touchCornerSize = Math.round(30 / s)  // a little bigger hit area
+      const cornerSize = Math.round(28 / s)       // ~28px visual on screen (bigger tap target, #20)
+      const touchCornerSize = Math.round(40 / s)  // generous touch hit area
       const borderScaleFactor = Math.max(2, Math.round(2 / s))
-      const off = cornerSize * 0.75               // push the disc OUTSIDE the box corner
-      // A control = white disc (soft shadow for contrast on any garment) + dark ring +
-      // an icon. Icon size/stroke follow the object's (scaled) cornerSize.
-      const discBg = (ctx: any, size: number) => {
-        ctx.shadowColor = 'rgba(0,0,0,0.35)'
-        ctx.shadowBlur = size * 0.12
-        ctx.beginPath()
-        ctx.arc(0, 0, size / 2, 0, Math.PI * 2)
-        ctx.fillStyle = '#ffffff'
-        ctx.fill()
-        ctx.shadowColor = 'transparent'
-        ctx.lineWidth = Math.max(1.5, size * 0.08)
-        ctx.strokeStyle = '#111827'
-        ctx.stroke()
-      }
-      const glyphRender = (glyph: string, glyphScale = 0.5) =>
-        (ctx: any, left: number, top: number, _o: any, obj: any) => {
-          const size = obj.cornerSize || 23
-          ctx.save(); ctx.translate(left, top); discBg(ctx, size)
-          ctx.fillStyle = '#111827'
-          ctx.font = `700 ${Math.round(size * glyphScale)}px sans-serif`
-          ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-          ctx.fillText(glyph, 0, size * 0.04)
-          ctx.restore()
-        }
-      // Rotate: a DRAWN circular arrow (fills the disc — the ↻ glyph rendered too small).
-      const rotateRender = (ctx: any, left: number, top: number, _o: any, obj: any) => {
-        const size = obj.cornerSize || 23
-        ctx.save(); ctx.translate(left, top); discBg(ctx, size)
-        ctx.strokeStyle = '#111827'
-        ctx.lineWidth = Math.max(2, size * 0.11)
-        ctx.lineCap = 'round'
-        const R = size * 0.29
-        const end = Math.PI * 1.15
-        ctx.beginPath()
-        ctx.arc(0, 0, R, -Math.PI * 0.45, end)   // ~3/4 open circle
-        ctx.stroke()
-        const ex = Math.cos(end) * R, ey = Math.sin(end) * R   // arrowhead at the arc end
-        const back = end + Math.PI / 2 + Math.PI               // opposite the clockwise tangent
-        const h = size * 0.22
-        ctx.beginPath()
-        ctx.moveTo(ex, ey); ctx.lineTo(ex + Math.cos(back - 0.5) * h, ey + Math.sin(back - 0.5) * h)
-        ctx.moveTo(ex, ey); ctx.lineTo(ex + Math.cos(back + 0.5) * h, ey + Math.sin(back + 0.5) * h)
-        ctx.stroke()
-        ctx.restore()
-      }
-      const reuse = (base: any, x: number, y: number, ox: number, oy: number, render: any, cursor: string) =>
+      const off = cornerSize * 0.7                // push the disc OUTSIDE the box corner
+      // Discs render via the shared selection-handle helpers (identical look on desktop):
+      // white disc + RED delete, BLUE rotate, BLUE resize. sizeOf reads the object's
+      // inverse-scaled cornerSize so the disc stays a constant ~28px through the stage scale.
+      const sizeOf = (obj: any) => obj.cornerSize || 28
+      const reuse = (base: any, x: number, y: number, ox: number, oy: number, draw: any, cursor: string) =>
         new Control({
           x, y, offsetX: ox, offsetY: oy, cursorStyle: cursor,
           actionHandler: base?.actionHandler,
           cursorStyleHandler: base?.cursorStyleHandler,
           actionName: base?.actionName,
-          render,
+          render: makeHandleRender(draw, sizeOf),
         })
       const controls = {
         del: new Control({
           x: -0.5, y: -0.5, offsetX: -off, offsetY: -off, cursorStyle: 'pointer',
           mouseUpHandler: (_e: any, transform: any) => {
-            const t = transform?.target
-            if (t?.canvas) t.canvas.setActiveObject(t)
+            const tt = transform?.target
+            if (tt?.canvas) tt.canvas.setActiveObject(tt)
             deleteSelectedRef.current()
             return true
           },
-          render: glyphRender('✕'),
+          render: makeHandleRender(drawDeleteIcon, sizeOf),
         }),
-        rot: reuse(d.mtr, 0.5, -0.5, off, -off, rotateRender, 'crosshair'),
-        scale: reuse(d.br, 0.5, 0.5, off, off, glyphRender('◢'), 'nwse-resize'),
+        rot: reuse(d.mtr, 0.5, -0.5, off, -off, drawRotateIcon, 'crosshair'),
+        scale: reuse(d.br, 0.5, 0.5, off, off, drawResizeIcon, 'nwse-resize'),
       }
       const applyTo = (obj: any) => {
         if (obj._isCropRect) return // the crop frame owns its own edge-only handles — never disc/delete it
@@ -1787,112 +1747,48 @@ export default function DesignerCanvas({
       // (Order restore for the designId "Edit design" flow is handled by the
       // consolidated effect above, which restores BOTH front and back.)
 
-      // Custom selection handles
-      import('fabric').then(({ controlsUtils, Control, util }) => {
-        // Helper to render icon controls
-        const renderIcon = (icon: string) => (ctx: CanvasRenderingContext2D, left: number, top: number, _: any, fabricObject: any) => {
-          const size = 20
-          ctx.save()
-          ctx.translate(left, top)
-          ctx.rotate(util.degreesToRadians(fabricObject.angle || 0))
-          ctx.fillStyle = '#dd3333'
-          ctx.beginPath()
-          ctx.arc(0, 0, size / 2, 0, Math.PI * 2)
-          ctx.fill()
-          ctx.fillStyle = '#fff'
-          ctx.font = `bold ${size * 0.55}px sans-serif`
-          ctx.textAlign = 'center'
-          ctx.textBaseline = 'middle'
-          ctx.fillText(icon, 0, 1)
-          ctx.restore()
-        }
-
-        // Rotate control (center-top)
-        const rotateControl = new Control({
-          x: 0, y: -0.5,
-          offsetX: 0, offsetY: -20,
-          cursorStyle: 'crosshair',
-          actionHandler: controlsUtils.rotationWithSnapping,
-          actionName: 'rotate',
-          render: renderIcon('↻'),
-          sizeX: 26, sizeY: 26,
-          withConnection: false,
-        })
-
-        // Delete control (bottom-right) - moved from top-right
-        const deleteControl = new Control({
-          x: 0.5, y: 0.5,
-          offsetX: 10, offsetY: 10,
-          cursorStyle: 'pointer',
+      // Custom selection handles (#20) — the SAME disc set on desktop + mobile: a
+      // white disc with a colour-differentiated icon — RED delete (top-left), BLUE
+      // rotate (top-right), BLUE resize (bottom-right). Uniform scale only; the old
+      // 6 red handles (middle stretch + extra scale corners) are gone. No duplicate.
+      // Mobile applies its own inverse-scaled set below; desktop uses fixed px.
+      import('fabric').then(({ controlsUtils, Control }) => {
+        const sizeOf = () => 26
+        const del = new Control({
+          x: -0.5, y: -0.5, offsetX: -13, offsetY: -13, cursorStyle: 'pointer',
           mouseUpHandler: (_: any, transform: any) => {
             const target = transform.target
             canvas.remove(target)
             canvas.requestRenderAll?.() || canvas.renderAll()
             return true
           },
-          render: renderIcon('✕'),
-          sizeX: 26, sizeY: 26,
+          render: makeHandleRender(drawDeleteIcon, sizeOf),
+          sizeX: 34, sizeY: 34,
         })
-
-        // Scale equally (top-right) - moved from top-right delete
-        const scaleControl = new Control({
-          x: 0.5, y: -0.5,
-          offsetX: 10, offsetY: -10,
-          cursorStyle: 'ne-resize',
-          actionHandler: controlsUtils.scalingEqually,
-          actionName: 'scale',
-          render: renderIcon('⤢'),
-          sizeX: 26, sizeY: 26,
+        const rot = new Control({
+          x: 0.5, y: -0.5, offsetX: 13, offsetY: -13, cursorStyle: 'crosshair',
+          actionHandler: controlsUtils.rotationWithSnapping, actionName: 'rotate',
+          render: makeHandleRender(drawRotateIcon, sizeOf),
+          sizeX: 34, sizeY: 34, withConnection: false,
         })
-
-        // Scale bottom-left
-        const scaleBLControl = new Control({
-          x: -0.5, y: 0.5,
-          offsetX: -10, offsetY: 10,
-          cursorStyle: 'sw-resize',
-          actionHandler: controlsUtils.scalingEqually,
-          actionName: 'scale',
-          render: renderIcon('⤡'),
-          sizeX: 26, sizeY: 26,
-        })
-
-        // Stretch-X control (middle-right)
-        const stretchControl = new Control({
-          x: 0.5, y: 0,
-          offsetX: 10, offsetY: 0,
-          cursorStyle: 'ew-resize',
-          actionHandler: controlsUtils.scalingXOrSkewingY,
-          actionName: 'scaleX',
-          render: renderIcon('↔'),
-          sizeX: 26, sizeY: 26,
+        const resize = new Control({
+          x: 0.5, y: 0.5, offsetX: 13, offsetY: 13, cursorStyle: 'nwse-resize',
+          actionHandler: controlsUtils.scalingEqually, actionName: 'scale',
+          render: makeHandleRender(drawResizeIcon, sizeOf),
+          sizeX: 34, sizeY: 34,
         })
 
         const applyControls = (obj: any) => {
           if (obj._isCropRect) return // the crop frame keeps its own edge-only handles — no delete/rotate
           // Locked jersey placeholder: DELETE only — no move/resize/rotate handles (the locks also
           // enforce it functionally). Applies on both platforms.
-          if (obj[NN_ROLE_PROP]) { obj.controls = { deleteControl }; obj.setCoords(); return }
-          // MOBILE uses its own 3-disc control set (applied by the mobile effect, which
-          // also hooks object:added). Skip the desktop red-circle set here so the two
-          // systems don't fight (the desktop set was overriding the mobile discs on
-          // re-add/restore, showing the old red handles). Desktop is unchanged.
+          if (obj[NN_ROLE_PROP]) { obj.controls = { del }; obj.set({ transparentCorners: false, borderColor: '#111827' }); obj.setCoords(); return }
+          // MOBILE uses its own inverse-scaled disc set (applied by the mobile effect, which
+          // also hooks object:added). Skip the desktop set here so the two systems don't fight
+          // (the desktop set was overriding the mobile discs on re-add/restore).
           if (isMobileRef.current) return
-          obj.controls = {
-            rotateControl,
-            deleteControl,
-            scaleControl,
-            scaleBLControl,
-            stretchControl,
-            // Top-left scale
-            tl: new Control({
-              x: -0.5, y: -0.5,
-              offsetX: -10, offsetY: -10,
-              cursorStyle: 'nw-resize',
-              actionHandler: controlsUtils.scalingEqually,
-              render: renderIcon('⤢'),
-              sizeX: 26, sizeY: 26,
-            }),
-          }
+          obj.controls = { del, rot, resize }
+          obj.set({ transparentCorners: false, borderColor: '#111827' })
           obj.setCoords()
         }
 

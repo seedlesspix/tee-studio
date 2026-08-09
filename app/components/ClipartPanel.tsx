@@ -158,7 +158,7 @@ export default function ClipartPanel({ printMethod, onSelect, horizontal = false
               type="button"
               onClick={() => onSelect(item.file_url, item.file_type ?? 'image', metaFor(item))}
               title={item.name}
-              className="flex w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white p-1.5"
+              className="flex w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white p-1.5 shadow-sm active:border-gray-400"
             >
               <img src={item.file_url} alt={item.name} className="h-10 w-10 object-contain" decoding="async" />
               <span className="w-full truncate text-center font-mono text-[8px] leading-tight text-gray-500">{item.name}</span>
