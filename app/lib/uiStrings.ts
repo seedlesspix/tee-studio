@@ -10,6 +10,10 @@
 export type UiStringDef = { default: string; group: string; desc: string }
 
 export const UI_STRINGS = {
+  // ── Brand ──────────────────────────────────────────────────────────────────
+  // The app / design-tool name. A single editable string so an eventual rename is one edit
+  // (the tool is slated to be renamed, name TBD).
+  'app.name': { default: 'TEE STUDIO', group: 'Brand', desc: 'The design tool / app name shown in headers (e.g. the order page).' },
   // ── Methods ────────────────────────────────────────────────────────────────
   // The internal DB keys (screen_print / embroidery) NEVER change; this is DISPLAY only. "Print" is the
   // default so "Screen Print" / "silk screen" can't come back (BETA #15).
@@ -300,6 +304,7 @@ export const UI_STRINGS = {
   'order.no_preview': { default: "No preview available", group: "Order page", desc: "Placeholder shown when no design preview image is available." },
   'order.side_front': { default: "FRONT", group: "Order page", desc: "Label above the front-side design preview image." },
   'order.side_back': { default: "BACK", group: "Order page", desc: "Label above the back-side design preview image." },
+  'order.side_blank': { default: "No design on this side (blank)", group: "Order page", desc: "Shown on the preview when the product has this side but the customer left it blank." },
   'order.edit_design': { default: "← Edit Design", group: "Order page", desc: "Link that takes the customer back to the designer to edit their design." },
   'order.product_label': { default: "Product", group: "Order page", desc: "Small label above the product name in the order summary." },
   'order.color_label': { default: "Color:", group: "Order page", desc: "Prefix label before the selected garment color." },
@@ -329,7 +334,9 @@ export const UI_STRINGS = {
   'order.volume_youre_getting': { default: "You’re getting", group: "Order page", desc: "Opening phrase of the top-tier volume-discount confirmation." },
   'order.volume_pct_off': { default: "% off", group: "Order page", desc: "Suffix after the discount percent in the top-tier confirmation (e.g. '10% off')." },
   'order.volume_top_tier': { default: "— the top tier. 🎉", group: "Order page", desc: "Closing phrase telling the customer they reached the highest volume-discount tier." },
-  'order.volume_auto_checkout': { default: "Discount applied automatically at checkout.", group: "Order page", desc: "Note that the volume discount is applied automatically at checkout." },
+  'order.volume_auto_checkout': { default: "Discount applied automatically in your cart.", group: "Order page", desc: "Note that the volume discount is applied automatically in the cart." },
+  'order.volume_discount_line': { default: "Volume discount", group: "Order page", desc: "Label on the estimated volume-discount amount line (shown as −$X)." },
+  'order.volume_estimated_total': { default: "Estimated total", group: "Order page", desc: "Label on the estimated order total after the volume discount." },
   'order.notes_label': { default: "Design Notes", group: "Order page", desc: "Label for the optional design-notes text area." },
   'order.notes_optional': { default: "(optional)", group: "Order page", desc: "'(optional)' qualifier next to the Design Notes label." },
   'order.notes_placeholder': { default: "Printing details for our team — e.g. exact ink color, placement notes…", group: "Order page", desc: "Placeholder text inside the design-notes text area." },

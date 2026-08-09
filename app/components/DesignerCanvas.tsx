@@ -863,7 +863,7 @@ export default function DesignerCanvas({
         if (obj._isCropRect) return // the crop frame owns its own edge-only handles — never disc/delete it
         // Locked jersey placeholder: DELETE disc only — no move/resize/rotate (locks enforce it too).
         obj.controls = obj[NN_ROLE_PROP] ? { del: controls.del } : controls
-        obj.set({ cornerSize, touchCornerSize, transparentCorners: false, borderColor: '#111827', borderScaleFactor })
+        obj.set({ cornerSize, touchCornerSize, transparentCorners: false, borderColor: '#111827', borderScaleFactor, lockScalingFlip: true })
         obj.setCoords?.()
       }
       canvas.getObjects().forEach(applyTo)
@@ -873,7 +873,20 @@ export default function DesignerCanvas({
       // fall back to Fabric's default handles.
       const onAdded = (e: any) => { if (e?.target) { applyTo(e.target); canvas.requestRenderAll() } }
       canvas.on('object:added', onAdded)
-      cleanupAdded = () => canvas.off('object:added', onAdded)
+      // Parity with desktop (#6 group case): a multi-select group corner-drag scales the
+      // ActiveSelection wrapper, whose lockScalingFlip defaults false — assert it so a group
+      // can't be mirrored on touch either.
+      const onSelect = () => {
+        const grp = canvas.getActiveObject()
+        if (grp && grp.type === 'activeselection') grp.set({ lockScalingFlip: true })
+      }
+      canvas.on('selection:created', onSelect)
+      canvas.on('selection:updated', onSelect)
+      cleanupAdded = () => {
+        canvas.off('object:added', onAdded)
+        canvas.off('selection:created', onSelect)
+        canvas.off('selection:updated', onSelect)
+      }
     })()
     return () => { cancelled = true; cleanupAdded() }
   }, [isMobile, stageScale, canvasObjectCount])
@@ -1790,7 +1803,9 @@ export default function DesignerCanvas({
           // (the desktop set was overriding the mobile discs on re-add/restore).
           if (isMobileRef.current) return
           obj.controls = { del, rot, resize }
-          obj.set({ transparentCorners: false, borderColor: '#111827' })
+          // lockScalingFlip: dragging a corner past the opposite edge no longer flips/mirrors the
+          // object upside-down (#6) — it just clamps toward zero size, the standard Fabric behavior.
+          obj.set({ transparentCorners: false, borderColor: '#111827', lockScalingFlip: true })
           obj.setCoords()
         }
 
@@ -1804,8 +1819,20 @@ export default function DesignerCanvas({
             e.target.editable = false
           }
         })
+        // Multi-select: lockScalingFlip lives on each member, but a group corner-drag scales
+        // the ActiveSelection WRAPPER — assert the flag on it too (#6 group case), else a
+        // rubber-band selection can still be mirrored and the flip persists into the print output.
+        const lockGroupFlip = () => {
+          const grp = canvas.getActiveObject()
+          if (grp && grp.type === 'activeselection') grp.set({ lockScalingFlip: true })
+        }
         canvas.on('selection:created', (e: any) => {
           if (e.selected) e.selected.forEach(applyControls)
+          lockGroupFlip()
+        })
+        canvas.on('selection:updated', (e: any) => {
+          if (e.selected) e.selected.forEach(applyControls)
+          lockGroupFlip()
         })
         // Apply to existing objects
         canvas.getObjects().forEach(applyControls)
@@ -3579,7 +3606,12 @@ export default function DesignerCanvas({
       // its size — so an N&N order's quantities/total derive from the roster, not the size steppers
       // (which the designer hides for N&N). The personalization price is Option 1: it's the printed
       // side, already in the per-side print charge, so pricePerItem is unchanged — nothing added.
-      const nnEntries = roster.filter(entryHasContent)
+      // N&N only applies when a placeholder is actually PLACED on the design. Typing names into the
+      // roster WITHOUT adding a Name/Number/Title field must NOT turn this into an N&N order (bug #1).
+      // Both refs hold the true per-side content (synced above), so a _nnRole stamp on either side =
+      // applied — same walk-the-refs technique as the _uploadSrc / _decalNumber capture above.
+      const nnPlaced = [...frontObjectsRef.current, ...backObjectsRef.current].some((o: any) => o?.[NN_ROLE_PROP])
+      const nnEntries = nnPlaced ? roster.filter(entryHasContent) : []
       const nnActive = nnEntries.length > 0
       const effQuantities = nnActive ? rosterSizeQuantities(nnEntries) : quantities
       const effTotalQty = nnActive ? rosterShirtCount(nnEntries) : totalQty

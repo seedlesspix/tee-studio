@@ -88,6 +88,10 @@ function OrderPage() {
   const frontDesigned = !!design?.canvas_png_front
   const backDesigned = !!design?.canvas_png_back
   const bothSides = frontDesigned && backDesigned
+  // Does this product HAVE a back print side? The template's back print area is frozen onto the
+  // order (print_area_back) regardless of whether the customer designed on it — so we can show the
+  // back explicitly as blank when the product supports one. (#4)
+  const productHasBack = !!(design?.print_area_back || design?.print_area_back_id)
   const frontCharge = design?.print_charge_front
     ?? (frontDesigned ? (bothSides ? printChargeTotal / 2 : printChargeTotal) : 0)
   const backCharge = design?.print_charge_back
@@ -143,8 +147,8 @@ function OrderPage() {
     <div className="min-h-screen bg-white text-white" style={{ fontFamily: 'DM Sans, sans-serif' }}>
       {/* Header */}
       <header className="flex items-center justify-between px-6 h-14 bg-white border-b border-gray-200">
-        <div className="font-black text-xl tracking-widest">
-          TEE<span className="text-[#dd3333]">STUDIO</span>
+        <div className="font-black text-xl tracking-widest text-gray-900">
+          {t('app.name', 'TEE STUDIO')}
         </div>
         <div className="w-32" />
       </header>
@@ -154,31 +158,39 @@ function OrderPage() {
           · Order It (here) · Pick Up/Ship (upcoming). */}
       <Stepper current={2} editHref={editUrl} />
 
-      <div className="max-w-6xl mx-auto px-6 py-8 flex gap-8">
+      {/* Mobile: stack (previews + Edit Design first, then options); desktop: two columns. */}
+      <div className="max-w-6xl mx-auto px-6 py-8 flex flex-col md:flex-row gap-6 md:gap-8">
         {/* Left - Design Preview */}
         <div className="flex-1">
           <h2 className="text-lg font-bold font-mono mb-4">{t('order.your_design', 'Your Design')}</h2>
           {(() => {
-            // One designed side → a single centered, smaller preview (no blank-
-            // side noise). Both sides → a side-by-side pair. Each PNG already
-            // has its own front/back shirt image composited in (designer fix).
-            const sides = [
-              design?.canvas_png_front && { src: design.canvas_png_front, label: 'FRONT' },
-              design?.canvas_png_back && { src: design.canvas_png_back, label: 'BACK' },
-            ].filter(Boolean) as { src: string; label: string }[]
-            if (sides.length === 0) {
+            // Show the FRONT always, and the BACK whenever the product HAS a back side —
+            // even if the customer left it blank — so the order makes it explicit what will
+            // print (incl. "the back is blank"). Each PNG already has its own front/back shirt
+            // image composited in (designer fix). (#4)
+            if (!frontDesigned && !backDesigned) {
               return (
                 <div className="aspect-square flex items-center justify-center text-gray-800 font-mono border border-gray-200 rounded-xl">
                   {t('order.no_preview', 'No preview available')}
                 </div>
               )
             }
+            const sides = [
+              { label: 'FRONT', src: design?.canvas_png_front ?? null, blank: !frontDesigned },
+              (backDesigned || productHasBack) ? { label: 'BACK', src: design?.canvas_png_back ?? null, blank: !backDesigned } : null,
+            ].filter(Boolean) as { label: string; src: string | null; blank: boolean }[]
             return (
-              <div className={sides.length === 2 ? 'grid grid-cols-2 gap-4' : 'max-w-xs mx-auto'}>
+              <div className={sides.length === 2 ? 'grid grid-cols-1 sm:grid-cols-2 gap-4' : 'max-w-sm mx-auto'}>
                 {sides.map(s => (
                   <div key={s.label} className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
                     <p className="text-xs font-mono text-gray-900 px-3 pt-3">{s.label === 'FRONT' ? t('order.side_front', 'FRONT') : t('order.side_back', 'BACK')}</p>
-                    <img src={s.src} alt={`Your design - ${s.label.toLowerCase()}`} className="w-full object-contain" />
+                    {s.blank ? (
+                      <div className="flex aspect-square items-center justify-center px-4 text-center text-sm font-mono text-gray-500">
+                        {t('order.side_blank', 'No design on this side (blank)')}
+                      </div>
+                    ) : (
+                      <img src={s.src!} alt={`Your design - ${s.label.toLowerCase()}`} className="w-full object-contain" />
+                    )}
                   </div>
                 ))}
               </div>
@@ -192,7 +204,7 @@ function OrderPage() {
         </div>
 
         {/* Right - Order Options */}
-        <div className="w-96 shrink-0 flex flex-col gap-6">
+        <div className="w-full md:w-96 md:shrink-0 flex flex-col gap-6">
 
           {/* Product Info */}
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
@@ -300,6 +312,12 @@ function OrderPage() {
             {VOLUME_DISCOUNT.enabled && volumeTiers.length > 0 && (() => {
               const cur = currentTier(totalQty, volumeTiers)
               const nxt = nextTier(totalQty, volumeTiers)
+              // Same math the Shopify Function runs: cur = highest minQty met (identical rule),
+              // applied to this design's line subtotal (totalQty × pricePerItem, where the design
+              // product's variant IS priced at pricePerItem). So the −$ shown here matches checkout,
+              // modulo post-add cart quantity edits + per-line cent rounding → labeled "Estimated".
+              const discountAmt = cur ? (totalQty * pricePerItem * cur.pct) / 100 : 0
+              const estTotal = totalQty * pricePerItem - discountAmt
               return (
                 <div className="border-t border-gray-200 mt-4 pt-4">
                   <p className="text-xs font-mono text-gray-900 uppercase tracking-widest mb-2">{t('order.volume_savings', 'Volume savings')}</p>
@@ -309,7 +327,7 @@ function OrderPage() {
                       return (
                         <span key={tier.minQty}
                           className={`rounded-full border px-2.5 py-1 text-xs font-mono ${
-                            active ? 'border-emerald-400 bg-emerald-50 text-emerald-800 font-bold' : 'border-gray-200 bg-white text-gray-600'
+                            active ? 'border-[#dd3333] bg-red-50 text-[#dd3333] font-bold' : 'border-gray-200 bg-white text-gray-600'
                           }`}>
                           {tier.minQty}+ {t('order.volume_tier_save', 'save')} {tier.pct}%
                         </span>
@@ -317,13 +335,25 @@ function OrderPage() {
                     })}
                   </div>
                   {nxt ? (
-                    <p className="text-sm text-emerald-700">
+                    <p className="text-sm font-bold text-[#dd3333]">
                       {t('order.volume_add', 'Add')} <span className="font-bold">{nxt.needed}</span> {t('order.volume_more_to_save', 'more to save')} <span className="font-bold">{nxt.tier.pct}%</span> {t('order.volume_on_order', 'on your order.')}
                     </p>
                   ) : cur ? (
-                    <p className="text-sm text-emerald-700">{t('order.volume_youre_getting', 'You’re getting')} <span className="font-bold">{cur.pct}{t('order.volume_pct_off', '% off')}</span> {t('order.volume_top_tier', '— the top tier. 🎉')}</p>
+                    <p className="text-sm font-bold text-[#dd3333]">{t('order.volume_youre_getting', 'You’re getting')} <span className="font-bold">{cur.pct}{t('order.volume_pct_off', '% off')}</span> {t('order.volume_top_tier', '— the top tier. 🎉')}</p>
                   ) : null}
-                  <p className="mt-1 text-[11px] text-gray-500">{t('order.volume_auto_checkout', 'Discount applied automatically at checkout.')}</p>
+                  {cur && (
+                    <div className="mt-3 flex flex-col gap-1.5">
+                      <div className="flex justify-between text-sm font-bold text-[#dd3333]">
+                        <span>{t('order.volume_discount_line', 'Volume discount')} ({cur.pct}%)</span>
+                        <span>−${discountAmt.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-lg font-bold text-gray-900">
+                        <span>{t('order.volume_estimated_total', 'Estimated total')}</span>
+                        <span>${estTotal.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  )}
+                  <p className="mt-2 text-sm text-gray-700">{t('order.volume_auto_checkout', 'Discount applied automatically in your cart.')}</p>
                 </div>
               )
             })()}
