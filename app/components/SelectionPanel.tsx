@@ -348,14 +348,8 @@ export default function SelectionPanel({
                   <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,application/pdf,.pdf,.svg,.png,.jpg,.jpeg,.webp,.ai,.psd" onChange={handleImageUpload} className="hidden" />
                 </label>
                 <p className="mt-1.5 text-[11px] text-gray-500 leading-snug">{uploadGuidance}</p>
-                <MyUploadsPanel
-                  uploads={libraryUploads}
-                  loading={libraryLoading}
-                  onPick={pickLibraryUpload}
-                  onDelete={deleteLibraryUpload}
-                />
-                {/* A selected upload — image-editing tools (Phase 5) + Delete. Remove White is
-                    one-tap; Remove a Color arms an eyedropper (click the color on the shirt). */}
+                {/* A selected upload — image-editing tools (Phase 5) + Delete, ABOVE the uploads
+                    strip (Denise #4). Remove White is one-tap; Remove a Color arms an eyedropper. */}
                 {selectedObjectType === 'image' && (
                   <div className="mt-3 flex flex-col gap-2">
                     <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">{t('designer.upload.edit_image_label', 'Edit Image')}</label>
@@ -424,6 +418,15 @@ export default function SelectionPanel({
                     {imageEditBusy && <p className="text-[11px] text-gray-500">{t('designer.upload.processing', 'Processing…')}</p>}
                   </div>
                 )}
+                {/* Uploaded images — a horizontal scrolling strip, BELOW the edit tools (Denise #4). */}
+                <div className="mt-3">
+                  <MyUploadsPanel
+                    uploads={libraryUploads}
+                    loading={libraryLoading}
+                    onPick={pickLibraryUpload}
+                    onDelete={deleteLibraryUpload}
+                  />
+                </div>
               </div>
             )}
 
