@@ -111,6 +111,68 @@ CLAUDE.md backlog; this file is the "these are NOT optional" promotion of them.
   changes (folds in the "Screen Print" → "Print" rename so it can't regress).
   *(Already logged — promoted to pre-beta.)*
 
+## Round 2 (Denise, 2026-08-08)
+
+- [ ] **15. "Silk screen" → "print" in admin.** Remove the words "silk screen"
+  anywhere they appear in the admin; replace with "print." *(Same family as the
+  screen_print rename — display only, the stored key must not change. Language
+  editor should own this wording once built.)*
+- [ ] **16. "Blank shirt" → "blank product" on the order page.** Sometimes it's
+  a hat. *(Wording — language editor material.)*
+- [ ] **17. Onesie quantity boxes misaligned on the order page.** The size
+  boxes don't line up when a onesie is selected — probably the longer size
+  labels (3-6mo etc.). Layout fix.
+- [ ] **18. Reorder admin tabs.** Order: Orders / Pricing / Templates /
+  Clipart / Fonts / Colors.
+- [ ] **19. Customizable error/notification text + look.** E.g. the "Clear all
+  design elements" notification — Denise wants control over the wording and
+  appearance. *(Wording half = language editor; the "look" half is a small
+  design pass on the notification component.)*
+- [ ] **20. Selection-box handles: fewer, clearer.** The handles on the canvas
+  select box need to be fewer and clearer — better icons, placed differently.
+  *(Designer UX pass; relates to the universal-icons work.)*
+- [ ] **21. Mobile layout clarity.** Options on mobile need to be clearer —
+  possibly a different color scheme. *(Needs a look-and-feel pass with Denise's
+  eyes on specifics.)*
+- [ ] **22. "Decal #" → "Design #".** Rename the label in the clipart/Art
+  admin (and anywhere customer- or admin-facing). *(Label only — the stored
+  decal_number key and capture stay as-is.)*
+- [ ] **23. Admin users & permissions.** How do we add users to the admin,
+  ideally with permission levels? *(Real feature — today access = ADMIN_EMAILS
+  env var + a per-user database flag, no UI and no roles. Needs scoping: add
+  UI for inviting/removing admins, and decide whether one admin level is
+  enough for beta or roles are needed.)*
+- [ ] **24. Template/product categories (Unisex / Women's / Kid's / Baby's /
+  Accessories).** Categorize product templates so the product picker can
+  advise better — e.g. currently on a Unisex tee → Unisex options listed
+  first. *(Also useful ground-truth for Design Portability's within-category
+  re-fit logic. Needs a small data model + admin field + picker ordering.)*
+
+- [ ] **25. Top bar: button order + save-vs-login clarity.** (a) Rearrange the
+  top-bar buttons to: Log in / Save Design / My Designs. (b) In the first CTA
+  box customers see, add a note to the effect of "want to save your design for
+  another time? Be sure to log in to your account" — differentiating saving in
+  this session vs. having it later. Exact wording via the language editor
+  (default + editable). *(Denise 2026-08-09.)*
+
+- [ ] **26. "Copy to back" / "Copy to front" appear as soon as there's content
+  to copy.** "Copy to back" shows the moment something is placed on the front;
+  "Copy to front" shows the moment something is placed on the back. (Not
+  gated on anything later than that.) *(Denise 2026-08-09.)*
+
+- [ ] **25. Top-bar order + guest save/login note.** ✅ Shipped 2026-08-09
+  (awaiting Denise verify). (a) Top-bar buttons reordered to **Log in / Save Design
+  / My Designs** (desktop + mobile menu). (b) The blank-shirt CTA box shows a
+  **guest tip** distinguishing this-session work from a design saved to your
+  account ("Designing as a guest… Log in to save it…"), hidden once logged in;
+  wording editable in Admin → Language (`designer.empty.login_tip`).
+- [ ] **26. Copy to Back / Front on any content.** ✅ Shipped 2026-08-09 (awaiting
+  Denise verify). "Copy to Back" now appears the moment the FRONT has content, and
+  "Copy to Front" the moment the BACK does — both driven by LIVE content (was
+  reading a per-side ref that only refreshed on a side-switch, so the button
+  lagged). The copy action also freshens from the live canvas first, so it always
+  includes content just placed.
+
 ## How to use this file
 
 - Denise adds items here (or tells Claude/CC to add them) as she notices them.

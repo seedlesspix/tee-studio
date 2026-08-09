@@ -3834,6 +3834,7 @@ export default function DesignerCanvas({
     // greeting's Upload CTA so it can't confuse customers with an option that does nothing there.
     onUpload: printMethod === 'embroidery' ? undefined : () => { setActiveTab('upload'); setBandOpen(true) },
     onAddArt: () => { setActiveTab('clipart'); setBandOpen(true) },
+    loggedIn, // #25b: hide the "log in to keep this design" tip once signed in
   } : null
   // Per-side surcharge. designer_pricing.sides is a SIDE IDENTITY (1 = Front,
   // 2 = Back), NOT a count — each side is charged independently. Sum the price
@@ -4581,32 +4582,32 @@ export default function DesignerCanvas({
             >
               {t('designer.front', 'FRONT')}
             </button>
-            {hasBackImages && shirtView === 'front' && frontObjectsRef.current.length > 0 && (
+            {/* #26: appears as soon as the FRONT has content (reactive frontHasContent, not the stale
+                ref). On click, freshen the front ref from the LIVE canvas first so the copy includes
+                content just placed, then clone it into the back slot. */}
+            {hasBackImages && shirtView === 'front' && frontHasContent && (
               <button
                 onClick={() => {
                   const canvas = fabricCanvasRef.current
                   if (!canvas) return
-                  import('fabric').then(async ({ util }) => {
-                    const copies = await Promise.all(
-                      frontObjectsRef.current.map((o: any) => o.clone())
-                    )
-                    backObjectsRef.current = copies
+                  import('fabric').then(async () => {
+                    frontObjectsRef.current = canvas.getObjects().map((o: any) => o)
+                    backObjectsRef.current = await Promise.all(frontObjectsRef.current.map((o: any) => o.clone()))
                   })
                 }}
                 className="px-3 py-1.5 rounded-full text-xs font-mono tracking-widest bg-white text-gray-800 border border-gray-200 hover:border-[#dd3333] hover:text-gray-900 transition-all">
                 {t('designer.copy_to_back', 'Copy to Back')}
               </button>
             )}
-            {hasBackImages && shirtView === 'back' && backObjectsRef.current.length > 0 && (
+            {/* #26: appears as soon as the BACK has content; freshen from live, clone into the front slot. */}
+            {hasBackImages && shirtView === 'back' && backHasContent && (
               <button
                 onClick={() => {
                   const canvas = fabricCanvasRef.current
                   if (!canvas) return
                   import('fabric').then(async () => {
-                    const copies = await Promise.all(
-                      backObjectsRef.current.map((o: any) => o.clone())
-                    )
-                    frontObjectsRef.current = copies
+                    backObjectsRef.current = canvas.getObjects().map((o: any) => o)
+                    frontObjectsRef.current = await Promise.all(backObjectsRef.current.map((o: any) => o.clone()))
                   })
                 }}
                 className="px-3 py-1.5 rounded-full text-xs font-mono tracking-widest bg-white text-gray-800 border border-gray-200 hover:border-[#dd3333] hover:text-gray-900 transition-all">

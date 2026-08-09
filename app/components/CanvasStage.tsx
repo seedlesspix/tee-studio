@@ -13,6 +13,7 @@ type EmptyState = {
   onAddText: () => void
   onUpload?: () => void // omitted in embroidery (no uploads) → the Upload CTA is hidden
   onAddArt: () => void
+  loggedIn?: boolean // drives the "log in to keep this design" tip (hidden once logged in)
 }
 
 // CanvasStage — the fixed 680×850 design stage: the color mockup image, the
@@ -144,6 +145,13 @@ export default function CanvasStage({
                 <Shapes size={16} strokeWidth={1.75} /> {t('designer.empty.add_art', 'Add Art')}
               </button>
             </div>
+            {/* Login tip (Denise #25b): distinguishes this-session work from a design saved to your
+                account. Hidden once logged in. Wording is admin-editable (Language editor). */}
+            {!emptyState.loggedIn && (
+              <p className="text-[11px] leading-relaxed text-gray-500">
+                {t('designer.empty.login_tip', 'Designing as a guest — your work stays for this visit. Log in to save it to your account and pick it back up next time.')}
+              </p>
+            )}
           </div>
         </div>
       )}

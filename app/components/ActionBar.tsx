@@ -73,7 +73,9 @@ export default function ActionBar({
 
       <div className="flex-1 min-w-0 flex items-center justify-end gap-3">
         {/* Desktop-only controls — these live in the ☰ menu on mobile */}
+        {/* Order (Denise #25a): Log in / Save Design / My Designs */}
         <div className="hidden lg:flex items-center gap-3">
+          <CustomerAuthButton variant="quiet" onBeforeLogin={onBeforeLogin} />
           <SaveDesignControl onSave={onSave} loggedIn={loggedIn} dirty={dirty} />
           <button
             onClick={onOpenDesigns}
@@ -81,7 +83,6 @@ export default function ActionBar({
           >
             {t('designer.my_designs', 'My Designs')}{savedDesignsCount > 0 ? ` (${savedDesignsCount})` : ''}
           </button>
-          <CustomerAuthButton variant="quiet" onBeforeLogin={onBeforeLogin} />
         </div>
         {/* Always visible: folded-in price (neutral — info, not action) + Next Step */}
         {pricePerItem != null && (
@@ -103,6 +104,10 @@ export default function ActionBar({
           <div className="lg:hidden fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
           <div className="lg:hidden absolute left-4 top-14 z-50 w-60 rounded-lg border border-gray-200 bg-white py-2 shadow-lg">
             <p className="truncate border-b border-gray-100 px-4 pb-2 pt-1 font-mono text-xs text-gray-500">{productTitle || t('designer.your_design_fallback', 'Your design')}</p>
+            {/* Order (Denise #25a): Log in / Save Design / My Designs */}
+            <div className="px-4 py-2" onClick={() => setMenuOpen(false)}>
+              <CustomerAuthButton variant="quiet" onBeforeLogin={onBeforeLogin} />
+            </div>
             <div className="px-4 py-2" onClick={() => setMenuOpen(false)}>
               <SaveDesignControl onSave={onSave} loggedIn={loggedIn} dirty={dirty} />
             </div>
@@ -112,9 +117,6 @@ export default function ActionBar({
             >
               {t('designer.my_designs', 'My Designs')}{savedDesignsCount > 0 ? ` (${savedDesignsCount})` : ''}
             </button>
-            <div className="px-4 py-2" onClick={() => setMenuOpen(false)}>
-              <CustomerAuthButton variant="quiet" onBeforeLogin={onBeforeLogin} />
-            </div>
           </div>
         </>
       )}
