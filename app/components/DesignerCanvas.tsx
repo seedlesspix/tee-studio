@@ -372,18 +372,17 @@ export default function DesignerCanvas({
   const viewRef = useRef(view)
   useEffect(() => { viewRef.current = view }, [view])
   const pinchRef = useRef<{ startDist: number; startMid: { x: number; y: number }; startView: { zoom: number; x: number; y: number } } | null>(null)
-  const gestureRef = useRef(false) // latched from the 2-finger start until ALL fingers lift
-  // Capture-phase listeners on the stage so a TWO-finger pinch is intercepted BEFORE Fabric
-  // (whose touch-action:none owns single-finger drags). Zoom is centred; two-finger drag pans;
-  // releasing near 1× snaps back. Mobile only; desktop never attaches these.
+  // Capture-phase listeners on the stage so a TWO-finger pan/zoom is intercepted before Fabric
+  // (whose touch-action:none owns single-finger drags). Mobile only; desktop never attaches these.
   //
-  // 🩹 The subtle part (reviewed bug): a pinch NEVER lands both fingers in one event — finger 1
-  // arrives as a normal 1-touch start that Fabric grabs (selects the object under it / starts a
-  // transform). So when the 2nd finger lands we LATCH the gesture, CANCEL Fabric's in-progress
-  // grab (reset its private transform/selection state — version-pinned to fabric 7.3.1), and from
-  // then until ALL fingers lift we swallow every touch (preventDefault + stopPropagation) so no
-  // trailing single finger can reach Fabric and drag the artwork. Without this, releasing a pinch
-  // moved the customer's design.
+  // Zoomed-in is a WORKING mode (Denise): ONE finger selects/drags objects exactly as at 1× —
+  // coordinate-safe because Fabric re-derives the touch→canvas scale from the LIVE transformed
+  // getBoundingClientRect on every pointer event (_getPointerImpl), so the CSS zoom just works.
+  // We swallow input ONLY while 2+ fingers are actually down (an active pan/zoom) — never "while
+  // zoomed" generally. One subtlety: a pinch's finger 1 lands first as a 1-touch Fabric may grab,
+  // so when the 2nd finger lands we cancel that grab (reset Fabric's private transform/selection
+  // state, pinned to fabric 7.3.1) — the object doesn't move during pan/zoom and a leftover finger
+  // can't drag it. To move an object after a pinch, lift and touch again (a fresh 1-finger drag).
   useEffect(() => {
     if (!isMobile) return
     const el = stageAreaRef.current
@@ -401,23 +400,16 @@ export default function DesignerCanvas({
       c.requestRenderAll?.()
     }
     const onStart = (e: TouchEvent) => {
-      // A fresh single-finger touch begins a new sequence → let Fabric own it (object drag), and
-      // clear any latch a dropped final touch may have left stuck (self-heal). This fires only when
-      // a NEW finger brings the total to 1, never when a finger LIFTS mid-pinch (touchstart doesn't
-      // fire on lift), so it can't unlatch an in-progress pinch.
-      if (e.touches.length === 1) { gestureRef.current = false; return }
-      // 2+ fingers → ALWAYS swallow so no touch (incl. a 3rd finger landing mid-pinch) can reach
-      // Fabric and re-grab/re-select. Only the exact 2-finger case (re)baselines the pinch below.
+      if (e.touches.length < 2) return // single finger → Fabric owns it (select/drag at ANY zoom)
+      // 2+ fingers → swallow so nothing reaches Fabric; only the exact 2-finger case baselines the pan/zoom.
       e.preventDefault(); e.stopPropagation()
       if (e.touches.length !== 2) return
-      gestureRef.current = true
-      cancelFabricGesture() // undo the grab finger 1 already started on Fabric
+      cancelFabricGesture() // undo any grab finger 1 started, so the object won't move while we pan/zoom
       pinchRef.current = { startDist: distOf(e.touches) || 1, startMid: midOf(e.touches), startView: { ...viewRef.current } }
     }
     const onMove = (e: TouchEvent) => {
-      if (!gestureRef.current) return // not pinching → Fabric handles single-finger drag
-      e.preventDefault(); e.stopPropagation() // swallow even a leftover single finger
-      if (e.touches.length !== 2 || !pinchRef.current) return
+      if (e.touches.length < 2 || !pinchRef.current) return // 1 finger → let Fabric drag (don't swallow)
+      e.preventDefault(); e.stopPropagation()
       const p = pinchRef.current
       const zoom = Math.min(3, Math.max(1, p.startView.zoom * (distOf(e.touches) / p.startDist)))
       const m = midOf(e.touches)
@@ -426,12 +418,13 @@ export default function DesignerCanvas({
       setView({ zoom, x, y })
     }
     const onEnd = (e: TouchEvent) => {
-      if (!gestureRef.current) return
+      if (!pinchRef.current) return // not in a pan/zoom → Fabric handles the single-finger end
+      if (e.touches.length >= 2) return // still 2+ fingers → pan/zoom continues
+      // Dropped below 2 fingers → END the pan/zoom. Swallow THIS transition so the lifting finger
+      // doesn't reach Fabric, cancel any grab so a leftover finger can't drag, and snap back near 1×.
       e.preventDefault(); e.stopPropagation()
-      if (e.touches.length > 0) return // fingers still down — keep swallowing so Fabric can't grab
-      gestureRef.current = false
       pinchRef.current = null
-      cancelFabricGesture() // clear anything Fabric latched during the gesture
+      cancelFabricGesture()
       setView(v => (v.zoom <= 1.02 ? { zoom: 1, x: 0, y: 0 } : v))
     }
     el.addEventListener('touchstart', onStart, { passive: false, capture: true })
