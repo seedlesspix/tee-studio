@@ -14,8 +14,9 @@ export type TextPlacement = {
   left: number; top: number  // object CENTER in 680×850 px (originX/originY = center)
   angle: number           // degrees, clockwise
   fill: string            // "#RRGGBB"
-  textAlign: 'left' | 'center' | 'right'
+  textAlign: 'left' | 'center' | 'right' | 'justify'
   charSpacing: number     // 1/1000 em
+  lineHeight?: number     // Fabric lineHeight (multi-line advance); default 1.16
   italic: boolean         // faux-italic (skew) — fonts are single-weight/upright files
 }
 export type CutSvgOptions = { dpi?: number; decimalPlaces?: number }
@@ -94,9 +95,10 @@ export function outlineText(
   const cyU = (place.top - canvasBox.top) * uY
 
   const lines = place.text.split('\n')
-  const blockH = place.fontSizePx * 1.13 * (1 + (lines.length - 1) * 1.16) * place.scaleY * uPerPx
+  const lh = place.lineHeight ?? 1.16   // honor the Line Spacing slider (default = Fabric 1.16)
+  const blockH = place.fontSizePx * 1.13 * (1 + (lines.length - 1) * lh) * place.scaleY * uPerPx
   const slotU = place.fontSizePx * 1.13 * place.scaleY * uPerPx
-  const advU = place.fontSizePx * 1.13 * 1.16 * place.scaleY * uPerPx
+  const advU = place.fontSizePx * 1.13 * lh * place.scaleY * uPerPx
   const blockTop = cyU - blockH / 2
 
   const measured = lines.map(line => {
@@ -113,9 +115,14 @@ export function outlineText(
   const parts: string[] = []
   measured.forEach(({ gs, w }, li) => {
     const leftEdge = cxU - blockW / 2
-    let penX = place.textAlign === 'left' ? leftEdge
-      : place.textAlign === 'right' ? leftEdge + (blockW - w)
-      : cxU - w / 2
+    // Justify (matches Fabric IText): spread word gaps to fill the block width on every line EXCEPT
+    // the last, which stays left-aligned. A line with no spaces can't justify → left.
+    const isJustify = place.textAlign === 'justify'
+    const spaces = isJustify ? gs.filter(g => g.unicode === 32).length : 0
+    const extraPerSpace = (isJustify && li < lines.length - 1 && spaces > 0) ? (blockW - w) / spaces : 0
+    let penX = place.textAlign === 'right' ? leftEdge + (blockW - w)
+      : place.textAlign === 'center' ? cxU - w / 2
+      : leftEdge // left AND justify begin at the left edge
     const baseY = blockTop + li * advU + (slotU + capU) / 2
     for (let i = 0; i < gs.length; i++) {
       if (i > 0) penX += font.getKerningValue(gs[i - 1], gs[i]) * scale
@@ -125,6 +132,7 @@ export function outlineText(
       const d = cmdsToD(cmds, dp)
       if (d) parts.push(d)
       penX += (gs[i].advanceWidth ?? 0) * scale + spaceU
+      if (extraPerSpace && gs[i].unicode === 32) penX += extraPerSpace
     }
   })
 

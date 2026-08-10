@@ -292,6 +292,11 @@ export async function GET(req: NextRequest) {
     `  Each Cut Files/Names/NN-NAME-NUMBER.svg overlays the shared base ${orderNo}-<side>.svg in the same print area.`,
   ] : []
 
+  // Decal / design numbers placed on this order — the same list the admin shows, now on the bench sheet.
+  const decalsUsed: Array<{ number: number; name: string }> = Array.isArray(o.decals_used)
+    ? (o.decals_used as unknown as Array<{ number: number; name: string }>)
+    : []
+
   const info: string[] = [
     `ORDER ${orderNo}${paid ? '' : `   [${String(o.status || 'draft').toUpperCase()} — not a paid order yet]`}`,
     `${'='.repeat(50)}`,
@@ -319,6 +324,11 @@ export async function GET(req: NextRequest) {
     `  Front: ${summarizeSide(o.canvas_json_front as string | null)}`,
     `  Back:  ${summarizeSide(o.canvas_json_back as string | null)}`,
     ``,
+    ...(decalsUsed.length ? [
+      `DESIGNS USED  (decal / design numbers)`,
+      ...decalsUsed.map(d => `  #${d.number}  ${d.name}`),
+      ``,
+    ] : []),
     ...(nnActive ? [...nnManifest, ``] : []),
     `CUT FILES (vector to cut — union'd per color, cropped, no mask; NORMAL + MIRRORED)`,
     `  Cut Files/ = normal (adhesive, print-then-cut) · Cut Files (Mirrored)/ = HTV`,

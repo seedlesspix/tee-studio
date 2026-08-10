@@ -31,9 +31,16 @@ export async function GET(req: NextRequest) {
   // 2. load the order via SERVICE ROLE (admin already authed; covers completed/PII rows)
   const { data: o, error } = await serviceClient()
     .from('design_orders')
-    .select('id,canvas_json_front,canvas_json_back,print_area_front,print_area_back,shopify_order_number,customer_name,shipping_address,billing_address')
+    .select('id,canvas_json_front,canvas_json_back,print_area_front,print_area_back,shopify_order_number,customer_name,shipping_address,billing_address,roster')
     .eq('id', orderId).maybeSingle()
   if (error || !o) return NextResponse.json({ error: 'order not found' }, { status: 404 })
+
+  // Names & Numbers orders can't be a single static cut — each roster player is a different name/number,
+  // and the per-player cut files live in the full production bundle. Refuse here (with a clear pointer)
+  // rather than outlining the placeholder text as one wrong static cut.
+  if (Array.isArray(o.roster) && o.roster.length > 0) {
+    return NextResponse.json({ error: 'This is a Names & Numbers order — download the full production bundle for the per-player cut files.' }, { status: 422 })
+  }
 
   const canvasJson = side === 'front' ? o.canvas_json_front : o.canvas_json_back
   const snap = side === 'front' ? o.print_area_front : o.print_area_back

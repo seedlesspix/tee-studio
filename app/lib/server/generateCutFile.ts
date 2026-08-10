@@ -121,8 +121,9 @@ export async function outlineVectorObject(
       scaleX: Number(t.scaleX ?? 1), scaleY: Number(t.scaleY ?? 1),
       left: Number(t.left), top: Number(t.top), angle: Number(t.angle ?? 0),
       fill: typeof t.fill === 'string' ? t.fill : '#000000',
-      textAlign: (t.textAlign === 'left' || t.textAlign === 'right') ? t.textAlign : 'center',
+      textAlign: (t.textAlign === 'left' || t.textAlign === 'right' || t.textAlign === 'justify') ? t.textAlign : 'center',
       charSpacing: Number(t.charSpacing ?? 0),
+      lineHeight: Number(t.lineHeight ?? 1.16),
       italic,
     }
     return { paths: [outlineText(font, place, canvasBox, phys)] }

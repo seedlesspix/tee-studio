@@ -38,11 +38,48 @@ function nodeFill(node: INode): string | null {
 const isNoneFill = (node: INode) =>
   node.attributes.fill === 'none' || /fill\s*:\s*none/.test(node.attributes.style || '')
 
-// Walk the tree accumulating the SVG transform string (root->leaf); collect fillable paths.
+// Convert the common CLOSED, fillable SVG primitives to a path 'd' so they aren't silently dropped
+// from the cut — badges/borders often use <rect>/<circle>/<ellipse>/<polygon> alongside <path>, and
+// dropping them produced a partial cut with no warning. Open/stroke-only shapes (<line>/<polyline>)
+// aren't fillable regions, so they're not cut.
+function shapeToPathD(node: INode): string | null {
+  const a = node.attributes
+  const num = (v: string | undefined) => { const n = parseFloat(v ?? ''); return Number.isFinite(n) ? n : 0 }
+  switch (node.name) {
+    case 'rect': {
+      const x = num(a.x), y = num(a.y), w = num(a.width), h = num(a.height)
+      return w > 0 && h > 0 ? `M${x},${y} H${x + w} V${y + h} H${x} Z` : null
+    }
+    case 'circle': {
+      const cx = num(a.cx), cy = num(a.cy), r = num(a.r)
+      return r > 0 ? `M${cx - r},${cy} a${r},${r} 0 1,0 ${2 * r},0 a${r},${r} 0 1,0 ${-2 * r},0 Z` : null
+    }
+    case 'ellipse': {
+      const cx = num(a.cx), cy = num(a.cy), rx = num(a.rx), ry = num(a.ry)
+      return rx > 0 && ry > 0 ? `M${cx - rx},${cy} a${rx},${ry} 0 1,0 ${2 * rx},0 a${rx},${ry} 0 1,0 ${-2 * rx},0 Z` : null
+    }
+    case 'polygon': {
+      const pts = (a.points || '').trim().split(/[\s,]+/).map(Number).filter(n => Number.isFinite(n))
+      if (pts.length < 6) return null // need at least 3 points for an area
+      let d = `M${pts[0]},${pts[1]}`
+      for (let i = 2; i + 1 < pts.length; i += 2) d += ` L${pts[i]},${pts[i + 1]}`
+      return d + ' Z'
+    }
+    default:
+      return null
+  }
+}
+
+// Walk the tree accumulating the SVG transform string (root->leaf); collect fillable paths + shapes.
 function collectPaths(node: INode, xform: string, out: { d: string; fill: string | null; xform: string }[]) {
   const t = node.attributes.transform ? `${xform} ${node.attributes.transform}`.trim() : xform
-  if (node.name === 'path' && node.attributes.d && !isNoneFill(node)) {
-    out.push({ d: node.attributes.d, fill: nodeFill(node), xform: t })
+  if (!isNoneFill(node)) {
+    if (node.name === 'path' && node.attributes.d) {
+      out.push({ d: node.attributes.d, fill: nodeFill(node), xform: t })
+    } else {
+      const shaped = shapeToPathD(node)
+      if (shaped) out.push({ d: shaped, fill: nodeFill(node), xform: t })
+    }
   }
   for (const c of node.children || []) collectPaths(c, t, out)
 }
