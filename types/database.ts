@@ -205,6 +205,7 @@ export type Database = {
           customer_name: string | null
           customer_phone: string | null
           decals_used: Json | null
+          desired_by: string | null
           id: string
           notes: string | null
           price_per_item: number | null
@@ -250,6 +251,7 @@ export type Database = {
           customer_name?: string | null
           customer_phone?: string | null
           decals_used?: Json | null
+          desired_by?: string | null
           id?: string
           notes?: string | null
           price_per_item?: number | null
@@ -295,6 +297,7 @@ export type Database = {
           customer_name?: string | null
           customer_phone?: string | null
           decals_used?: Json | null
+          desired_by?: string | null
           id?: string
           notes?: string | null
           price_per_item?: number | null

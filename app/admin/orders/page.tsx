@@ -105,6 +105,14 @@ type OrderGroup = {
   rows: Order[]
 }
 
+// The soonest (earliest) desired-by date across a group's designs, or null if none set (BETA #30).
+const groupDesiredBy = (g: OrderGroup): string | null =>
+  g.rows.reduce<string | null>((m, r) => {
+    const d = r.desired_by
+    if (!d) return m
+    return !m || d < m ? d : m
+  }, null)
+
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-200 text-gray-800',
   ordering: 'bg-blue-100 text-blue-800',
@@ -134,6 +142,7 @@ export default function OrdersAdmin() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
+  const [sortMode, setSortMode] = useState<'newest' | 'desired'>('newest') // BETA #30: newest ⇄ soonest desired-by
   const [deleting, setDeleting] = useState(false)
   const [downloading, setDownloading] = useState<string | null>(null)
 
@@ -182,7 +191,18 @@ export default function OrdersAdmin() {
     }))
     const newest = (g: OrderGroup) =>
       g.rows.reduce((m, r) => ((r.created_at ?? '') > m ? (r.created_at ?? '') : m), '')
-    return [...numbered, ...singles].sort((a, b) => newest(b).localeCompare(newest(a)))
+    const all = [...numbered, ...singles]
+    if (sortMode === 'desired') {
+      // Soonest desired-by first; orders with NO desired-by fall to the bottom (newest-first among them).
+      return all.sort((a, b) => {
+        const da = groupDesiredBy(a), db = groupDesiredBy(b)
+        if (da && db) return da.localeCompare(db)
+        if (da) return -1
+        if (db) return 1
+        return newest(b).localeCompare(newest(a))
+      })
+    }
+    return all.sort((a, b) => newest(b).localeCompare(newest(a)))
   })()
 
   // A group shows when ANY of its designs matches — the print shop always
@@ -290,6 +310,19 @@ export default function OrdersAdmin() {
               </button>
             ))}
           </div>
+          {/* Sort toggle (BETA #30) — newest vs soonest desired-by, for scheduling. */}
+          <div className="flex gap-1">
+            {([['newest', 'Newest'], ['desired', 'Desired by ↑']] as const).map(([key, label]) => (
+              <button key={key} onClick={() => setSortMode(key)}
+                className={`px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wide transition-all border ${
+                  sortMode === key
+                    ? 'bg-gray-900 text-white font-bold border-gray-900'
+                    : 'bg-white text-black hover:bg-gray-100 border-gray-300'
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -361,6 +394,13 @@ export default function OrdersAdmin() {
                     <p className="text-sm text-black truncate">
                       {multi ? group.rows.map(r => r.product_title).join(' · ') : first.product_title}
                     </p>
+                  )}
+                  {groupDesiredBy(group) && (
+                    <div className="mt-1">
+                      <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-100 text-amber-800">
+                        ⏰ {t('admin.desired_by_label', 'Desired by')} {new Date(groupDesiredBy(group) + 'T00:00:00').toLocaleDateString()}
+                      </span>
+                    </div>
                   )}
                   <div className="flex items-center justify-between mt-0.5">
                     <span className="text-[10px] text-gray-500 font-mono">{formatDate(first.created_at)}</span>
@@ -499,6 +539,9 @@ export default function OrdersAdmin() {
                         <div className="flex justify-between"><span className="text-gray-600">Color</span><span>{row.selected_color}</span></div>
                         <div className="flex justify-between"><span className="text-gray-600">Print</span><span>{(() => { const mk = 'method.' + (row.print_method || 'screen_print'); const s = t(mk); return s === mk ? (row.print_method || '').replace('_', ' ') : s })()}</span></div>
                         <div className="flex justify-between"><span className="text-gray-600">Sides</span><span>{row.sides_designed}</span></div>
+                        {row.desired_by && (
+                          <div className="flex justify-between font-bold text-amber-800"><span>⏰ {t('admin.desired_by_label', 'Desired by')}</span><span>{new Date(row.desired_by + 'T00:00:00').toLocaleDateString()}</span></div>
+                        )}
                         <div className="border-t border-gray-200 pt-2 flex justify-between"><span className="text-gray-600">Blank + Print</span><span>${row.unit_price} + ${row.print_charge}</span></div>
                         <div className="flex justify-between font-bold"><span className="text-black">Total ({row.total_qty} items)</span><span className="text-[#dd3333]">${row.total_price}</span></div>
                       </div>
@@ -507,7 +550,7 @@ export default function OrdersAdmin() {
                     {/* Design Notes (customer printing instructions) */}
                     {row.notes && (
                       <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-                        <p className="text-xs font-mono text-gray-600 uppercase tracking-widest mb-2">Design Notes</p>
+                        <p className="text-xs font-mono text-gray-600 uppercase tracking-widest mb-2">{t('admin.design_notes_heading', 'Design Notes')}</p>
                         <p className="text-sm text-black whitespace-pre-wrap">{row.notes}</p>
                       </div>
                     )}

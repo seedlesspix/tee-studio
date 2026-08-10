@@ -84,7 +84,7 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid id' }, { status: 400 })
   }
 
-  let body: { quantities?: unknown; notes?: unknown; replaceDesignOrderId?: unknown }
+  let body: { quantities?: unknown; notes?: unknown; desired_by?: unknown; replaceDesignOrderId?: unknown }
   try {
     body = await request.json()
   } catch {
@@ -97,6 +97,11 @@ export async function POST(
   if (body.notes !== undefined && body.notes !== null && typeof body.notes !== 'string') {
     return NextResponse.json({ error: 'Invalid notes' }, { status: 400 })
   }
+  // Desired-by date (BETA #30): null or a plain YYYY-MM-DD calendar date.
+  if (body.desired_by !== undefined && body.desired_by !== null && !(typeof body.desired_by === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.desired_by))) {
+    return NextResponse.json({ error: 'Invalid desired_by' }, { status: 400 })
+  }
+  const desiredBy = typeof body.desired_by === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.desired_by) ? body.desired_by : null
 
   let storeOrigin: string
   try {
@@ -360,6 +365,7 @@ export async function POST(
         total_qty: effTotalQty,
         total_price: Number((effTotalQty * price).toFixed(2)),
         notes: typeof body.notes === 'string' ? body.notes.trim() || null : (body.notes ?? design.notes),
+        desired_by: desiredBy,
         status: 'cart_created',
         shopify_cart_url: cartUrl,
       })

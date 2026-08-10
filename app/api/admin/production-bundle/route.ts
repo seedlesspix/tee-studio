@@ -125,6 +125,9 @@ export async function GET(req: NextRequest) {
       'product_title', 'selected_color', 'selected_color_hex', 'print_method', 'sides_designed',
       'status', 'customer_name', 'customer_email', 'customer_phone', 'shipping_address',
       'shipping_lines', 'quantities', 'available_sizes', 'roster',
+      // BETA #30 + fix: desired_by/notes for the schedule section; decals_used was read by the
+      // DESIGNS USED section but never selected (so it silently never rendered) — now included.
+      'desired_by', 'notes', 'decals_used',
     ].join(','))
     .eq('id', orderId).maybeSingle() as { data: Record<string, unknown> | null; error: unknown }
   if (error || !o) return NextResponse.json({ error: 'order not found' }, { status: 404 })
@@ -309,6 +312,12 @@ export async function GET(req: NextRequest) {
     `FULFILLMENT`,
     `  Method:  ${method}`,
     `  Address: ${addr || (/pickup/i.test(method) ? '(pickup — no shipping address)' : notYet)}`,
+    ``,
+    `SCHEDULE`,
+    `  Desired by:  ${o.desired_by ? String(o.desired_by) : '— (no date requested)'}`,
+    ``,
+    `DESIGN NOTES`,
+    ...(o.notes ? String(o.notes).split('\n').map(l => `  ${l}`) : ['  — (none)']),
     ``,
     `GARMENT`,
     `  Product: ${val(o.product_title)}`,

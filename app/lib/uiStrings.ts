@@ -22,6 +22,11 @@ export const UI_STRINGS = {
 
   // ── Order page ───────────────────────────────────────────────────────────────
   'order.blank_line': { default: 'Blank product', group: 'Order page', desc: 'Label for the blank-garment line in the order summary (sometimes a hat, not a shirt — BETA #16).' },
+  // Desired-by date (BETA #30) — optional; turnaround copy is method-aware.
+  'order.desired_by_label': { default: 'Desired by', group: 'Order page', desc: 'Label for the optional "desired by" date picker on the order page (BETA #30).' },
+  'order.desired_by_help_print': { default: 'Typical turnaround: print 24–72 hours.', group: 'Order page', desc: 'Turnaround expectation shown beside the Desired-by date for PRINT orders (BETA #30).' },
+  'order.desired_by_help_embroidery': { default: 'Typical turnaround: embroidery about a week.', group: 'Order page', desc: 'Turnaround expectation shown beside the Desired-by date for EMBROIDERY orders (BETA #30).' },
+  'order.desired_by_nudge': { default: "That's sooner than our usual turnaround — we'll do our best, but please call us to confirm.", group: 'Order page', desc: 'Soft nudge (never blocks) shown when the chosen desired-by date is sooner than turnaround (BETA #30).' },
 
   // ── Notifications / confirms ─────────────────────────────────────────────────
   'notify.clear_all_confirm': { default: 'Clear all design elements?', group: 'Notifications', desc: 'Confirmation shown before clearing the whole design (BETA #19, wording).' },
@@ -29,6 +34,8 @@ export const UI_STRINGS = {
   // ── Admin — Art library ──────────────────────────────────────────────────────
   'admin.design_number': { default: 'Design #', group: 'Admin — Art', desc: 'Label for an art item’s design number in the Art admin (was "Decal #" — BETA #22).' },
   'admin.designs_used': { default: 'Designs Used', group: 'Admin — Orders', desc: 'Heading over the list of design numbers used on an order (was "Decals Used").' },
+  'admin.desired_by_label': { default: 'Desired by', group: 'Admin — Orders', desc: 'Label for the customer-requested "desired by" date shown on an order in admin (BETA #30).' },
+  'admin.design_notes_heading': { default: 'Design Notes', group: 'Admin — Orders', desc: 'Heading over the customer design-notes on an order in admin.' },
 
   // ── Designer (customer) — a starter set of the most-visible labels/notes ─────
   'designer.embroidery_preview_note': { default: 'Preview — final stitching may vary.', group: 'Designer', desc: 'Honesty note shown in embroidery mode next to the design.' },

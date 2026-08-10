@@ -30,6 +30,7 @@ function OrderPage() {
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState('')
   const [notes, setNotes] = useState('')
+  const [desiredBy, setDesiredBy] = useState('') // BETA #30 — optional ISO date (YYYY-MM-DD)
   // This garment's per-product volume ladder (product_templates.volume_tiers, public read) — drives
   // the incentive display only; the real % comes off at checkout via the Shopify discount Function.
   const [volumeTiers, setVolumeTiers] = useState<VolumeTier[]>([])
@@ -46,6 +47,7 @@ function OrderPage() {
         const order = data
         setDesign(order)
         setNotes(order.notes ?? '')
+        setDesiredBy(order.desired_by ?? '')
         const initQty: Record<string, number> = {}
         const savedQuantities = order.quantities ?? {}
         // Sizes come from the design's saved available_sizes, already in Shopify
@@ -128,7 +130,7 @@ function OrderPage() {
     const res = await fetch(`/api/design-orders/${design.id}/add-to-cart`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ quantities, notes: notes.trim() || null, ...(replaceCart ? { replaceDesignOrderId: replaceCart } : {}) }),
+      body: JSON.stringify({ quantities, notes: notes.trim() || null, desired_by: desiredBy || null, ...(replaceCart ? { replaceDesignOrderId: replaceCart } : {}) }),
     }).catch(() => null)
 
     if (!res || !res.ok) {
@@ -377,6 +379,39 @@ function OrderPage() {
                     </div>
                   )}
                   <p className="mt-2 text-sm text-gray-700">{t('order.volume_auto_checkout', 'Discount applied automatically in your cart.')}</p>
+                </div>
+              )
+            })()}
+          </div>
+
+          {/* Desired-by date (BETA #30) — optional; method-aware turnaround note + a SOFT nudge if the
+              date is sooner than turnaround. Never blocks checkout. Saved to the order → admin + OrderInfo. */}
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+            <label htmlFor="desired-by" className="block text-xs font-mono text-gray-900 uppercase tracking-widest mb-2">
+              {t('order.desired_by_label', 'Desired by')} <span className="text-gray-500 normal-case">{t('order.notes_optional', '(optional)')}</span>
+            </label>
+            <input
+              id="desired-by"
+              type="date"
+              value={desiredBy}
+              min={new Date().toISOString().slice(0, 10)}
+              onChange={e => setDesiredBy(e.target.value)}
+              className="w-full sm:w-56 bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#dd3333]"
+            />
+            <p className="mt-2 text-xs text-gray-500">
+              {design?.print_method === 'embroidery'
+                ? t('order.desired_by_help_embroidery', 'Typical turnaround: embroidery about a week.')
+                : t('order.desired_by_help_print', 'Typical turnaround: print 24–72 hours.')}
+            </p>
+            {(() => {
+              if (!desiredBy) return null
+              const d = new Date(desiredBy + 'T00:00:00'); if (isNaN(d.getTime())) return null
+              const days = design?.print_method === 'embroidery' ? 7 : 3
+              const threshold = new Date(); threshold.setHours(0, 0, 0, 0); threshold.setDate(threshold.getDate() + days)
+              if (d >= threshold) return null
+              return (
+                <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  {t('order.desired_by_nudge', "That's sooner than our usual turnaround — we'll do our best, but please call us to confirm.")}
                 </div>
               )
             })()}

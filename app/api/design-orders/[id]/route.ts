@@ -97,6 +97,12 @@ export async function PATCH(
     }
     patch.notes = body.notes
   }
+  if (body.desired_by !== undefined) { // BETA #30 — null or a plain YYYY-MM-DD date
+    if (body.desired_by !== null && !(typeof body.desired_by === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.desired_by))) {
+      return NextResponse.json({ error: 'Invalid desired_by' }, { status: 400 })
+    }
+    patch.desired_by = body.desired_by as string | null
+  }
   if (body.shopify_cart_url !== undefined) {
     if (body.shopify_cart_url !== null && typeof body.shopify_cart_url !== 'string') {
       return NextResponse.json({ error: 'Invalid shopify_cart_url' }, { status: 400 })
