@@ -350,7 +350,7 @@ export default function DesignerCanvas({
   const [editHistTick, setEditHistTick] = useState(0)
   // Manual drag-crop: a Fabric Rect overlay + 4 dimming scrims + the image it's cropping.
   const [cropMode, setCropMode] = useState(false)
-  const cropRectRef = useRef<{ rect: any; img: any; scrims: any[]; sync: () => void } | null>(null)
+  const cropRectRef = useRef<{ rect: any; img: any; scrims: any[]; sync: () => void; angle: number } | null>(null)
   // Reactive count of objects on the CURRENT side's canvas — drives the blank-shirt
   // empty-state overlay (greeting + on-garment CTAs). Updated on object:added/removed.
   const [canvasObjectCount, setCanvasObjectCount] = useState(0)
@@ -1864,6 +1864,7 @@ export default function DesignerCanvas({
           mouseUpHandler: (_: any, transform: any) => {
             const target = transform.target
             canvas.remove(target)
+            markDirty() // ✕-handle delete must mark unsaved + refresh the auto-draft (parity with keyboard Delete / mobile ✕) — else Save reads "Saved" and a reload can resurrect the object
             canvas.requestRenderAll?.() || canvas.renderAll()
             return true
           },
@@ -2978,7 +2979,12 @@ export default function DesignerCanvas({
       markDirty()
       uploadedFilesRef.current = [
         ...uploadedFilesRef.current,
-        { name: item.fileName, url: item.url, type: item.fileType || 'image' },
+        {
+          name: item.fileName, url: item.url, type: item.fileType || 'image',
+          // Carry the source original forward so a re-added AI/PSD/PDF still delivers the real
+          // file to the bench (not just the flattened PNG). Only set when the library row has one.
+          ...(item.originalUrl ? { originalUrl: item.originalUrl, originalFormat: item.originalFormat ?? undefined } : {}),
+        },
       ]
     } catch {
       alert(t('designer.upload_add_failed', 'Could not add that image. Please try again.'))
@@ -3229,6 +3235,7 @@ export default function DesignerCanvas({
     await img.setSrc(state.src)
     img.set({ left: state.left, top: state.top, scaleX: state.scaleX, scaleY: state.scaleY, angle: state.angle })
     img.setCoords?.(); fabricCanvas?.renderAll()
+    refreshLowRes(img) // undo/redo can swap to a different natural-px src → re-evaluate effective DPI
     img._uploadSrc = state.uploadSrc
     const list = uploadedFilesRef.current
     const idx = list.findIndex(f => f.url === curSrc)
@@ -3261,6 +3268,8 @@ export default function DesignerCanvas({
       if (opts?.preserveSize && prevScaledW && img.width) { const s = prevScaledW / img.width; img.scaleX = s; img.scaleY = s }
       if (pos) img.set({ left: pos.left, top: pos.top }) // crop repositions so content stays put
       img.setCoords?.(); fabricCanvas?.renderAll(); markDirty()
+      refreshLowRes(img) // Crop / Remove-BG change natural px (and thus effective DPI) — refresh the warning now
+
       let revisedUrl: string
       if (isData) {
         const blob = await (await fetch(editedSrc)).blob()
@@ -3419,6 +3428,14 @@ export default function DesignerCanvas({
     const img: any = fabricCanvas?.getActiveObject()
     if (!img || String(img.type).toLowerCase() !== 'image') return
     const { Rect } = await import('fabric')
+    // Rotated-image crop: temporarily un-rotate to angle 0 so the box, scrims, clamp, and the
+    // natural-px mapping in applyCrop all run in the image's UPRIGHT frame (the proven angle-0
+    // geometry). The saved angle is restored in cleanupCrop, and because applyCrop cleans up BEFORE
+    // it computes the placement center, that center is derived from the restored (rotated) matrix —
+    // so the cropped piece keeps both its rotation and its exact on-shirt position. Rotation is about
+    // the center, so img.left/top (center-origin) don't move when we zero the angle.
+    const savedAngle = img.angle || 0
+    if (savedAngle) { img.angle = 0; img.setCoords?.() }
     // Snap the crop box to the image's bounds using the image's OWN scene coords (center-origin
     // upload) — the placement that worked before. Transparent fill + visible dashed outline so the
     // kept region reads bright once the outside is dimmed.
@@ -3464,7 +3481,7 @@ export default function DesignerCanvas({
     rect.on('moving', () => { clamp(); sync(); fabricCanvas.requestRenderAll() })
     rect.on('scaling', () => { clamp(); sync(); fabricCanvas.requestRenderAll() })
     fabricCanvas.renderAll()
-    cropRectRef.current = { rect, img, scrims, sync }
+    cropRectRef.current = { rect, img, scrims, sync, angle: savedAngle }
     setCropMode(true)
   }
   const cleanupCrop = () => {
@@ -3476,6 +3493,10 @@ export default function DesignerCanvas({
       cr.scrims?.forEach(s => fabricCanvas?.remove(s))
     } catch { /* already gone */ }
     cr.img.selectable = true; cr.img.evented = true
+    // Restore the rotation we zeroed in startCrop (no-op if the image wasn't rotated). Must happen
+    // before applyCrop reads calcTransformMatrix() for the placement center, so the center lands in
+    // the rotated frame.
+    if (cr.angle) { cr.img.angle = cr.angle; cr.img.setCoords?.() }
     fabricCanvas?.setActiveObject(cr.img); fabricCanvas?.renderAll()
     cropRectRef.current = null; setCropMode(false)
   }
@@ -3583,6 +3604,13 @@ export default function DesignerCanvas({
   const saveDesignAndAddToCart = async () => {
     const canvas = fabricCanvasRef.current
     if (!canvas) return null
+
+    // N&N: if a transient roster PREVIEW is active (a placeholder is showing a real player's
+    // NAME/00 → e.g. "SMITH 12"), restore the canonical placeholders BEFORE serializing — otherwise
+    // that one player's substituted text/scaleX bakes into canvas_json + the preview PNG. exitNnPreview
+    // is idempotent + synchronous, so the liveObjects read below sees the restored state. Mirrors the
+    // same guard the auto-draft writer (:3974) and switchView already do at their own call sites.
+    if (nnPreviewRef.current !== null) exitNnPreview()
 
     const orderId = crypto.randomUUID()
     const timestamp = Date.now()
@@ -4383,6 +4411,7 @@ export default function DesignerCanvas({
   )
   const namesPanel = (
     <NamesNumbersPanel
+      compact={isMobile}
       roster={roster}
       onChange={r => { setRoster(r); markDirty() }}
       onAddNameField={addNameField}
@@ -4505,9 +4534,11 @@ export default function DesignerCanvas({
     : activeTab === 'names' ? namesPanel
     : selectionPanel
 
-  // Root shell. Mobile INTENTIONALLY behaves like a normal browser page — page
-  // scroll, pull-to-refresh, and pinch-zoom are all allowed (auto-draft restores the
-  // design on reload; see the touch note above). There is no overscroll/touch lock.
+  // Root shell. Mobile: the shirt is pinch-zoomable via the app-level two-finger
+  // gesture handler (not native browser pinch), and pull-to-refresh is intentionally
+  // OFF (Option A) — overscroll-behavior:none in globals.css backs that up so an
+  // accidental swipe-down can't discard an in-progress design. See the authoritative
+  // touch note near the top of this component (the stageScale/PTR block) + globals.css.
   // Desktop keeps h-screen exactly (lg:h-screen/lg:overflow-hidden) — parity-safe.
   return (
     <div ref={shellRef} className="designer-mobile-shell flex flex-col lg:h-screen lg:overflow-hidden text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>

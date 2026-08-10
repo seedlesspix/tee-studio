@@ -26,6 +26,8 @@ type UploadRow = {
   file_type: string | null
   width: number | null
   height: number | null
+  original_url: string | null
+  original_format: string | null
 }
 
 type UploadDTO = {
@@ -35,6 +37,10 @@ type UploadDTO = {
   fileType: string | null
   width: number | null
   height: number | null
+  // The customer's real source file (AI/PSD/EPS/PDF) when the on-canvas image is a flattened
+  // rendition. Carried back so a RE-ADD from My Uploads still hands the print shop the original.
+  originalUrl: string | null
+  originalFormat: string | null
 }
 
 const toDTO = (r: UploadRow): UploadDTO => ({
@@ -44,6 +50,8 @@ const toDTO = (r: UploadRow): UploadDTO => ({
   fileType: r.file_type,
   width: r.width,
   height: r.height,
+  originalUrl: r.original_url,
+  originalFormat: r.original_format,
 })
 
 // GET — list the caller's uploads, newest first.
@@ -59,7 +67,7 @@ export async function GET(request: NextRequest) {
   const supabase = serviceClient()
   let query = supabase
     .from('customer_uploads')
-    .select('id, cloudinary_url, file_name, file_type, width, height')
+    .select('id, cloudinary_url, file_name, file_type, width, height, original_url, original_format')
     .order('created_at', { ascending: false })
     .limit(200)
   query = customerId
@@ -125,7 +133,7 @@ export async function POST(request: NextRequest) {
       original_url: str(body.originalUrl),
       original_format: str(body.originalFormat)?.toLowerCase() ?? null,
     })
-    .select('id, cloudinary_url, file_name, file_type, width, height')
+    .select('id, cloudinary_url, file_name, file_type, width, height, original_url, original_format')
     .single()
 
   if (error) {

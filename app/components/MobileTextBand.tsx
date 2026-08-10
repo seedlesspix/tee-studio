@@ -41,7 +41,8 @@ export default function MobileTextBand({
   const {
     textInput, textInputRef, handleTextInputChange, selectedObjectType, startNewText,
     dbFonts, fonts, selectedFont, setSelectedFont, selectedTextPreview,
-    fontSize, setFontSize, textColor, setTextColor, textDirection, setTextDirection,
+    fontSize, setFontSize, letterSpacing, setLetterSpacing, lineHeight, setLineHeight,
+    textColor, setTextColor, textDirection, setTextDirection,
     curveAmount, setCurveAmount, textIsMultiline, textAlign, handleTextAlign,
     isBold, setIsBold, isItalic, setIsItalic, isUppercase, setIsUppercase,
   } = text
@@ -168,20 +169,49 @@ export default function MobileTextBand({
         )}
 
         {sub === 'size' && (
-          <div className="flex h-full flex-col justify-center gap-2">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-xs uppercase tracking-widest text-gray-700">{t('designer.text.size_label', 'Size')}</span>
+          <div className="flex h-full flex-col justify-center gap-3 overflow-y-auto py-1">
+            {/* Font size — range aligned to desktop (8–200) so a mobile-set size is representable there too */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-xs uppercase tracking-widest text-gray-700">{t('designer.text.size_label', 'Size')}</span>
+                <input
+                  type="number" min={8} max={200} value={fontSize}
+                  onChange={e => setFontSize(Number(e.target.value))}
+                  className="w-16 rounded border border-gray-200 bg-gray-100 px-2 py-1 text-center text-sm text-gray-900 outline-none focus:border-[#dd3333]"
+                />
+              </div>
               <input
-                type="number" min={24} max={200} value={fontSize}
+                type="range" min={8} max={200} step={2} value={fontSize}
                 onChange={e => setFontSize(Number(e.target.value))}
-                className="w-16 rounded border border-gray-200 bg-gray-100 px-2 py-1 text-center text-sm text-gray-900 outline-none focus:border-[#dd3333]"
+                className="w-full accent-[#dd3333]"
               />
             </div>
-            <input
-              type="range" min={24} max={200} step={2} value={fontSize}
-              onChange={e => setFontSize(Number(e.target.value))}
-              className="w-full accent-[#dd3333]"
-            />
+            {/* Letter Spacing — parity with desktop (works on curved text too) */}
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-xs uppercase tracking-widest text-gray-700">{t('designer.text.letter_spacing_label', 'Letter Spacing')}</span>
+                <span className="font-mono text-xs text-gray-500">{letterSpacing}</span>
+              </div>
+              <input
+                type="range" min={-5} max={30} value={letterSpacing}
+                onChange={e => setLetterSpacing(Number(e.target.value))}
+                className="w-full accent-[#dd3333]"
+              />
+            </div>
+            {/* Line Spacing — multi-line only, hidden on curved (matches desktop) */}
+            {!selectedIsCurved && (
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs uppercase tracking-widest text-gray-700">{t('designer.text.line_spacing_label', 'Line Spacing')}</span>
+                  <span className="font-mono text-xs text-gray-500">{Number(lineHeight).toFixed(2)}</span>
+                </div>
+                <input
+                  type="range" min={0.8} max={2.5} step={0.05} value={lineHeight}
+                  onChange={e => setLineHeight(Number(e.target.value))}
+                  className="w-full accent-[#dd3333]"
+                />
+              </div>
+            )}
           </div>
         )}
 

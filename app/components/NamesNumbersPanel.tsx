@@ -22,6 +22,7 @@ export default function NamesNumbersPanel({
   selectedRole = null,
   style,
   preview,
+  compact = false,
 }: {
   roster: RosterEntry[]
   onChange: (roster: RosterEntry[]) => void
@@ -57,6 +58,10 @@ export default function NamesNumbersPanel({
     onStep: (delta: number) => void
     onExit: () => void
   }
+  // Mobile: the panel renders inside the fixed ~160px tool band, which has its OWN scroll. Drop the
+  // panel's inner scroll caps (roster body + font picker) so the band is a SINGLE scroll surface
+  // instead of three nested ones (the mobile-cramped fix). Desktop keeps the caps (it has room).
+  compact?: boolean
 }) {
   const t = useT()
   const [pasteOpen, setPasteOpen] = useState(false)
@@ -139,7 +144,7 @@ export default function NamesNumbersPanel({
           {cols.title && <span>{t('nn.col_title', 'Title')}</span>}
           <span>{t('nn.col_size', 'Size')}</span><span>{t('nn.col_qty', 'Qty')}</span><span />
         </div>
-        <div className="max-h-[46vh] overflow-y-auto">
+        <div className={compact ? '' : 'max-h-[46vh] overflow-y-auto'}>
           {rows.map((r, i) => (
             <div key={i} className="grid items-center gap-1 border-b border-gray-100 px-2 py-1 last:border-b-0" style={{ gridTemplateColumns: gridTemplate }}>
               {cols.name && (
@@ -234,7 +239,7 @@ export default function NamesNumbersPanel({
                 value={style.selectedFont}
                 onChange={style.setSelectedFont}
                 previewText={roleSample}
-                maxHeightClass="max-h-40"
+                maxHeightClass={compact ? 'max-h-none' : 'max-h-40'}
               />
             </div>
             <div>

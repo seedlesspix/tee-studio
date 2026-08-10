@@ -36,6 +36,10 @@ type RailItem = {
   Icon: typeof Shirt
   wired: boolean
   action?: boolean // fires a callback (Products = switch garment) instead of driving activeTab
+  // Shorter label used ONLY in the horizontal (mobile bottom-bar) orientation, where each tab is
+  // 1/6 of the width — 'Names & Numbers' wraps to two lines there and makes its tab taller than the
+  // rest. The vertical desktop rail keeps the full label (a tall strip, two lines is fine).
+  shortLabel?: string
 }
 
 const ITEMS: RailItem[] = [
@@ -43,7 +47,7 @@ const ITEMS: RailItem[] = [
   { key: 'text',     label: 'Text',            Icon: Type,   wired: true  },
   { key: 'upload',   label: 'Upload',          Icon: Upload, wired: true  },
   { key: 'clipart',  label: 'Art',             Icon: Shapes, wired: true  },
-  { key: 'names',    label: 'Names & Numbers', Icon: Hash,   wired: true  },
+  { key: 'names',    label: 'Names & Numbers', Icon: Hash,   wired: true, shortLabel: 'Names' },
   { key: 'layers',   label: 'Layers',          Icon: Layers, wired: true  },
 ]
 
@@ -76,13 +80,17 @@ export default function Rail({
     <nav className={horizontal
       ? 'flex flex-row items-stretch bg-white border-t border-gray-200'
       : 'w-[76px] shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col py-2'}>
-      {items.map(({ key, label, Icon, wired, action }) => {
+      {items.map(({ key, label, Icon, wired, action, shortLabel }) => {
         // Action items (Products) are enabled only when their handler is supplied; they never
         // read as the persistent "active" tab. Other items are the usual activeTab drivers.
         const enabled = action ? !!onProducts : wired
         const active = !action && wired && activeTab === key
         const handleClick = action ? onProducts : () => onSelectTab(key as Tab)
         const tLabel = t(`designer.rail_${key}`, label)
+        // In the mobile bottom bar use the short label (if any) so no tab wraps to two lines; the
+        // full label stays for the title/aria and the desktop vertical rail. Editable via the
+        // parallel *_short language key so Denise can tune it.
+        const displayLabel = horizontal && shortLabel ? t(`designer.rail_${key}_short`, shortLabel) : tLabel
         return (
           <button
             key={key}
@@ -100,7 +108,7 @@ export default function Rail({
             }`}
           >
             <Icon size={20} strokeWidth={1.75} />
-            <span className="text-[10px] leading-tight">{tLabel}</span>
+            <span className={`text-[10px] leading-tight ${horizontal ? 'whitespace-nowrap' : ''}`}>{displayLabel}</span>
             {!enabled && (
               <span className="text-[8px] uppercase tracking-wide text-gray-400 font-mono">{t('designer.rail_soon', 'Soon')}</span>
             )}

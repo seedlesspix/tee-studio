@@ -14,6 +14,8 @@ export type UploadItem = {
   fileType: string | null
   width: number | null
   height: number | null
+  originalUrl?: string | null
+  originalFormat?: string | null
 }
 
 type Props = {
