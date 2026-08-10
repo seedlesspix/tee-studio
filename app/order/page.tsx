@@ -2,9 +2,10 @@
 import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import type { Tables } from '@/types/database'
-import { type RosterEntry } from '@/app/lib/namesNumbers'
+import { type RosterEntry, rosterShirtCount } from '@/app/lib/namesNumbers'
 import Stepper from '@/app/components/Stepper'
 import { useT } from '@/app/components/StringsProvider'
+import { format } from '@/app/lib/uiStrings'
 import { supabase } from '@/app/lib/supabase'
 import { VOLUME_DISCOUNT, currentTier, nextTier, resolveTiers, type VolumeTier } from '@/app/lib/volumeTiers'
 
@@ -66,21 +67,23 @@ function OrderPage() {
   // Render in Shopify variant order (orderedSizes) — no alphabetical/hardcoded
   // sort, which would scramble both "3-6mo, 6-12mo" and "S, M, L".
   const sortedSizes = orderedSizes
-  const totalQty = Object.values(quantities).reduce((a, b) => a + b, 0)
-  const pricePerItem = design ? ((design.unit_price ?? 0) + (design.print_charge ?? 0)) : 0
-  const total = (totalQty * pricePerItem).toFixed(2)
-  // When a volume tier is actually met, the "Order total" is the PRE-discount figure and the volume
-  // box below shows the Estimated (discounted) total — so de-emphasize this one to avoid two competing
-  // bold totals.
-  const activeTier = VOLUME_DISCOUNT.enabled && volumeTiers.length > 0 ? currentTier(totalQty, volumeTiers) : null
-
-  // Names & Numbers: the saved roster is this order's source of truth for who gets which shirt. Its
-  // size/qty aggregate is already what we loaded into `quantities`, so the total math is unchanged;
-  // for N&N we show the roster manifest (read-only) instead of the size steppers. Personalization is
-  // Option 1 — the printed side, already inside the per-side print charge — so no separate line adds
-  // money; we just note it's included.
+  // Names & Numbers: the saved roster is this order's source of truth for who gets which shirt. For
+  // N&N we show the roster manifest (read-only) instead of the size steppers; personalization is
+  // Option 1 (already inside the per-side print charge), so no separate line adds money.
   const rosterEntries: RosterEntry[] = Array.isArray(design?.roster) ? (design!.roster as unknown as RosterEntry[]) : []
   const nnActive = rosterEntries.length > 0
+  // N&N shirt count comes from the ROSTER — NOT the size-filtered `quantities`. A roster size that
+  // isn't one of this product's sizes (pasted, or ported from a different garment) would otherwise
+  // vanish from the total and silently $0-out the order (disabling checkout with no explanation). We
+  // surface any such mismatch instead so the customer can fix it in the designer, not hit a dead end.
+  const badRosterSizes = nnActive
+    ? [...new Set(rosterEntries.filter(e => !e.size || !orderedSizes.includes(e.size)).map(e => e.size || '(blank)'))]
+    : []
+  const totalQty = nnActive ? rosterShirtCount(rosterEntries) : Object.values(quantities).reduce((a, b) => a + b, 0)
+  const pricePerItem = design ? ((design.unit_price ?? 0) + (design.print_charge ?? 0)) : 0
+  const total = (totalQty * pricePerItem).toFixed(2)
+  // When a volume tier is met the "Order total" is the PRE-discount figure (de-emphasized below).
+  const activeTier = VOLUME_DISCOUNT.enabled && volumeTiers.length > 0 ? currentTier(totalQty, volumeTiers) : null
   // Manifest shows a Title column only when the roster actually uses titles (optional field).
   const nnHasTitle = rosterEntries.some(e => (e.title ?? '').trim() !== '')
   const nnGrid = nnHasTitle ? 'minmax(0,1fr) 44px minmax(0,1fr) 52px 32px' : 'minmax(0,1fr) 44px 52px 32px'
@@ -109,6 +112,7 @@ function OrderPage() {
   // Print Charge line-item machinery stays gone.
   const handleAddToCart = async () => {
     if (!design || totalQty === 0) { setError(t('order.error_select_size', 'Please select at least one size and quantity.')); return }
+    if (nnActive && badRosterSizes.length) { setError(format(t('order.nn_bad_sizes', "Some roster rows use a size this product doesn't offer ({sizes}). Go back to Edit Design to fix those sizes before checkout."), { sizes: badRosterSizes.join(', ') })); return }
     setAdding(true)
     setError('')
 
@@ -381,12 +385,19 @@ function OrderPage() {
             />
           </div>
 
+          {/* Names & Numbers size mismatch — explain instead of a silent $0 / dead button. */}
+          {nnActive && badRosterSizes.length > 0 && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              {format(t('order.nn_bad_sizes', "Some roster rows use a size this product doesn't offer ({sizes}). Go back to Edit Design to fix those sizes before checkout."), { sizes: badRosterSizes.join(', ') })}
+            </div>
+          )}
+
           {/* Error */}
           {error && <p className="text-red-400 text-sm font-mono text-center">{error}</p>}
 
           {/* Add to Cart — lands in the customer's real storefront cart,
               alongside other designs and off-the-shelf products */}
-          <button onClick={handleAddToCart} disabled={adding || totalQty === 0}
+          <button onClick={handleAddToCart} disabled={adding || totalQty === 0 || (nnActive && badRosterSizes.length > 0)}
             className="w-full py-4 rounded-xl bg-[#dd3333] text-white font-black text-lg tracking-wide hover:bg-red-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
             {adding ? t('order.adding_to_cart', 'Adding to Cart...') : `${t('order.add_to_cart', 'Add to Cart →')} ${totalQty > 0 ? `(${totalQty} item${totalQty > 1 ? 's' : ''})` : ''}`}
           </button>

@@ -337,6 +337,7 @@ export const UI_STRINGS = {
   'order.volume_top_tier': { default: "— the top tier. 🎉", group: "Order page", desc: "Closing phrase telling the customer they reached the highest volume-discount tier." },
   'order.volume_auto_checkout': { default: "Discount applied automatically in your cart.", group: "Order page", desc: "Note that the volume discount is applied automatically in the cart." },
   'order.subtotal_before_discount': { default: "Subtotal (before discount)", group: "Order page", desc: "Label replacing 'Order total' when a volume discount applies — the pre-discount figure, de-emphasized." },
+  'order.nn_bad_sizes': { default: "Some roster rows use a size this product doesn't offer ({sizes}). Go back to Edit Design to fix those sizes before checkout.", group: "Order page", desc: "Warning when a Names & Numbers roster has sizes the product doesn't offer ({sizes} = the mismatched size list)." },
   'order.volume_discount_line': { default: "Volume discount", group: "Order page", desc: "Label on the estimated volume-discount amount line (shown as −$X)." },
   'order.volume_estimated_total': { default: "Estimated total", group: "Order page", desc: "Label on the estimated order total after the volume discount." },
   'order.notes_label': { default: "Design Notes", group: "Order page", desc: "Label for the optional design-notes text area." },
