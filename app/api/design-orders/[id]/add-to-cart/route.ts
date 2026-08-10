@@ -305,28 +305,44 @@ export async function POST(
       typeof body.replaceDesignOrderId === 'string' && UUID_RE.test(body.replaceDesignOrderId) && body.replaceDesignOrderId !== id
         ? body.replaceDesignOrderId : null
     if (replaceId) {
-      const oldLineKeys = async (): Promise<string[]> => {
-        const cartRes = await fetch(`${storeOrigin}/cart.js`, { headers: { Accept: 'application/json', cookie: forwardCookies } })
-        if (!cartRes.ok) return []
-        const cart = (await cartRes.json()) as { items?: Array<{ key: string; properties?: Record<string, unknown> | null }> }
-        return (cart.items ?? [])
-          .filter((it) => it.properties && String(it.properties._design_order_id) === replaceId)
-          .map((it) => it.key)
-      }
-      let keys = await oldLineKeys()
-      for (let attempt = 0; attempt < 4 && keys.length; attempt++) {
-        const updates: Record<string, number> = {}
-        for (const k of keys) updates[k] = 0
-        await fetch(`${storeOrigin}/cart/update.js`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json', cookie: forwardCookies },
-          body: JSON.stringify({ updates }),
-        }).catch(() => null)
-        keys = await oldLineKeys() // verify gone before trusting it
-      }
-      if (keys.length) {
+      // Self-contained: the add already SUCCEEDED here, so NOTHING in this block may throw out to the
+      // outer rollback catch — that catch deletes the just-added product Y (would betray the customer's
+      // edited design AND leave the old one). Any failure degrades to a soft warning instead.
+      try {
+        // Returns matching line keys on a SUCCESSFUL read, or null when the cart couldn't be read
+        // (network / non-OK HTTP). null ≠ [] on purpose: [] means "read OK, no old lines"; null means
+        // "we don't know" — which must NEVER be trusted as removed (else a failed read silently leaves
+        // the old line = a double-charge with no warning).
+        const oldLineKeys = async (): Promise<string[] | null> => {
+          const cartRes = await fetch(`${storeOrigin}/cart.js`, { headers: { Accept: 'application/json', cookie: forwardCookies } }).catch(() => null)
+          if (!cartRes || !cartRes.ok) return null
+          const cart = (await cartRes.json().catch(() => null)) as { items?: Array<{ key: string; properties?: Record<string, unknown> | null }> } | null
+          if (!cart) return null
+          return (cart.items ?? [])
+            .filter((it) => it.properties && String(it.properties._design_order_id) === replaceId)
+            .map((it) => it.key)
+        }
+        let keys = await oldLineKeys()
+        // Only a SUCCESSFUL read showing zero old lines counts as "confirmed gone".
+        let confirmedGone = keys !== null && keys.length === 0
+        for (let attempt = 0; attempt < 4 && keys && keys.length; attempt++) {
+          const updates: Record<string, number> = {}
+          for (const k of keys) updates[k] = 0
+          await fetch(`${storeOrigin}/cart/update.js`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json', cookie: forwardCookies },
+            body: JSON.stringify({ updates }),
+          }).catch(() => null)
+          keys = await oldLineKeys() // verify gone before trusting it
+          if (keys !== null && keys.length === 0) confirmedGone = true
+        }
+        if (!confirmedGone) {
+          replaceWarning = 'Your edited design was added, but the previous version could not be removed — please remove the old line in your cart.'
+          console.error('[add-to-cart] replace: old lines not confirmed removed for', replaceId, keys)
+        }
+      } catch (e) {
         replaceWarning = 'Your edited design was added, but the previous version could not be removed — please remove the old line in your cart.'
-        console.error('[add-to-cart] replace: old lines remained for', replaceId, keys)
+        console.error('[add-to-cart] replace failed (add succeeded, product kept):', e)
       }
     }
 
