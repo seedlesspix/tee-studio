@@ -35,8 +35,31 @@ function nodeFill(node: INode): string | null {
   if (a.fill) return a.fill === 'none' ? null : a.fill
   return '#000000' // SVG default fill
 }
-const isNoneFill = (node: INode) =>
-  node.attributes.fill === 'none' || /fill\s*:\s*none/.test(node.attributes.style || '')
+// Read a numeric CSS-style prop or a presentation attribute (attribute value wins if the style
+// doesn't set it), returning null when absent/unparseable.
+function readNum(node: INode, prop: string): number | null {
+  const m = new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([\\d.]+)`).exec(node.attributes.style || '')
+  if (m) { const n = parseFloat(m[1]); return Number.isFinite(n) ? n : null }
+  const av = node.attributes[prop]
+  if (av != null) { const n = parseFloat(av); return Number.isFinite(n) ? n : null }
+  return null
+}
+// Hidden element (opacity:0 / display:none / visibility:hidden) — renders nothing AND hides its whole
+// subtree, so it must NOT be cut. An invisible framing/background rect would otherwise cut as a solid
+// block (and, under recolor, paint the whole print box one color). Regression guard for shapeToPathD.
+function isHidden(node: INode): boolean {
+  const a = node.attributes, style = a.style || ''
+  if (a.display === 'none' || /display\s*:\s*none/.test(style)) return true
+  if (a.visibility === 'hidden' || /visibility\s*:\s*hidden/.test(style)) return true
+  return readNum(node, 'opacity') === 0
+}
+// This ELEMENT has no visible fill (fill:none or fill-opacity:0) — don't cut it, but DO recurse
+// (children may have their own fill).
+function isNoFill(node: INode): boolean {
+  const a = node.attributes
+  if (a.fill === 'none' || /fill\s*:\s*none/.test(a.style || '')) return true
+  return readNum(node, 'fill-opacity') === 0
+}
 
 // Convert the common CLOSED, fillable SVG primitives to a path 'd' so they aren't silently dropped
 // from the cut — badges/borders often use <rect>/<circle>/<ellipse>/<polygon> alongside <path>, and
@@ -72,8 +95,9 @@ function shapeToPathD(node: INode): string | null {
 
 // Walk the tree accumulating the SVG transform string (root->leaf); collect fillable paths + shapes.
 function collectPaths(node: INode, xform: string, out: { d: string; fill: string | null; xform: string }[]) {
+  if (isHidden(node)) return // skip an invisible element AND its whole subtree
   const t = node.attributes.transform ? `${xform} ${node.attributes.transform}`.trim() : xform
-  if (!isNoneFill(node)) {
+  if (!isNoFill(node)) {
     if (node.name === 'path' && node.attributes.d) {
       out.push({ d: node.attributes.d, fill: nodeFill(node), xform: t })
     } else {

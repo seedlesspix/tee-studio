@@ -116,7 +116,9 @@ export function outlineText(
   measured.forEach(({ gs, w }, li) => {
     const leftEdge = cxU - blockW / 2
     // Justify (matches Fabric IText): spread word gaps to fill the block width on every line EXCEPT
-    // the last, which stays left-aligned. A line with no spaces can't justify → left.
+    // the last, which stays left-aligned. A line with no spaces can't justify → left. Exact parity
+    // holds for single-spaced text (the norm); multi-space / tab lines can differ slightly from
+    // Fabric's whitespace-run distribution — acceptable, shirt text is single-spaced.
     const isJustify = place.textAlign === 'justify'
     const spaces = isJustify ? gs.filter(g => g.unicode === 32).length : 0
     const extraPerSpace = (isJustify && li < lines.length - 1 && spaces > 0) ? (blockW - w) / spaces : 0
