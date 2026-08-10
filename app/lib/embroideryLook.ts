@@ -27,52 +27,59 @@ export function shade(hex: string, amt: number): string {
   return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)
 }
 
-const THREAD_ANGLE = -0.28 // ~ -16° → threads run ≈74° across the fill
-const THREAD_PERIOD = 3.2   // px between thread strands (in object space)
+const THREAD_ANGLE = -0.28 // ~ -16° → stitch rows run ≈74° across the fill
+// Stitch geometry in CANVAS px (fixed real-world size — divided by the object's own scale below, so a
+// bigger object gets MORE stitches, not bigger ones; the v1 "continuous stripes that grow with the art"
+// was the reported defect). Dashed rows read as rows of stitches rather than solid satin stripes.
+const ROW_PERIOD = 5     // spacing between stitch rows
+const STITCH_DASH = 3.5  // length of one stitch
+const STITCH_GAP = 2.4   // gap between stitches in a row
+const STITCH_WIDTH = 1.7 // thread thickness
 
-// Paint the satin-thread overlay for an object whose real fill has already been rendered, clipped to
-// that fill via source-atop. Draws parallel diagonal strands (dark edge → ink → light sheen) across the
-// object's bbox, plus one soft cross-sheen — no tiling/pattern, so there are no seam artifacts.
+// Paint the stitch overlay for an object whose real fill/pixels have already been rendered, clipped to
+// them via source-atop. Draws parallel DASHED diagonal rows (staggered like real stitching). The stitch
+// size is held constant in canvas space by dividing every dimension by the object's own scale, so
+// enlarging the art doesn't turn the texture into big stripes. (objectCaching is disabled on these
+// objects — see applyEmbroideryLook — so _render re-runs with the live scale during/after a resize.)
 function paintThreads(ctx: CanvasRenderingContext2D, obj: FabricObj) {
   const ink: string = obj._embInk || '#808080'
   const w = obj.width || 0, h = obj.height || 0
   if (!w || !h) return
-  const span = Math.hypot(w, h) + 8
-  // A multicolor RASTER decal has no single ink — painting opaque single-ink strands would flatten it
-  // to one thread color (the reported bug). For those, PRESERVE the underlying colors: paint low-alpha
-  // dark/light shading strands (a stitch-ridge feel) that modulate the image via source-atop's alpha
-  // compositing rather than replacing it. Solid-fill text / recolored SVG (one ink) keep the opaque
-  // ink gradient, which is exactly right for them.
   const preserve = !!obj._embPreserveColor
+  // Divide out the object's OWN scale (average of x/y) so stitches stay a fixed real-world size.
+  const sc = Math.max(0.05, (Math.abs(obj.scaleX || 1) + Math.abs(obj.scaleY || 1)) / 2)
+  const rowGap = ROW_PERIOD / sc
+  const dash = STITCH_DASH / sc, gap = STITCH_GAP / sc
+  const span = Math.hypot(w, h) + 8
+  const dark = shade(ink, -60), light = shade(ink, 55)
   ctx.save()
-  ctx.globalCompositeOperation = 'source-atop' // texture only where the object already painted
+  ctx.globalCompositeOperation = 'source-atop' // clipped to the painted shape; composites over it
   ctx.rotate(THREAD_ANGLE)
-  if (preserve) {
-    // Note: _embInk is intentionally unused here — the image carries its own colors, so we only add
-    // neutral light/dark ridging. (This is also why a textColor change doesn't retint raster art.)
-    for (let x = -span; x < span; x += THREAD_PERIOD) {
-      const grad = ctx.createLinearGradient(x, 0, x + THREAD_PERIOD, 0)
-      grad.addColorStop(0, 'rgba(0,0,0,0.32)'); grad.addColorStop(0.5, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(255,255,255,0.30)')
-      ctx.fillStyle = grad
-      ctx.fillRect(x, -span, THREAD_PERIOD, span * 2)
-    }
-  } else {
-    const dark = shade(ink, -48), light = shade(ink, 62)
-    for (let x = -span; x < span; x += THREAD_PERIOD) {
-      const grad = ctx.createLinearGradient(x, 0, x + THREAD_PERIOD, 0)
-      grad.addColorStop(0, dark); grad.addColorStop(0.5, ink); grad.addColorStop(1, light)
-      ctx.fillStyle = grad
-      ctx.fillRect(x, -span, THREAD_PERIOD, span * 2)
-    }
+  ctx.lineCap = 'round'
+  ctx.lineWidth = STITCH_WIDTH / sc
+  ctx.setLineDash([dash, gap])
+  let row = 0
+  for (let y = -span; y < span; y += rowGap, row++) {
+    ctx.lineDashOffset = (row % 2) * (dash + gap) * 0.5 // stagger alternate rows → stitches, not columns
+    // Solid-ink art: shaded-ink stitches over the ink fill read as colored satin thread. Multicolor
+    // raster: neutral low-alpha ridging so the image's own colors show through (_embInk unused there).
+    ctx.strokeStyle = preserve
+      ? (row % 2 === 0 ? 'rgba(0,0,0,0.30)' : 'rgba(255,255,255,0.30)')
+      : (row % 2 === 0 ? dark : light)
+    ctx.beginPath()
+    ctx.moveTo(-span, y)
+    ctx.lineTo(span, y)
+    ctx.stroke()
   }
+  ctx.setLineDash([])
   ctx.restore()
-  // soft diagonal sheen band across the whole fill
+  // One soft diagonal sheen (a single gradient across the whole fill — not repeating, so no stripes).
   ctx.save()
   ctx.globalCompositeOperation = 'source-atop'
   const sheen = ctx.createLinearGradient(-w / 2, -h / 2, w / 2, h / 2)
   sheen.addColorStop(0, 'rgba(255,255,255,0)')
-  sheen.addColorStop(0.48, 'rgba(255,255,255,0.20)')
-  sheen.addColorStop(0.66, 'rgba(255,255,255,0)')
+  sheen.addColorStop(0.5, 'rgba(255,255,255,0.12)')
+  sheen.addColorStop(0.7, 'rgba(255,255,255,0)')
   ctx.fillStyle = sheen
   ctx.fillRect(-w / 2 - 4, -h / 2 - 4, w + 8, h + 8)
   ctx.restore()
@@ -85,6 +92,11 @@ export function applyEmbroideryLook(obj: FabricObj, inkHex: string, preserveColo
   obj._embInk = inkHex
   obj._embPreserveColor = preserveColor // true for multicolor raster: modulate, don't recolor
   if (obj._embWrapped) { obj.dirty = true; return } // already wrapped; retint + invalidate cache
+  // Render live (uncached) so the stitch overlay re-runs with the object's CURRENT scale — otherwise
+  // Fabric scales the cached bitmap on resize and the stitches grow into stripes. Preview-only; save/cut
+  // never call _render, so this has no fulfillment impact. Restored in removeEmbroideryLook.
+  if (obj._embPrevCaching === undefined) obj._embPrevCaching = obj.objectCaching
+  obj.objectCaching = false
   const orig = obj._render
   obj._embOrigRender = orig
   obj._embWrapped = true
@@ -103,5 +115,6 @@ export function removeEmbroideryLook(obj: FabricObj) {
   delete obj._embWrapped
   delete obj._embInk
   delete obj._embPreserveColor
+  if (obj._embPrevCaching !== undefined) { obj.objectCaching = obj._embPrevCaching; delete obj._embPrevCaching }
   obj.dirty = true
 }

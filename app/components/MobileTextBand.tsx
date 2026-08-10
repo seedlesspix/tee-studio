@@ -175,13 +175,13 @@ export default function MobileTextBand({
               <div className="flex items-center justify-between">
                 <span className="font-mono text-xs uppercase tracking-widest text-gray-700">{t('designer.text.size_label', 'Size')}</span>
                 <input
-                  type="number" min={8} max={200} value={fontSize}
+                  type="number" min={20} max={200} value={fontSize}
                   onChange={e => setFontSize(Number(e.target.value))}
                   className="w-16 rounded border border-gray-200 bg-gray-100 px-2 py-1 text-center text-sm text-gray-900 outline-none focus:border-[#dd3333]"
                 />
               </div>
               <input
-                type="range" min={8} max={200} step={2} value={fontSize}
+                type="range" min={20} max={200} step={2} value={fontSize}
                 onChange={e => setFontSize(Number(e.target.value))}
                 className="w-full accent-[#dd3333]"
               />
