@@ -7,12 +7,13 @@
 //
 // 🔒 Decoupling (the load-bearing design): the object's real `fill` stays the SOLID ink color, so the
 // cut/geometry pipeline, canvas_json save, color reflection, and D2 refit are ALL untouched. The thread
-// texture is a RENDER-TIME overlay: we wrap the object's _render so that AFTER the solid fill paints, we
-// composite diagonal thread bands with `source-atop` — which clips them to the painted glyph shapes for
-// free. Because this runs inside _render it bakes into Fabric's object cache and is captured by every
-// render: the on-canvas display AND canvas.toDataURL (→ canvas_png → cart/order images). toObject() and
-// the server cut engine never call _render, so geometry + ink color stay clean. A bug here can only make
-// the PREVIEW look wrong — it can never corrupt the saved design or the cut files.
+// texture is a RENDER-TIME overlay: we wrap the object's _render so it draws the solid fill + diagonal
+// thread bands into an ISOLATED per-object buffer (the bands clip to the glyph pixels via `source-atop`
+// there — on the shared canvas they'd clip to the shirt + objects beneath and spill OUTSIDE the letters),
+// then blits the buffer back. Because this runs inside _render it is captured by every render: the
+// on-canvas display AND canvas.toDataURL (→ canvas_png → cart/order images). toObject() and the server
+// cut engine never call _render, so geometry + ink color stay clean. A bug here can only make the PREVIEW
+// look wrong — it can never corrupt the saved design or the cut files.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type FabricObj = any
@@ -85,6 +86,49 @@ function paintThreads(ctx: CanvasRenderingContext2D, obj: FabricObj) {
   ctx.restore()
 }
 
+// Render the object's fill + the thread overlay into an ISOLATED offscreen buffer, then blit it back.
+// WHY the buffer: paintThreads clips the stitches with `source-atop`, which composites only where the
+// destination already has pixels. On the SHARED main canvas (objectCaching is off, so _render draws
+// straight onto it) the destination is the shirt image + every object beneath — so the diagonal stitch
+// bands painted OUTSIDE the letters wherever anything was underneath (the reported round-3 spill). In a
+// per-object buffer the only pixels are THIS object's glyphs, so source-atop clips the stitches to the
+// letters exactly. The buffer is rendered at the object's on-screen resolution (scale × retina) and
+// blitted in LOCAL coords, so Fabric's own transform still scales/rotates/positions it and the result is
+// size-identical to a direct render — the stitch size stays fixed (paintThreads' /scale term nets out
+// against the buffer's scale). Preview-only; save/cut never call _render.
+function renderWithThreads(
+  obj: FabricObj,
+  ctx: CanvasRenderingContext2D,
+  orig: (c: CanvasRenderingContext2D) => void,
+) {
+  const w = obj.width || 0, h = obj.height || 0
+  // No dimensions, or no DOM (SSR safety) → fall back to the direct path.
+  if (!w || !h || typeof document === 'undefined') {
+    orig.call(obj, ctx)
+    try { paintThreads(ctx, obj) } catch { /* preview-only; never break a render */ }
+    return
+  }
+  const pad = 8 + Math.abs(obj.strokeWidth || 0) // room for the stroke + the sheen's +4 overflow
+  const sc = Math.max(0.05, (Math.abs(obj.scaleX || 1) + Math.abs(obj.scaleY || 1)) / 2)
+  const dpr = (obj.canvas && typeof obj.canvas.getRetinaScaling === 'function' ? obj.canvas.getRetinaScaling() : 1) || 1
+  const localW = w + pad * 2, localH = h + pad * 2
+  // Buffer at the object's on-screen resolution, capped so an extreme zoom can't allocate a huge canvas.
+  const MAX = 4096
+  const res = Math.min(sc * dpr, MAX / localW, MAX / localH)
+  if (!(res > 0) || !isFinite(res)) { orig.call(obj, ctx); return }
+  const deviceW = Math.max(1, Math.ceil(localW * res)), deviceH = Math.max(1, Math.ceil(localH * res))
+  const buf: HTMLCanvasElement = obj._embBuf || (obj._embBuf = document.createElement('canvas'))
+  buf.width = deviceW; buf.height = deviceH // (re)assigning size also CLEARS the buffer each frame
+  const octx = buf.getContext('2d')
+  if (!octx) { orig.call(obj, ctx); return }
+  // Local origin at the buffer centre, scaled to device resolution → glyphs render crisp and isolated.
+  octx.setTransform(res, 0, 0, res, deviceW / 2, deviceH / 2)
+  orig.call(obj, octx)
+  paintThreads(octx, obj) // source-atop now clips to the glyphs ONLY (buffer is transparent elsewhere)
+  // Blit in LOCAL coords; the main ctx's transform (scale/rotate/position) does the rest.
+  ctx.drawImage(buf, -localW / 2, -localH / 2, localW, localH)
+}
+
 // Install the thread overlay on an object (idempotent — a re-call just re-tints). Records the original
 // _render so it can be fully removed. `inkHex` is the object's solid ink color.
 export function applyEmbroideryLook(obj: FabricObj, inkHex: string, preserveColor = false) {
@@ -101,8 +145,8 @@ export function applyEmbroideryLook(obj: FabricObj, inkHex: string, preserveColo
   obj._embOrigRender = orig
   obj._embWrapped = true
   obj._render = function (ctx: CanvasRenderingContext2D) {
-    orig.call(this, ctx)
-    try { paintThreads(ctx, this) } catch { /* preview-only; never let it break a render */ }
+    try { renderWithThreads(this, ctx, orig) }
+    catch { orig.call(this, ctx) } // preview must never break a real render — fall back to the plain fill
   }
   obj.dirty = true
 }
@@ -115,6 +159,7 @@ export function removeEmbroideryLook(obj: FabricObj) {
   delete obj._embWrapped
   delete obj._embInk
   delete obj._embPreserveColor
+  if (obj._embBuf) delete obj._embBuf // release the offscreen thread buffer
   if (obj._embPrevCaching !== undefined) { obj.objectCaching = obj._embPrevCaching; delete obj._embPrevCaching }
   obj.dirty = true
 }

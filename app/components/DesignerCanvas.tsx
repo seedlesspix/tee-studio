@@ -4068,7 +4068,7 @@ export default function DesignerCanvas({
     onAddArt: () => { setActiveTab('clipart'); setBandOpen(true) },
     // Names & Numbers CTA — hidden for the same reasons the rail hides the 'names' tab:
     // embroidery mode, and templates with N&N turned off (see railHiddenKeys).
-    onNames: (printMethod === 'embroidery' || !namesNumbersEnabled) ? undefined : () => { setActiveTab('names'); setBandOpen(true) },
+    onNames: (printMethod === 'embroidery' || !namesNumbersEnabled) ? undefined : () => { handleSelectTab('names'); setBandOpen(true) }, // handleSelectTab (not setActiveTab) so the N&N CTA also auto-opens on the Back, same as the Names tab
     loggedIn, // #25b: hide the "log in to keep this design" tip once signed in
   } : null
   // Per-side surcharge. designer_pricing.sides is a SIDE IDENTITY (1 = Front,
@@ -4455,7 +4455,7 @@ export default function DesignerCanvas({
     if (id === NN_ROW_ID) {
       const nn = canvas.getObjects().find((o: any) => o[NN_ROLE_PROP])
       if (nn) { canvas.setActiveObject(nn); canvas.renderAll() } // routes to Names via sectionForObject
-      else setActiveTab('names')
+      else handleSelectTab('names') // no placeholder yet → enter Names like a tab click (incl. auto-open-on-back)
       return
     }
     const obj = layerObjById(id)
