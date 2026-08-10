@@ -69,6 +69,10 @@ function OrderPage() {
   const totalQty = Object.values(quantities).reduce((a, b) => a + b, 0)
   const pricePerItem = design ? ((design.unit_price ?? 0) + (design.print_charge ?? 0)) : 0
   const total = (totalQty * pricePerItem).toFixed(2)
+  // When a volume tier is actually met, the "Order total" is the PRE-discount figure and the volume
+  // box below shows the Estimated (discounted) total — so de-emphasize this one to avoid two competing
+  // bold totals.
+  const activeTier = VOLUME_DISCOUNT.enabled && volumeTiers.length > 0 ? currentTier(totalQty, volumeTiers) : null
 
   // Names & Numbers: the saved roster is this order's source of truth for who gets which shirt. Its
   // size/qty aggregate is already what we loaded into `quantities`, so the total math is unchanged;
@@ -299,9 +303,11 @@ function OrderPage() {
                 <span>{t('order.total_quantity', 'Total quantity')}</span>
                 <span className="text-gray-900">{totalQty}</span>
               </div>
-              <div className="flex justify-between font-bold">
-                <span className="text-gray-900 font-bold">{t('order.order_total', 'Order total')}</span>
-                <span className="text-[#dd3333] text-lg">${total}</span>
+              <div className="flex justify-between">
+                <span className={activeTier ? 'text-gray-500' : 'text-gray-900 font-bold'}>
+                  {activeTier ? t('order.subtotal_before_discount', 'Subtotal (before discount)') : t('order.order_total', 'Order total')}
+                </span>
+                <span className={activeTier ? 'text-gray-500 line-through' : 'text-[#dd3333] text-lg font-bold'}>${total}</span>
               </div>
             </div>
 

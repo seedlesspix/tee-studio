@@ -336,6 +336,7 @@ export const UI_STRINGS = {
   'order.volume_pct_off': { default: "% off", group: "Order page", desc: "Suffix after the discount percent in the top-tier confirmation (e.g. '10% off')." },
   'order.volume_top_tier': { default: "— the top tier. 🎉", group: "Order page", desc: "Closing phrase telling the customer they reached the highest volume-discount tier." },
   'order.volume_auto_checkout': { default: "Discount applied automatically in your cart.", group: "Order page", desc: "Note that the volume discount is applied automatically in the cart." },
+  'order.subtotal_before_discount': { default: "Subtotal (before discount)", group: "Order page", desc: "Label replacing 'Order total' when a volume discount applies — the pre-discount figure, de-emphasized." },
   'order.volume_discount_line': { default: "Volume discount", group: "Order page", desc: "Label on the estimated volume-discount amount line (shown as −$X)." },
   'order.volume_estimated_total': { default: "Estimated total", group: "Order page", desc: "Label on the estimated order total after the volume discount." },
   'order.notes_label': { default: "Design Notes", group: "Order page", desc: "Label for the optional design-notes text area." },

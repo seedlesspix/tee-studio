@@ -456,13 +456,14 @@ export default function DesignerCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Mobile designer INTENTIONALLY allows normal browser gestures (Denise 2026-08-09):
-  // pinch-zoom to inspect the design, and pull-to-refresh like any normal page. Both are
-  // safe now because the auto-draft snapshot restores the design on reload (see the
-  // autodraft restore effect below — this was the condition the old pull-to-refresh
-  // disable was waiting on). So there is deliberately NO touch-lock: no gesture blocking,
-  // no overscroll lock, no viewport lock. (App-level canvas zoom is a separate future
-  // feature — see the mobile-zoom note; this is just the browser's own page zoom.)
+  // Mobile designer touch model (Denise 2026-08-09/10):
+  //  • Pull-to-refresh is intentionally OFF (Option A) — the fixed 100dvh app frame has no
+  //    scrolling document for native PTR to hook, and overscroll-behavior:none (globals.css)
+  //    backs that up, to protect against accidental mid-design refreshes. The browser reload
+  //    button + auto-draft (restores on reload) cover any real refresh need.
+  //  • Pinch-zoom is handled by the APP-LEVEL canvas zoom above (the two-finger `view` transform
+  //    on the stage) — NOT browser page zoom: Fabric sets touch-action:none on its canvas, so the
+  //    browser never receives the pinch on the shirt. There is deliberately no touch-lock class.
 
   // Mobile tool band (rework, ImprintNext pattern): the tools live in an IN-FLOW
   // fixed-height band at the bottom of the mobile column (MobileToolBand), NOT an
@@ -2729,6 +2730,13 @@ export default function DesignerCanvas({
     canvas.discardActiveObject()
     canvas.clear()
     canvas.renderAll()
+    // Clear All must leave NOTHING behind — including the OFF-screen side's snapshot and the
+    // N&N roster. Otherwise a ghost placeholder / stale roster rides into the next saved order
+    // (silently turning it into an N&N order + a phantom print charge). (broken #2)
+    frontObjectsRef.current = []
+    backObjectsRef.current = []
+    setRoster([])
+    setNnFields({ name: false, number: false, title: false })
     clearAutodraft()
     setBandOpen(false)
   }
@@ -3790,7 +3798,10 @@ export default function DesignerCanvas({
       if (!canvas) return
       const ae = document.activeElement as HTMLElement | null
       const tag = ae?.tagName
-      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!ae?.isContentEditable
+      // Also bail when a panel control (button/link) holds focus — e.g. right after clicking a
+      // colour swatch — so Backspace doesn't nuke the selected art. Clicking the shirt blurs the
+      // control (stage onPointerDownCapture) and restores keyboard shortcuts.
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON' || tag === 'A' || !!ae?.isContentEditable
       const active = canvas.getActiveObject()
       if (typing || active?.isEditing) return
       if (!active) return
@@ -4532,6 +4543,14 @@ export default function DesignerCanvas({
             desktop and mobile — one identical string, byte-for-byte. */}
         <section
           ref={stageAreaRef}
+          onPointerDownCapture={() => {
+            // Desktop: clicking the shirt blurs a focused panel control (e.g. a colour swatch) so
+            // keyboard shortcuts (Delete/arrows) act in canvas context again. No-op on mobile.
+            if (!isMobileRef.current) {
+              const a = document.activeElement
+              if (a instanceof HTMLElement && a !== document.body) a.blur()
+            }
+          }}
           className="flex-1 flex flex-col items-center justify-center bg-gray-50 relative overflow-hidden touch-none min-h-0 lg:[min-height:auto]">
 
           {/* Pinch-zoom reset — only while zoomed in (mobile). */}
@@ -4539,7 +4558,7 @@ export default function DesignerCanvas({
             <button
               type="button"
               onClick={() => setView({ zoom: 1, x: 0, y: 0 })}
-              className="absolute right-3 top-3 z-30 rounded-full bg-gray-900/85 px-3 py-1.5 text-xs font-mono text-white shadow-lg"
+              className="absolute left-3 top-3 z-30 rounded-full bg-gray-900/85 px-3 py-1.5 text-xs font-mono text-white shadow-lg"
             >
               {t('designer.reset_zoom', 'Reset zoom')}
             </button>

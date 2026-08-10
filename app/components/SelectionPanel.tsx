@@ -178,12 +178,12 @@ export default function SelectionPanel({
                 <div>
                   <div className="flex justify-between items-center">
                     <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">{t('designer.text.size_label', 'Size')}</label>
-                    <input type="number" min={8} max={120} value={fontSize}
+                    <input type="number" min={8} max={200} value={fontSize}
                       onChange={e => setFontSize(Number(e.target.value))}
                       className="w-14 bg-gray-100 border border-gray-200 rounded px-2 py-1 text-xs text-gray-900 outline-none text-center focus:border-[#dd3333]"
                     />
                   </div>
-                  <input type="range" min={8} max={120} value={fontSize}
+                  <input type="range" min={8} max={200} value={fontSize}
                     onChange={e => setFontSize(Number(e.target.value))}
                     className="w-full mt-1 accent-[#dd3333]" />
                 </div>
