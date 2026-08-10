@@ -173,6 +173,50 @@ CLAUDE.md backlog; this file is the "these are NOT optional" promotion of them.
   lagged). The copy action also freshens from the live canvas first, so it always
   includes content just placed.
 
+- [ ] **27. Saving spinner / progress feedback.** Saving a design can take a
+  while; show a working spinner (or progress state) so customers aren't left
+  wondering if anything is happening. Applies wherever saves/snapshots run
+  (Save Design, add-to-cart preview wait, login snapshot). *(Denise 2026-08-11.)*
+- [ ] **28. Edit design from the cart.** Manager request: a customer who
+  reaches the Shopify cart and spots a mistake needs a way back into the designer
+  for that line's design — and on finishing, their cart line must be **REPLACED**
+  with the edited version, **not duplicated** (same double-apply trap as the
+  login-double-apply fix). *(Denise 2026-08-11 — plan first; scoped below.)*
+
+  **Scope (3 legs).** *Already built and reused:* the `design_id` edit-restore
+  path, the ephemeral-product create → publish → media-wait → `/cart/add.js` flow
+  with cookies forwarded, and the `_design_order_id` line-item property that
+  already rides on every design cart line. So most of the machinery exists.
+  1. **Cart → Designer (entry).** The Shopify cart lives in the store theme, so
+     this needs a small **theme change (Denise-deployed, like the volume
+     Function):** on each cart line that has a `_design_order_id` property, show an
+     "Edit design" link to `create.tshirtdeli.com/designer?design_id=<_design_order_id>&edit_cart=1`
+     (+ product/color context). The app provides the exact deep-link contract.
+  2. **Editing.** Reuse the existing edit-restore (`design_id`, refit=false); just
+     carry an `edit_cart` flag through so the finish step knows to REPLACE.
+     Decision: **update the design_order row in place** (it's not completed;
+     `_design_order_id` stays stable). The old ephemeral product orphans → the
+     retention cron cleans it.
+  3. **Finish → REPLACE (the must-get-right leg).** New `POST
+     /api/design-orders/[id]/replace-in-cart`: build the edited ephemeral product,
+     **add** the new line(s), then **remove every existing cart line whose
+     `_design_order_id` === id** (read `/cart.js`, set qty 0 via `/cart/change.js`).
+     **No-duplicate guarantee:** the remove is idempotent, so retry until no line
+     with that id remains; add-then-remove, never leave both; strip `edit_cart`
+     after success (login-double-apply fix shape). **N&N** = several lines sharing
+     one `_design_order_id`, so identify-by-`_design_order_id` replaces all of them
+     uniformly.
+  - **Edge cases (real branches):** old line already gone → just add; order
+    completed mid-edit → block ("can't change a paid order"); cart-side quantity
+    edits → re-derived from the design (discarded — confirm acceptable).
+  - **Size: ~4–5 dev-days** — designer `edit_cart` plumbing (~1d) · replace route
+    with idempotent no-duplicate + N&N multi-line (~1.5–2d) · edge cases + rigorous
+    "replace-not-duplicate" testing (~1d) · Shopify theme "Edit" link (~0.5–1d,
+    **needs Denise store/theme access**).
+  - **Open Qs before build:** (a) discard cart-side quantity edits on re-open, or
+    preserve? (recommend discard) (b) Edit link on the cart page and/or the
+    mini-cart drawer? (c) confirm the theme leg is Denise-deployed.
+
 ## How to use this file
 
 - Denise adds items here (or tells Claude/CC to add them) as she notices them.
