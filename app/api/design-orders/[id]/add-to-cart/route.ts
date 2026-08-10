@@ -11,6 +11,11 @@ import { type RosterEntry, entryHasContent, rosterValue, rosterShirtCount, roste
 import { resolveTiers, type VolumeTier } from '../../../../lib/volumeTiers'
 
 export const runtime = 'nodejs'
+// Worst realistic path ~30s (media-ready poll + variant-propagation retries + the edit-from-cart
+// replace loop), which exceeds Vercel's default function timeout — a hard kill would skip the
+// rollback catch and orphan a published product. 60s gives ~2× headroom so the request either
+// completes or fails cleanly (product deleted). (Pro plan permits up to 300.)
+export const maxDuration = 60
 
 // POST /api/design-orders/[id]/add-to-cart   (Phase 4 Day 6, revised shape)
 //   Body: { quantities: Record<size, qty>, notes?: string | null }

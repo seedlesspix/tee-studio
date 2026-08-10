@@ -126,10 +126,29 @@ export async function POST(request: NextRequest) {
     ? `${billing_address.first_name || ''} ${billing_address.last_name || ''}`.trim()
     : email?.split('@')[0] || ''
 
+  // Reconcile the stored total to what Shopify ACTUALLY CHARGED. design_orders.total_price was frozen
+  // pre-discount at cart-add (qty × folded price); the per-product volume-discount Function reduces the
+  // amount at checkout, so without this the admin/bookkeeping total reads HIGH (and refunds would over-
+  // credit). Per design, sum its line items' charged amount = price × quantity − total_discount (all
+  // Shopify money strings). A mixed cart holds several design lines, so group by _design_order_id — the
+  // same property already used to collect the ids above. Only overwrite when we get a finite number, so
+  // a malformed payload leaves the pre-discount value rather than writing 0.
+  const paidByDesign = new Map<string, number>()
+  for (const item of (line_items || [])) {
+    const did = (item.properties || []).find((p: any) => p.name === '_design_order_id')?.value
+    if (typeof did !== 'string' || !did) continue
+    const gross = Number(item.price) * Number(item.quantity)
+    const disc = Number(item.total_discount || 0)
+    if (!Number.isFinite(gross)) continue
+    const net = gross - (Number.isFinite(disc) ? disc : 0)
+    paidByDesign.set(did, (paidByDesign.get(did) || 0) + Math.max(0, net))
+  }
+
   // One update per design row. Any failure → 500 so Shopify retries the
   // delivery; completed rows are naturally idempotent (same values re-set).
   const failures: string[] = []
   for (const designOrderId of designOrderIds) {
+    const paid = paidByDesign.get(designOrderId)
     const { error } = await supabase
       .from('design_orders')
       .update({
@@ -141,6 +160,7 @@ export async function POST(request: NextRequest) {
         billing_address: billing_address || null,
         shipping_address: shipping_address || null,
         shipping_lines: shipping_lines ?? null,
+        ...(paid != null && Number.isFinite(paid) ? { total_price: Number(paid.toFixed(2)) } : {}),
         status: 'completed',
       })
       .eq('id', designOrderId)
