@@ -13,18 +13,20 @@ export type TemplateProduct = {
   id: string
   name: string
   shopify_product_id: string
+  category?: string | null // BETA #24 — used to list same-category products first
   image?: string | null // representative garment photo (first template color's swatch), when present
   hex?: string | null   // fallback color square when there's no photo
 }
 
 export default function ProductPickerModal({
-  open, onClose, onPick, excludeProductId, subtitle,
+  open, onClose, onPick, excludeProductId, subtitle, preferCategory,
 }: {
   open: boolean
   onClose: () => void
   onPick: (p: TemplateProduct) => void
   excludeProductId?: string | null // hide the design's origin product (GID)
   subtitle?: string
+  preferCategory?: string | null // BETA #24 — the current garment's category; list its category first
 }) {
   const [products, setProducts] = useState<TemplateProduct[]>([])
   const [loading, setLoading] = useState(true)
@@ -36,17 +38,17 @@ export default function ProductPickerModal({
     setLoading(true)
     supabase
       .from('product_templates')
-      .select('id, name, shopify_product_id, product_template_colors(hex, sort_order)')
+      .select('id, name, shopify_product_id, category, product_template_colors(hex, sort_order)')
       .eq('is_active', true)
       .order('sort_order')
       .then(({ data }) => {
         if (!alive) return
         type ColorRow = { hex: string | null; sort_order: number | null }
-        const rows = (data as Array<{ id: string; name: string; shopify_product_id: string; product_template_colors: ColorRow[] | null }> | null) ?? []
+        const rows = (data as Array<{ id: string; name: string; shopify_product_id: string; category: string | null; product_template_colors: ColorRow[] | null }> | null) ?? []
         const mapped = rows.map(r => {
           // hex of the first color = the fallback square until the real photo arrives (or if it can't).
           const colors = [...(r.product_template_colors ?? [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-          return { id: r.id, name: r.name, shopify_product_id: r.shopify_product_id, image: null as string | null, hex: colors[0]?.hex ?? null }
+          return { id: r.id, name: r.name, shopify_product_id: r.shopify_product_id, category: r.category, image: null as string | null, hex: colors[0]?.hex ?? null }
         })
         setProducts(mapped)
         setLoading(false)
@@ -72,7 +74,13 @@ export default function ProductPickerModal({
   // numeric productId while product_templates.shopify_product_id is a GID, so a raw !== never matched
   // and you could "port" onto the same product. normalizeShopifyProductId canonicalizes both to the GID.
   const exGid = excludeProductId ? normalizeShopifyProductId(excludeProductId) : null
-  const list = products.filter(p => !exGid || normalizeShopifyProductId(p.shopify_product_id) !== exGid)
+  const filtered = products.filter(p => !exGid || normalizeShopifyProductId(p.shopify_product_id) !== exGid)
+  // BETA #24 — list the current garment's category first (advise), preserving the admin sort_order
+  // within each group (stable sort). No preferred category → plain sort_order order.
+  const prefer = preferCategory?.trim() || null
+  const list = prefer
+    ? [...filtered].sort((a, b) => (b.category === prefer ? 1 : 0) - (a.category === prefer ? 1 : 0))
+    : filtered
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">

@@ -635,6 +635,8 @@ export type Database = {
           id: string
           name: string
           preset_label: string | null
+          mockup_natural_h: number | null
+          mockup_natural_w: number | null
           print_method: string
           side: string
           sort_order: number
@@ -650,6 +652,8 @@ export type Database = {
           id?: string
           name: string
           preset_label?: string | null
+          mockup_natural_h?: number | null
+          mockup_natural_w?: number | null
           print_method: string
           side: string
           sort_order?: number
@@ -665,6 +669,8 @@ export type Database = {
           id?: string
           name?: string
           preset_label?: string | null
+          mockup_natural_h?: number | null
+          mockup_natural_w?: number | null
           print_method?: string
           side?: string
           sort_order?: number
@@ -694,6 +700,7 @@ export type Database = {
       product_templates: {
         Row: {
           created_at: string
+          category: string | null
           default_print_method: string
           id: string
           is_active: boolean
@@ -708,6 +715,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          category?: string | null
           default_print_method: string
           id?: string
           is_active?: boolean
@@ -722,6 +730,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          category?: string | null
           default_print_method?: string
           id?: string
           is_active?: boolean

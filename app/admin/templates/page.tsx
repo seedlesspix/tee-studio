@@ -11,9 +11,13 @@ import TemplateColorsEditor from './TemplateColorsEditor'
 type Template = Tables<'product_templates'>
 type PrintMethod = Tables<'designer_print_methods'>
 
+// BETA #24 — simple product categories so the designer picker can advise (same category first).
+const TEMPLATE_CATEGORIES = ['Unisex', "Women's", "Kid's", "Baby's", 'Accessories'] as const
+
 type Draft = {
   name: string
   shopify_product_id: string
+  category: string
   supported_print_methods: string[]
   default_print_method: string
   supports_names_numbers: boolean
@@ -26,6 +30,7 @@ type Draft = {
 const EMPTY_DRAFT: Draft = {
   name: '',
   shopify_product_id: '',
+  category: '',
   supported_print_methods: [],
   default_print_method: '',
   supports_names_numbers: true,
@@ -114,6 +119,7 @@ export default function TemplatesAdmin() {
     setDraft({
       name: t.name,
       shopify_product_id: t.shopify_product_id,
+      category: t.category ?? '',
       supported_print_methods: [...t.supported_print_methods],
       default_print_method: t.default_print_method,
       supports_names_numbers: t.supports_names_numbers ?? true,
@@ -202,6 +208,7 @@ export default function TemplatesAdmin() {
       // lookup (keyed off the GID) always matches, regardless of what form the
       // admin pasted (GID, bare numeric, product URL, or a "Products" typo).
       shopify_product_id: normalizeShopifyProductId(draft.shopify_product_id)!,
+      category: draft.category.trim() || null,
       supported_print_methods: draft.supported_print_methods,
       default_print_method: draft.default_print_method,
       supports_names_numbers: draft.supports_names_numbers,
@@ -388,6 +395,18 @@ export default function TemplatesAdmin() {
                     placeholder="gid://shopify/Product/10042340507964"
                     className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-xs text-black outline-none focus:border-[#dd3333] font-mono mt-1 placeholder-gray-400" />
                 </div>
+              </div>
+
+              <div className="mt-4">
+                <label className="text-[10px] text-gray-600 font-mono uppercase">
+                  Category <span className="text-gray-400 normal-case">(groups + prioritizes this product in the designer&apos;s picker)</span>
+                </label>
+                <select value={draft.category}
+                  onChange={e => setDraft(p => ({ ...p, category: e.target.value }))}
+                  className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm text-black outline-none focus:border-[#dd3333] font-mono mt-1">
+                  <option value="">— none —</option>
+                  {TEMPLATE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
               </div>
 
               <div className="mt-4">

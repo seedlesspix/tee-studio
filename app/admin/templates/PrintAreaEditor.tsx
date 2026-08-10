@@ -211,6 +211,12 @@ export default function PrintAreaEditor({
           width_in: a.width_in, height_in: a.height_in,
           preset_label: a.preset_label?.trim() || null,
           sort_order: a.sort_order,
+          // Record the natural pixel size of the mockup these coordinates were drawn against, so the
+          // designer re-projects the box against the SAME reference frame (px→% below) instead of
+          // guessing from whichever product image loads first. All areas are shown over the currently-
+          // selected mockup, so its natural size is the frame the admin just verified them in.
+          mockup_natural_w: natural?.w ?? null,
+          mockup_natural_h: natural?.h ?? null,
         }
         if (a.id) {
           const { error } = await supabase.from('product_template_print_areas').update(row).eq('id', a.id)
