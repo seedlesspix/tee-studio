@@ -58,12 +58,15 @@ async function condensePlaceholders(
   }
 }
 
-// Bench filename for one entry: 01-SMITH-12.svg (title lives INSIDE the file, per Denise).
-export function nnEntryFilename(index: number, entry: RosterEntry): string {
+// Bench filename for one entry: 01-SMITH-12-back.svg (title lives INSIDE the file, per Denise). The
+// SIDE token is required — a player can have personalization on BOTH sides (e.g. front number + back
+// name+number), and without it the identically-named front/back files collide in Cut Files/Names/ and
+// one side is silently overwritten in the zip.
+export function nnEntryFilename(index: number, entry: RosterEntry, side: 'front' | 'back'): string {
   const idx = String(index).padStart(2, '0')
   const namePart = rosterValue(entry, 'name').replace(/[^A-Z0-9]+/gi, '').slice(0, 24)
   const numPart = String(entry.number ?? '').replace(/[^0-9A-Za-z]+/g, '')
-  return [idx, namePart, numPart].filter(Boolean).join('-') + '.svg'
+  return [idx, namePart, numPart].filter(Boolean).join('-') + '-' + side + '.svg'
 }
 
 export type NnCutResult = {

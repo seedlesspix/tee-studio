@@ -177,7 +177,7 @@ export async function GET(req: NextRequest) {
       const namesFolder = cutFolder.folder('Names')!
       const namesMirror = cutMirrorFolder.folder('Names')!
       for (const { entry, index, result } of nn.entries) {
-        const fn = nnEntryFilename(index, entry)
+        const fn = nnEntryFilename(index, entry, side)
         emitCut(result, fn, namesFolder, namesMirror, `Names/${fn}`)
       }
     } else {
@@ -289,7 +289,7 @@ export async function GET(req: NextRequest) {
     ...roster.map((e, i) =>
       `  ${String(i + 1).padEnd(4)}${rosterValue(e, 'name').slice(0, 15).padEnd(16)}${String(e.number ?? '').slice(0, 7).padEnd(8)}${rosterValue(e, 'title').slice(0, 11).padEnd(12)}${String(e.size ?? '').slice(0, 5).padEnd(6)}${e.qty ?? 1}`),
     `  Total: ${rosterShirtCount(roster)} personalized shirts`,
-    `  Each Cut Files/Names/NN-NAME-NUMBER.svg overlays the shared base ${orderNo}-<side>.svg in the same print area.`,
+    `  Each Cut Files/Names/NN-NAME-NUMBER-<side>.svg overlays the shared base ${orderNo}-<side>.svg in the same print area.`,
   ] : []
 
   // Decal / design numbers placed on this order — the same list the admin shows, now on the bench sheet.

@@ -1717,8 +1717,12 @@ export default function DesignerCanvas({
         if (obj) { if (!selectingFromLayersRef.current) setActiveTab(sectionForObject(obj)); setSelectedNnRole(obj[NN_ROLE_PROP] ?? null); refreshLowRes(obj) }
         setLayersTick(t => t + 1) // keep the Layers row highlight in sync with the canvas selection
         if (obj && (obj.type === 'i-text' || obj.type === 'textbox' || (obj as any)._isCurvedText)) {
-          const raw = ((obj as any)._originalText || obj.text || '').replace(/\n/g, ' ')
-          setSelectedTextPreview(raw.trim())
+          // Keep the customer's INTENTIONAL newlines when refilling the box from _originalText — else
+          // re-selecting a multi-line text flattens it and the next keystroke destroys the breaks.
+          // (Only the obj.text FALLBACK carries wrap newlines, which do flatten.) (broken)
+          const orig = (obj as any)._originalText
+          const raw = orig != null ? String(orig) : String(obj.text || '').replace(/\n/g, ' ')
+          setSelectedTextPreview(raw.replace(/\n/g, ' ').trim())
           setSelectedObjectType('text')
           // The panel's "Your Text" box is bound to the selection — selecting
           // text on the shirt fills it in, ready to edit.
@@ -1748,8 +1752,12 @@ export default function DesignerCanvas({
         if (obj) { if (!selectingFromLayersRef.current) setActiveTab(sectionForObject(obj)); setSelectedNnRole(obj[NN_ROLE_PROP] ?? null); refreshLowRes(obj) }
         setLayersTick(t => t + 1) // keep the Layers row highlight in sync with the canvas selection
         if (obj && (obj.type === 'i-text' || obj.type === 'textbox' || (obj as any)._isCurvedText)) {
-          const raw = ((obj as any)._originalText || obj.text || '').replace(/\n/g, ' ')
-          setSelectedTextPreview(raw.trim())
+          // Keep the customer's INTENTIONAL newlines when refilling the box from _originalText — else
+          // re-selecting a multi-line text flattens it and the next keystroke destroys the breaks.
+          // (Only the obj.text FALLBACK carries wrap newlines, which do flatten.) (broken)
+          const orig = (obj as any)._originalText
+          const raw = orig != null ? String(orig) : String(obj.text || '').replace(/\n/g, ' ')
+          setSelectedTextPreview(raw.replace(/\n/g, ' ').trim())
           setSelectedObjectType('text')
           // The panel's "Your Text" box is bound to the selection — selecting
           // text on the shirt fills it in, ready to edit.
@@ -4036,6 +4044,12 @@ export default function DesignerCanvas({
       const { draftId } = await res.json()
       if (!draftId) return null
       const params = new URLSearchParams(window.location.search)
+      // A ported / switched-garment design lands here with design_id + refit still in the URL. The
+      // draft we just snapshotted captures the CURRENT (already-refit) state, so on return we restore
+      // from that draft ONLY. Leaving design_id+refit would ALSO re-run the refit loader and
+      // double-apply the artwork (two overlapping copies → double-print). (broken)
+      params.delete('design_id')
+      params.delete('refit')
       params.set('restore', draftId)
       return `${window.location.pathname}?${params.toString()}`
     } catch (err) {
