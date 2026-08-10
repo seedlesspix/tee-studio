@@ -32,12 +32,15 @@ CLAUDE.md backlog; this file is the "these are NOT optional" promotion of them.
   uploaded-image area, and put the uploaded images themselves in a scrolling
   strip/list. *(Rides with the previously mentioned Upload-panel rebuild.)*
 
-- [ ] **10. Embroidery-look preview.** In embroidery mode, added text (and
-  ideally embroidery clipart) should render with a thread/stitch look so the
-  customer sees "this will be stitched," not a flat print preview. *(Named in
-  the long-term embroidery notes as the PREVIEW half; deliberately excluded
-  from the current embroidery designer-mode build — needs its own scoping.
-  Denise wants it for beta.)*
+- [ ] **10. Embroidery-look preview.** 🟢 v1 SHIPPED (the earlier "deliberately
+  excluded" note was stale). In embroidery mode, text, vector + raster clip art,
+  and baked curved text all render with a satin-thread texture + raised shadow +
+  the honest "🧵 Preview — final stitching may vary" note (`app/lib/embroideryLook.ts`).
+  The one real defect — a multicolor raster decal flattening to a single thread
+  color — was fixed 2026-08-11 (preserve-color path). Uniform grain (not
+  contour-following — that's the named post-launch version); N&N placeholders
+  intentionally keep their own v1 styling. **Awaiting Denise:** confirm the look
+  reads as "stitched" across text / SVG / raster / curved.
 - [x] **11. Product picker: ordering + product photos.** ✅ Shipped 2026-08-07
   (photo source corrected same day). The picker shows each product's real garment
   **mockup** — the Shopify featured image, fetched in ONE batched Storefront call
@@ -216,6 +219,31 @@ CLAUDE.md backlog; this file is the "these are NOT optional" promotion of them.
   - **Open Qs before build:** (a) discard cart-side quantity edits on re-open, or
     preserve? (recommend discard) (b) Edit link on the cart page and/or the
     mini-cart drawer? (c) confirm the theme leg is Denise-deployed.
+
+- [ ] **29. Admin orders: Production Bundle only.** Remove the individual
+  download buttons (PNG/SVG under the preview, standalone cut file) — leave
+  ONLY the Production Bundle download for beta. If the team reports missing a
+  quick-grab option during beta, revisit which shortcuts to bring back (noting
+  the upload-only orders would need an "OG upload" download rather than a cut
+  file). *(Denise 2026-08-11.)*
+
+- [ ] **30. "Desired by" date + Design Notes on the Order page.** (Manager
+  request, Denise 2026-08-11.) An OPTIONAL "Desired by" date picker on the Order
+  page (NOT the cart), with turnaround expectations shown beside it ("Typical
+  turnaround: print 24–72 hours, embroidery about a week"). Picking a date sooner
+  than turnaround shows a SOFT nudge ("we'll do our best — call us to confirm"),
+  never blocks. Date saves to the order, shows prominently AND sortable in admin
+  orders and in OrderInfo.txt for scheduling. Build together with the old backlog
+  "Add Design Notes" field — same home on the Order page, same flow to admin +
+  OrderInfo.txt. All wording via the Language editor.
+  - **Design Notes half: ALREADY SHIPPED** — the order-page notes textarea
+    (`order.notes_label`), `design_orders.notes` persistence, and the admin
+    "Design Notes" display already exist. Remaining for notes: add it to
+    OrderInfo.txt and route the admin heading through the Language editor.
+  - **Desired-by half: NEW.** Needs a `design_orders.desired_by` date column
+    (migration — show-and-approve, presented to Denise 2026-08-11), order-page
+    date picker + turnaround copy + soft nudge, persistence (add-to-cart + PATCH),
+    admin display + sort toggle, OrderInfo.txt section, and Language strings.
 
 ## How to use this file
 
