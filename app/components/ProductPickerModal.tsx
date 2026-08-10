@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { getFeaturedImages } from '../lib/shopify'
+import { normalizeShopifyProductId } from '../lib/productImages'
 import { useT } from './StringsProvider'
 
 // D2 Design Portability — pick a target garment to re-fit a saved design onto ("Use on another
@@ -67,7 +68,11 @@ export default function ProductPickerModal({
   }, [open, onClose])
 
   if (!open) return null
-  const list = products.filter(p => !excludeProductId || p.shopify_product_id !== excludeProductId)
+  // Exclude the design's ORIGIN garment. Normalize BOTH sides — the saved-design caller passes a bare
+  // numeric productId while product_templates.shopify_product_id is a GID, so a raw !== never matched
+  // and you could "port" onto the same product. normalizeShopifyProductId canonicalizes both to the GID.
+  const exGid = excludeProductId ? normalizeShopifyProductId(excludeProductId) : null
+  const list = products.filter(p => !exGid || normalizeShopifyProductId(p.shopify_product_id) !== exGid)
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">

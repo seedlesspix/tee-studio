@@ -118,6 +118,7 @@ export default function TemplateColorsEditor({ templateId, shopifyProductId, onM
   const persist = async (r: Row): Promise<boolean> => {
     const hex = normalizeHex(r.hex)
     if (!hex) { onMessage(`"${r.color_name}": enter a valid hex (e.g. #1a2b3c).`, 'error'); return false }
+    const prevSwatch = saved[r.color_name]?.swatch_image_url ?? null
     const payload = { template_id: templateId, color_name: r.color_name, hex, swatch_image_url: r.swatch_image_url }
     if (r.id) {
       const { error } = await supabase.from('product_template_colors').update(payload).eq('id', r.id)
@@ -129,6 +130,14 @@ export default function TemplateColorsEditor({ templateId, shopifyProductId, onM
       if (error) { onMessage(`Error saving "${r.color_name}": ${error.message}`, 'error'); return false }
       setSaved(prev => ({ ...prev, [r.color_name]: { id: data.id, hex, swatch_image_url: r.swatch_image_url } }))
       setRow(r.color_name, { id: data.id, hex, autofilled: false })
+    }
+    // The swatch image was cleared (saved had one, now null) — delete the storage file now that the DB
+    // no longer points at it, so DB + storage drop together. Deferred here (NOT in handleRemoveImage)
+    // so removing then navigating away WITHOUT Save leaves both intact. Deterministic path → no id book-
+    // keeping; best-effort (a leftover file is harmless and swept by later storage cleanup).
+    if (prevSwatch && !r.swatch_image_url) {
+      const path = `${templateId}/${slug(r.color_name)}.png`
+      try { await supabase.storage.from('garment-swatches').remove([path]) } catch { /* best-effort */ }
     }
     return true
   }
@@ -161,9 +170,10 @@ export default function TemplateColorsEditor({ templateId, shopifyProductId, onM
     onMessage('Image uploaded — click Save (or Save all) to keep it.')
   }
 
-  const handleRemoveImage = async (r: Row) => {
-    const path = `${templateId}/${slug(r.color_name)}.png`
-    await supabase.storage.from('garment-swatches').remove([path])
+  const handleRemoveImage = (r: Row) => {
+    // Clear locally ONLY — the storage file is deleted in persist() on Save. This means navigating
+    // away without saving keeps the image (no dangling DB→storage reference); it drops only when the
+    // null is actually saved.
     setRow(r.color_name, { swatch_image_url: null })
     onMessage('Image removed — click Save to keep the change.')
   }
