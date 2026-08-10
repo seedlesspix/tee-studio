@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useT } from '../../components/StringsProvider'
 import type { Tables } from '@/types/database'
 
 type PricingRow = Tables<'designer_pricing'>
@@ -17,6 +18,7 @@ type NewFields = { sides: string; price_add: string; label: string; shopify_vari
 const EMPTY_NEW: NewFields = { sides: '1', price_add: '0', label: '', shopify_variant_id: '' }
 
 export default function PricingAdmin() {
+  const t = useT()
   const [pricing, setPricing] = useState<PricingRow[]>([])
   const [methods, setMethods] = useState<PrintMethod[]>([])
   const [loading, setLoading] = useState(true)
@@ -109,7 +111,7 @@ export default function PricingAdmin() {
   }
 
   const deleteRow = async (row: PricingRow) => {
-    if (!confirm(`Delete the ${row.print_method_key.replace('_', ' ')} · ${SIDE_LABEL[row.sides] ?? row.sides} pricing row? This cannot be undone.`)) return
+    if (!confirm(`Delete the ${labelFor(row.print_method_key)} · ${SIDE_LABEL[row.sides] ?? row.sides} pricing row? This cannot be undone.`)) return
     const { error } = await supabase.from('designer_pricing').delete().eq('id', row.id)
     if (error) { showMessage('Error deleting: ' + error.message, 'error'); return }
     setPricing(prev => prev.filter(r => r.id !== row.id))
@@ -127,7 +129,7 @@ export default function PricingAdmin() {
     // Guard against a duplicate (method × side) — no DB unique constraint exists,
     // and two rows for the same side would make the resolver ambiguous.
     if (pricing.some(r => r.print_method_key === methodKey && r.sides === sides)) {
-      showMessage(`A ${SIDE_LABEL[sides]} row already exists for ${methodKey.replace('_', ' ')}.`, 'error')
+      showMessage(`A ${SIDE_LABEL[sides]} row already exists for ${labelFor(methodKey)}.`, 'error')
       return
     }
     setCreating(true)
@@ -169,7 +171,10 @@ export default function PricingAdmin() {
     : Object.keys(grouped)
   methodKeys.forEach(k => { grouped[k] ||= [] })
 
-  const labelFor = (key: string) => methods.find(m => m.key === key)?.label ?? key.replace('_', ' ')
+  const labelFor = (key: string) => {
+    const s = t('method.' + key)
+    return s.startsWith('method.') ? (methods.find(m => m.key === key)?.label ?? key.replace('_', ' ')) : s
+  }
 
   return (
     <div className="p-6">

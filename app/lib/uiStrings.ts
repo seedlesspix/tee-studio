@@ -234,7 +234,7 @@ export const UI_STRINGS = {
   // ── Designer — Art ──
   'designer.art.color_label': { default: "Clipart Color", group: "Designer — Art", desc: "Label above the recolor swatches for a selected SVG clipart." },
   'designer.art.color_default_name': { default: "Black", group: "Designer — Art", desc: "Fallback name shown for the chosen clipart color when it doesn't match a named palette color." },
-  'designer.art.search_placeholder': { default: "Search art or Decal #...", group: "Designer — Art", desc: "Placeholder text in the art browser's search box where customers type an art name or decal number." },
+  'designer.art.search_placeholder': { default: "Search art or Design #...", group: "Designer — Art", desc: "Placeholder text in the art browser's search box where customers type an art name or design number." },
   'designer.art.loading': { default: "Loading...", group: "Designer — Art", desc: "Shown while the art library is loading in the designer's Art panel." },
   'designer.art.empty': { default: "No art found", group: "Designer — Art", desc: "Shown in the Art panel when no artwork matches the current category or search." },
 

@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useT } from '../../components/StringsProvider'
 import type { Tables } from '@/types/database'
 
 type FontRow = Tables<'designer_fonts'>
@@ -20,6 +21,7 @@ function previewFamily(value: string): string {
 }
 
 export default function FontsAdmin() {
+  const t = useT()
   const [fonts, setFonts] = useState<FontRow[]>([])
   const [methods, setMethods] = useState<PrintMethod[]>([])
   const [loading, setLoading] = useState(true)
@@ -173,7 +175,10 @@ export default function FontsAdmin() {
   }, {} as Record<string, FontRow[]>)
   const methodKeys = methods.length ? methods.map(m => m.key) : Object.keys(grouped)
   methodKeys.forEach(k => { (grouped[k] ||= []).sort(byOrder) })
-  const labelFor = (key: string) => methods.find(m => m.key === key)?.label ?? key.replace('_', ' ')
+  const labelFor = (key: string) => {
+    const s = t('method.' + key)
+    return s.startsWith('method.') ? (methods.find(m => m.key === key)?.label ?? key.replace('_', ' ')) : s
+  }
 
   return (
     <div className="p-6">

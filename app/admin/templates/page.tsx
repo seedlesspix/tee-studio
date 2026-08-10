@@ -399,7 +399,7 @@ export default function TemplatesAdmin() {
                         checked={draft.supported_print_methods.includes(m.key)}
                         onChange={() => toggleSupported(m.key)}
                         className="accent-[#dd3333]" />
-                      {m.label}
+                      {labelFor(m.key)}
                     </label>
                   ))}
                 </div>

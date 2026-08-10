@@ -497,7 +497,7 @@ export default function OrdersAdmin() {
                       <div className="flex flex-col gap-2 text-sm text-black">
                         <div className="flex justify-between"><span className="text-gray-600">Product</span><span className="text-right text-xs">{row.product_title}</span></div>
                         <div className="flex justify-between"><span className="text-gray-600">Color</span><span>{row.selected_color}</span></div>
-                        <div className="flex justify-between"><span className="text-gray-600">Print</span><span>{row.print_method?.replace('_', ' ')}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Print</span><span>{(() => { const mk = 'method.' + (row.print_method || 'screen_print'); const s = t(mk); return s === mk ? (row.print_method || '').replace('_', ' ') : s })()}</span></div>
                         <div className="flex justify-between"><span className="text-gray-600">Sides</span><span>{row.sides_designed}</span></div>
                         <div className="border-t border-gray-200 pt-2 flex justify-between"><span className="text-gray-600">Blank + Print</span><span>${row.unit_price} + ${row.print_charge}</span></div>
                         <div className="flex justify-between font-bold"><span className="text-black">Total ({row.total_qty} items)</span><span className="text-[#dd3333]">${row.total_price}</span></div>

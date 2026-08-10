@@ -95,7 +95,7 @@ export default function ClipartPanel({ printMethod, onSelect, horizontal = false
       {showSearch && (
         <input
           type="text"
-          placeholder={t('designer.art.search_placeholder', 'Search art or Decal #...')}
+          placeholder={t('designer.art.search_placeholder', 'Search art or Design #...')}
           value={search}
           onChange={e => setSearch(e.target.value)}
           className={horizontal

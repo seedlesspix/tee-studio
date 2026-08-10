@@ -232,7 +232,7 @@ function OrderPage() {
             <p className="text-xs font-mono text-gray-900 uppercase tracking-widest mb-1">{t('order.product_label', 'Product')}</p>
             <p className="text-lg font-bold text-gray-900">{design?.product_title}</p>
             <p className="text-sm text-gray-900 mt-1">{t('order.color_label', 'Color:')} {design?.selected_color}</p>
-            <p className="text-sm text-gray-900">{t('order.method_label', 'Method:')} {design?.print_method === 'screen_print' ? t('order.method_print', 'Print') : (design?.print_method?.replace('_', ' ') || t('order.method_print', 'Print'))}</p>
+            <p className="text-sm text-gray-900">{t('order.method_label', 'Method:')} {(() => { const mk = 'method.' + (design?.print_method || 'screen_print'); const s = t(mk); return s === mk ? (design?.print_method || 'print').replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()) : s })()}</p>
           </div>
 
           {/* Pricing */}
