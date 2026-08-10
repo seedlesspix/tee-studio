@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useCustomerSession } from '../hooks/useCustomerSession'
 import { useT } from './StringsProvider'
+import Spinner from './Spinner'
 
 type Props = {
   // Anon "Log in" styling. 'default' is the filled-red style used on its own;
@@ -89,7 +90,9 @@ export function CustomerAuthButton({ variant = 'default', onBeforeLogin }: Props
         disabled={busy}
         className={`inline-flex h-8 items-center rounded px-3 text-sm font-medium transition-colors disabled:opacity-60 ${anonClass}`}
       >
-        {busy ? t('designer.auth.saving', 'Saving…') : t('designer.auth.log_in', 'Log in')}
+        {busy
+          ? <span className="inline-flex items-center gap-1.5"><Spinner size={13} />{t('designer.auth.saving', 'Saving…')}</span>
+          : t('designer.auth.log_in', 'Log in')}
       </button>
     )
   }

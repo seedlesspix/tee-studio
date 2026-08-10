@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { useT } from './StringsProvider'
+import Spinner from './Spinner'
 
 // "Save design" button + its feedback.
 //
@@ -87,7 +88,9 @@ export default function SaveDesignControl({ onSave, loggedIn, dirty }: Props) {
               : 'border-gray-300 text-gray-800 hover:border-[#dd3333] hover:text-[#dd3333]'
         }`}
       >
-        {text}
+        {status === 'saving'
+          ? <span className="inline-flex items-center gap-1.5"><Spinner size={13} />{text}</span>
+          : text}
       </button>
 
       {restoreUrl && (

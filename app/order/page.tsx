@@ -5,6 +5,7 @@ import type { Tables } from '@/types/database'
 import { type RosterEntry, rosterShirtCount } from '@/app/lib/namesNumbers'
 import Stepper from '@/app/components/Stepper'
 import { useT } from '@/app/components/StringsProvider'
+import Spinner from '@/app/components/Spinner'
 import { format } from '@/app/lib/uiStrings'
 import { supabase } from '@/app/lib/supabase'
 import { VOLUME_DISCOUNT, currentTier, nextTier, resolveTiers, type VolumeTier } from '@/app/lib/volumeTiers'
@@ -139,8 +140,9 @@ function OrderPage() {
   }
 
   if (loading) return (
-    <div className="min-h-screen bg-white flex items-center justify-center">
-      <p className="text-white font-mono">{t('order.loading', 'Loading your design...')}</p>
+    <div className="min-h-screen bg-white flex flex-col items-center justify-center gap-3 text-gray-500">
+      <Spinner size={28} />
+      <p className="font-mono text-sm">{t('order.loading', 'Loading your design...')}</p>
     </div>
   )
 
@@ -404,7 +406,9 @@ function OrderPage() {
               alongside other designs and off-the-shelf products */}
           <button onClick={handleAddToCart} disabled={adding || totalQty === 0 || (nnActive && badRosterSizes.length > 0)}
             className="w-full py-4 rounded-xl bg-[#dd3333] text-white font-black text-lg tracking-wide hover:bg-red-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-            {adding ? t('order.adding_to_cart', 'Adding to Cart...') : `${t('order.add_to_cart', 'Add to Cart →')} ${totalQty > 0 ? `(${totalQty} item${totalQty > 1 ? 's' : ''})` : ''}`}
+            {adding
+              ? <span className="inline-flex items-center justify-center gap-2"><Spinner size={16} />{t('order.adding_to_cart', 'Adding to Cart...')}</span>
+              : `${t('order.add_to_cart', 'Add to Cart →')} ${totalQty > 0 ? `(${totalQty} item${totalQty > 1 ? 's' : ''})` : ''}`}
           </button>
 
           <p className="text-xs text-gray-800 font-mono text-center">
