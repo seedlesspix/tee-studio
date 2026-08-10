@@ -38,15 +38,32 @@ function paintThreads(ctx: CanvasRenderingContext2D, obj: FabricObj) {
   const w = obj.width || 0, h = obj.height || 0
   if (!w || !h) return
   const span = Math.hypot(w, h) + 8
-  const dark = shade(ink, -48), light = shade(ink, 62)
+  // A multicolor RASTER decal has no single ink — painting opaque single-ink strands would flatten it
+  // to one thread color (the reported bug). For those, PRESERVE the underlying colors: paint low-alpha
+  // dark/light shading strands (a stitch-ridge feel) that modulate the image via source-atop's alpha
+  // compositing rather than replacing it. Solid-fill text / recolored SVG (one ink) keep the opaque
+  // ink gradient, which is exactly right for them.
+  const preserve = !!obj._embPreserveColor
   ctx.save()
-  ctx.globalCompositeOperation = 'source-atop' // texture only where the glyphs already painted
+  ctx.globalCompositeOperation = 'source-atop' // texture only where the object already painted
   ctx.rotate(THREAD_ANGLE)
-  for (let x = -span; x < span; x += THREAD_PERIOD) {
-    const grad = ctx.createLinearGradient(x, 0, x + THREAD_PERIOD, 0)
-    grad.addColorStop(0, dark); grad.addColorStop(0.5, ink); grad.addColorStop(1, light)
-    ctx.fillStyle = grad
-    ctx.fillRect(x, -span, THREAD_PERIOD, span * 2)
+  if (preserve) {
+    // Note: _embInk is intentionally unused here — the image carries its own colors, so we only add
+    // neutral light/dark ridging. (This is also why a textColor change doesn't retint raster art.)
+    for (let x = -span; x < span; x += THREAD_PERIOD) {
+      const grad = ctx.createLinearGradient(x, 0, x + THREAD_PERIOD, 0)
+      grad.addColorStop(0, 'rgba(0,0,0,0.32)'); grad.addColorStop(0.5, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(255,255,255,0.30)')
+      ctx.fillStyle = grad
+      ctx.fillRect(x, -span, THREAD_PERIOD, span * 2)
+    }
+  } else {
+    const dark = shade(ink, -48), light = shade(ink, 62)
+    for (let x = -span; x < span; x += THREAD_PERIOD) {
+      const grad = ctx.createLinearGradient(x, 0, x + THREAD_PERIOD, 0)
+      grad.addColorStop(0, dark); grad.addColorStop(0.5, ink); grad.addColorStop(1, light)
+      ctx.fillStyle = grad
+      ctx.fillRect(x, -span, THREAD_PERIOD, span * 2)
+    }
   }
   ctx.restore()
   // soft diagonal sheen band across the whole fill
@@ -63,9 +80,10 @@ function paintThreads(ctx: CanvasRenderingContext2D, obj: FabricObj) {
 
 // Install the thread overlay on an object (idempotent — a re-call just re-tints). Records the original
 // _render so it can be fully removed. `inkHex` is the object's solid ink color.
-export function applyEmbroideryLook(obj: FabricObj, inkHex: string) {
+export function applyEmbroideryLook(obj: FabricObj, inkHex: string, preserveColor = false) {
   if (!obj) return
   obj._embInk = inkHex
+  obj._embPreserveColor = preserveColor // true for multicolor raster: modulate, don't recolor
   if (obj._embWrapped) { obj.dirty = true; return } // already wrapped; retint + invalidate cache
   const orig = obj._render
   obj._embOrigRender = orig
@@ -84,5 +102,6 @@ export function removeEmbroideryLook(obj: FabricObj) {
   delete obj._embOrigRender
   delete obj._embWrapped
   delete obj._embInk
+  delete obj._embPreserveColor
   obj.dirty = true
 }

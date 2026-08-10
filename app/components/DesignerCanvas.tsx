@@ -304,6 +304,11 @@ export default function DesignerCanvas({
   // + thread color once that config finishes loading (it loads async after setPrintMethod). See the
   // conversion effect near fetchDesignerConfig.
   const pendingEmbConvertRef = useRef(false)
+  // The reverse of pendingEmbConvertRef: set when switching FROM embroidery back to a print method, so
+  // the reconcile effect resets any embroidery-ONLY font (which the cut outliner can't outline — a
+  // silent cut-file failure) back to the print default. Only INVALID fonts are touched; a font valid in
+  // both methods is left as the customer's choice.
+  const pendingPrintReconcileRef = useRef(false)
   // True once the customer has used the method toggle, so the (async) product-load resolution can't
   // clobber their choice if they toggle during the load window.
   const userToggledMethodRef = useRef(false)
@@ -1181,7 +1186,10 @@ export default function DesignerCanvas({
     const pa = { front: toPct(frontArea), back: toPct(backArea) }
     if (pa.front || pa.back) {
       printAreaDataRef.current = pa
-      setPrintArea(pa.front || pa.back)
+      // Side-aware: apply the box for whichever side is showing. Matters when this runs LATE (template
+      // load resolves after a restore that already landed on Back) — front-preferring would leave the
+      // Back view showing the Front box until a manual flip. Ref read, so no extra effect re-runs.
+      setPrintArea(shirtViewRef.current === 'back' ? (pa.back || pa.front) : (pa.front || pa.back))
       templateIdRef.current = tpl.id
       printAreaFrontIdRef.current = frontArea?.id ?? null
       printAreaBackIdRef.current = backArea?.id ?? null
@@ -1244,6 +1252,40 @@ export default function DesignerCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [printMethod, configMethod, dbFonts, dbColors])
 
+  // Reverse reconciliation (embroidery → print): the forward switch sets text to an embroidery font;
+  // switching BACK leaves that font in place, and embroidery-only fonts (e.g. Calistoga/Arial) are
+  // exactly the ones the cut outliner can't outline — a silent cut-file failure at fulfillment. So once
+  // the print font list has loaded, reset any text whose font is NOT in that list to the print default,
+  // then re-fit (the emb font's metrics differ, same overflow trap as the forward path). A font valid in
+  // BOTH methods is left untouched — we only repair the invalid ones, never override a real choice.
+  // (Curved-text bakes are NOT handled here — see the deferred curved-text-on-method-switch follow-up.)
+  useEffect(() => {
+    if (printMethod === 'embroidery' || !pendingPrintReconcileRef.current) return
+    if (configMethod !== printMethod || !dbFonts.length) return // print palette not loaded yet
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    const valid = new Set(dbFonts.map((f: any) => f.value))
+    const fallback = dbFonts[0]?.value
+    if (!fallback) return
+    const reconcile = (o: any) => {
+      if (!o || o[NN_ROLE_PROP] || (o.type !== 'i-text' && o.type !== 'textbox')) return
+      if (valid.has(o.fontFamily)) return // already a valid print font — keep the customer's choice
+      o.set({ fontFamily: fallback })
+      o.initDimensions?.()
+      fitAndConstrain(o)
+    }
+    const apply = () => {
+      ;[...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current].forEach(reconcile)
+      canvas.renderAll()
+      pendingPrintReconcileRef.current = false
+      markDirty()
+    }
+    const fonts = (document as unknown as { fonts?: { load?: (f: string) => Promise<unknown> } }).fonts
+    if (fonts?.load) fonts.load(`32px "${fallback}"`).then(apply).catch(apply)
+    else apply()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [printMethod, configMethod, dbFonts])
+
   // Embroidery-look preview (BETA item 10, v1): in embroidery mode, give text + vector art the satin-thread
   // texture + a raised shadow — the fill stays the solid ink color, so cut/save are untouched (see
   // embroideryLook.ts). Runs across BOTH sides' objects so a flip keeps it, and re-applies on method/color
@@ -1274,7 +1316,10 @@ export default function DesignerCanvas({
       seen.add(o)
       if (!isArt(o)) continue
       if (emb) {
-        applyEmbroideryLook(o, embInk(o))
+        // A raster clip-art image (not a baked curved-text image) is multicolor — preserve its colors
+        // (modulate) instead of flattening to one thread ink. Text / vector / curved bakes are single-ink.
+        const preserveColor = o.type === 'image' && !o._isCurvedText
+        applyEmbroideryLook(o, embInk(o), preserveColor)
         if (!o._embShadow) { o.set('shadow', new Shadow({ color: 'rgba(0,0,0,0.45)', blur: 3, offsetX: 0, offsetY: 2 })); o._embShadow = true }
       } else {
         removeEmbroideryLook(o)
@@ -1330,7 +1375,23 @@ export default function DesignerCanvas({
       if (state.quantities) setQuantities(state.quantities)
       if (Array.isArray(state.uploadedFiles)) uploadedFilesRef.current = state.uploadedFiles
       if (Array.isArray(state.roster)) setRoster(state.roster)
-      setShirtView('front')
+      // Land on the side that actually has content. After loadFromJSON the FRONT is on the live canvas
+      // and the BACK is in backObjectsRef. If the front is empty but the back has work, swap Back onto
+      // the canvas and land there — otherwise a restored BACK-ONLY design opens as a blank Front and
+      // looks lost until the customer discovers the Back toggle. (backRefitPendingRef is null on this
+      // saved-design restore path — refit is only pending on the separate D2 port flow — so there's no
+      // double-refit risk here; this is a plain side swap.)
+      if (canvas.getObjects().length === 0 && backObjectsRef.current.length > 0) {
+        frontObjectsRef.current = [] // front is genuinely empty
+        canvas.clear()
+        backObjectsRef.current.forEach((o: any) => canvas.add(o))
+        canvas.renderAll()
+        const pa = printAreaDataRef.current?.back
+        if (pa) { setPrintArea(pa); window.dispatchEvent(new Event('printAreaChanged')) }
+        setShirtView('back') // the garment image follows via the shirtView/color sync effect
+      } else {
+        setShirtView('front')
+      }
     } finally {
       isRestoringRef.current = false
     }
@@ -1567,13 +1628,13 @@ export default function DesignerCanvas({
             if (data.printArea?.value) {
               try {
                 const pa = JSON.parse(data.printArea.value)
-                setPrintArea(pa.front)
+                setPrintArea(shirtViewRef.current === 'back' ? (pa.back || pa.front) : pa.front)
                 printAreaDataRef.current = pa
               } catch (e) { console.error('Print area parse error', e) }
             } else if (data.metafield?.value) {
               try {
                 const pa = JSON.parse(data.metafield.value)
-                setPrintArea(pa.front)
+                setPrintArea(shirtViewRef.current === 'back' ? (pa.back || pa.front) : pa.front)
                 printAreaDataRef.current = pa
               } catch (e) { console.error('Print area parse error', e) }
             }
@@ -2718,6 +2779,10 @@ export default function DesignerCanvas({
       }
       if (willRestyleText) pendingEmbConvertRef.current = true // text re-styled once embroidery config loads
     }
+    // Reverse: switching to a PRINT method flags the reconcile effect to reset any embroidery-only font
+    // (cut-outliner-incompatible) back to the print default once the print font list loads. Silent (a
+    // repair, only invalid fonts), so no confirm — unlike the forward restyle which is a visible change.
+    if (m !== 'embroidery' && hasText) pendingPrintReconcileRef.current = true
     // Land on a still-visible tool (Upload/Names are hidden in embroidery).
     if (m === 'embroidery' && HIDDEN_FOR_EMBROIDERY.includes(activeTab)) setActiveTab('text')
 
