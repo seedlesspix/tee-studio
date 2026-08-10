@@ -14,6 +14,37 @@ type DesignOrder = Omit<Tables<'design_orders'>, 'quantities'> & {
   quantities: Record<string, number> | null
 }
 
+// Robust FIRST-PARTY cart hand-off (2026-08-10). Submit a top-level form to the STORE's /cart/add so
+// Shopify sets the `cart` cookie itself, first-party on tshirtdeli.com — exactly like any normal
+// "Add to cart" button. This replaced the old flow where our API added the item server-side and RELAYED
+// Shopify's cart cookie re-scoped to .tshirtdeli.com: browsers stopped keeping that cross-subdomain
+// relayed cookie after Shopify's signed-cart-token change, so the item went into a cart the browser
+// didn't hold and checkout showed "cart is empty". A first-party form add has no such dependency.
+function submitToStoreCart(
+  action: string,
+  items: Array<{ id: number; quantity: number; properties?: Record<string, string> }>,
+) {
+  const form = document.createElement('form')
+  form.method = 'POST'
+  form.action = action
+  form.style.display = 'none'
+  const field = (name: string, value: string) => {
+    const input = document.createElement('input')
+    input.type = 'hidden'
+    input.name = name
+    input.value = value // DOM value assignment — no HTML injection from roster names
+    form.appendChild(input)
+  }
+  items.forEach((it, n) => {
+    field(`items[${n}][id]`, String(it.id))
+    field(`items[${n}][quantity]`, String(it.quantity))
+    for (const [k, v] of Object.entries(it.properties ?? {})) field(`items[${n}][properties][${k}]`, v)
+  })
+  field('return_to', '/cart') // Shopify redirects here after adding
+  document.body.appendChild(form)
+  form.submit()
+}
+
 function OrderPage() {
   const t = useT()
   const searchParams = useSearchParams()
@@ -121,7 +152,9 @@ function OrderPage() {
   // other designs and off-the-shelf products for one checkout, done natively
   // from /cart when they finish shopping. One honest line per size; the old
   // Print Charge line-item machinery stays gone.
-  const handleAddToCart = async () => {
+  // `force` (only ever true via the "add another copy" confirm below) re-adds a design that's already in
+  // the cart. Typed boolean + `=== true` guards so a stray click-event arg can never force silently.
+  const handleAddToCart = async (force = false) => {
     if (!design || totalQty === 0) { setError(t('order.error_select_size', 'Please select at least one size and quantity.')); return }
     if (nnActive && badRosterSizes.length) { setError(format(t('order.nn_bad_sizes', "Some roster rows use a size this product doesn't offer ({sizes}). Go back to Edit Design to fix those sizes before checkout."), { sizes: badRosterSizes.join(', ') })); return }
     setAdding(true)
@@ -130,7 +163,7 @@ function OrderPage() {
     const res = await fetch(`/api/design-orders/${design.id}/add-to-cart`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ quantities, notes: notes.trim() || null, desired_by: desiredBy || null, ...(replaceCart ? { replaceDesignOrderId: replaceCart } : {}) }),
+      body: JSON.stringify({ quantities, notes: notes.trim() || null, desired_by: desiredBy || null, ...(replaceCart ? { replaceDesignOrderId: replaceCart } : {}), ...(force === true ? { force: true } : {}) }),
     }).catch(() => null)
 
     if (!res || !res.ok) {
@@ -140,11 +173,33 @@ function OrderPage() {
       return
     }
 
-    const { cartUrl, warning } = (await res.json()) as { cartUrl: string; warning?: string }
-    // Rare: the edited design was added but the old cart line couldn't be removed — tell them so they
-    // can remove it, rather than silently sending them to a cart with a duplicate.
-    if (warning) alert(warning)
-    window.location.href = cartUrl
+    const data = (await res.json()) as {
+      cartUrl: string
+      warning?: string
+      alreadyInCart?: boolean
+      addUrl?: string
+      items?: Array<{ id: number; quantity: number; properties?: Record<string, string> }>
+    }
+    // Already handed off once (server saw status='cart_created'). Default: send them to the cart to adjust
+    // quantity natively — never silently add a duplicate (that would double-charge). Escape hatch: if they
+    // removed the line and genuinely want it back, confirm to add another copy (re-runs forcing the add).
+    if (data.alreadyInCart && force !== true) {
+      setAdding(false)
+      const viewCart = window.confirm(t('order.already_in_cart_confirm', 'This design is already in your cart. Select OK to view your cart, or Cancel to add another copy.'))
+      if (viewCart) { window.location.assign(data.cartUrl); return }
+      return handleAddToCart(true)
+    }
+    // Edit-from-cart: the edited design goes in as a new line; the customer removes the older line on the
+    // cart page (they see both — no silent duplicate). We tell them before handing off.
+    if (data.warning) alert(data.warning)
+    // Robust first-party hand-off: let the STORE add the item + set the cart cookie itself, via a
+    // top-level form POST to /cart/add. This is the fix for the cross-subdomain cookie drop that was
+    // emptying carts. (alreadyInCart and other edge paths return no items and just navigate.)
+    if (data.addUrl && data.items && data.items.length) {
+      submitToStoreCart(data.addUrl, data.items) // navigates the browser to the store, then /cart
+      return
+    }
+    window.location.assign(data.cartUrl)
   }
 
   if (loading) return (
@@ -445,7 +500,7 @@ function OrderPage() {
 
           {/* Add to Cart — lands in the customer's real storefront cart,
               alongside other designs and off-the-shelf products */}
-          <button onClick={handleAddToCart} disabled={adding || totalQty === 0 || (nnActive && badRosterSizes.length > 0)}
+          <button onClick={() => handleAddToCart()} disabled={adding || totalQty === 0 || (nnActive && badRosterSizes.length > 0)}
             className="w-full py-4 rounded-xl bg-[#dd3333] text-white font-black text-lg tracking-wide hover:bg-red-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
             {adding
               ? <span className="inline-flex items-center justify-center gap-2"><Spinner size={16} />{t('order.adding_to_cart', 'Adding to Cart...')}</span>

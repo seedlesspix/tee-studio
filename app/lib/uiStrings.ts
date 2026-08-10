@@ -307,6 +307,7 @@ export const UI_STRINGS = {
   'order.error_not_found': { default: "Design not found", group: "Order page", desc: "Error shown when the design for this order link cannot be loaded." },
   'order.error_select_size': { default: "Please select at least one size and quantity.", group: "Order page", desc: "Validation message when the customer tries to add to cart without choosing any quantities." },
   'order.error_add_failed': { default: "Could not add to cart — please try again.", group: "Order page", desc: "Fallback error shown when adding the design to the cart fails." },
+  'order.already_in_cart_confirm': { default: "This design is already in your cart. Select OK to view your cart, or Cancel to add another copy.", group: "Order page", desc: "Confirm shown when the customer re-adds a design already in their cart — OK goes to the cart, Cancel adds a second copy." },
   'order.loading': { default: "Loading your design...", group: "Order page", desc: "Loading message while the order page fetches the saved design." },
   'order.your_design': { default: "Your Design", group: "Order page", desc: "Heading above the design preview on the order page." },
   'order.no_preview': { default: "No preview available", group: "Order page", desc: "Placeholder shown when no design preview image is available." },

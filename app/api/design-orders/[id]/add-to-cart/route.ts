@@ -11,42 +11,39 @@ import { type RosterEntry, entryHasContent, rosterValue, rosterShirtCount, roste
 import { resolveTiers, type VolumeTier } from '../../../../lib/volumeTiers'
 
 export const runtime = 'nodejs'
-// Worst realistic path ~30s (media-ready poll + variant-propagation retries + the edit-from-cart
-// replace loop), which exceeds Vercel's default function timeout — a hard kill would skip the
-// rollback catch and orphan a published product. 60s gives ~2× headroom so the request either
-// completes or fails cleanly (product deleted). (Pro plan permits up to 300.)
+// Worst realistic path ~25s (media-ready poll + the variant-readiness probe's propagation retries),
+// which exceeds Vercel's default function timeout — a hard kill would skip the rollback catch and orphan
+// a published product. 60s gives comfortable headroom so the request either completes or fails cleanly
+// (product deleted). (Pro plan permits up to 300.)
 export const maxDuration = 60
 
-// POST /api/design-orders/[id]/add-to-cart   (Phase 4 Day 6, revised shape)
-//   Body: { quantities: Record<size, qty>, notes?: string | null }
+// POST /api/design-orders/[id]/add-to-cart   (Phase 4 Day 6; first-party hand-off 2026-08-10)
+//   Body:    { quantities: Record<size, qty>, notes?, desired_by?, replaceDesignOrderId? }
+//   Returns: { cartUrl, addUrl, items[], warning? }   (or { cartUrl, alreadyInCart })
 //
-// Joins a finished design to the CUSTOMER'S REAL storefront cart so it can
-// mix with other designs and off-the-shelf products in one checkout:
-//   1. render the design as an ephemeral product (per-size variants, single
-//      folded price — one honest line per size, no Print Charge lines)
-//   2. publish it to the Online Store (REQUIRED: carts have an owning
-//      channel, and the session cart only accepts Online-Store-published
-//      merchandise — probe-verified; seo.hidden keeps it out of search)
-//   3. POST the customer's own /cart/add.js with their forwarded cookies —
-//      one items[] request, all sizes, _design_order_id property per line
-//      (that property is what the ORDERS_PAID webhook reads).
+// Joins a finished design to the CUSTOMER'S REAL storefront cart so it can mix with other designs and
+// off-the-shelf products in one checkout. This route PREPARES the design; the BROWSER does the actual add:
+//   1. render the design as an ephemeral product (per-size variants, single folded price — one honest
+//      line per size, no Print Charge lines)
+//   2. publish it to the Online Store (REQUIRED: carts have an owning channel, and the session cart only
+//      accepts Online-Store-published merchandise — probe-verified; seo.hidden keeps it out of search)
+//   3. PROBE that the just-published variant is catalog-ready, then return the line items[]. The order
+//      page submits a TOP-LEVEL form to the STORE's /cart/add (return_to=/cart), so the STORE sets the
+//      `cart` cookie FIRST-PARTY on tshirtdeli.com — the browser keeps it like any normal "Add to cart".
 //
-// This route MUST be called same-origin from the app on create.tshirtdeli.com:
-// Shopify's cart cookie is scoped .tshirtdeli.com, so the browser sends it to
-// us and we forward it. On any other origin (localhost, *.vercel.app) there
-// are no store cookies — Shopify then creates a fresh cart and returns its
-// cookie, which we relay back with the broadcast Domain (harmless in dev,
-// correct in prod for first-time carts).
+// WHY the browser adds (not us): we previously POSTed /cart/add.js server-side and RELAYED Shopify's cart
+// cookie to the browser re-scoped to .tshirtdeli.com. Browsers stopped keeping that relayed cross-subdomain
+// cookie after Shopify's new signed cart token (2026-08-10), so the item landed in a cart the browser
+// didn't hold and checkout showed an empty cart. A first-party form add removes that dependency entirely,
+// so no future Shopify cart-cookie change can break checkout the same way.
 //
-// Failure is atomic toward Shopify: if the cart-add fails, the just-created
-// product is deleted — no orphaned sellable products.
+// Failure is atomic toward Shopify: if preparation fails, the just-created product is deleted — no
+// orphaned sellable products.
 
-// --- Cookie plumbing (resurrected from the retired /api/cart-add proxy — the
-// create.tshirtdeli.com host-only-cookie bug is already solved here). ---
-
-// Strip duplicate `cart=` entries, keeping the first occurrence: browsers
-// send broadcast (older) cookies before host-only (newer) ones when paths
-// are equal, so the first cart= is the cart the customer's other pages use.
+// Strip duplicate `cart=` entries, keeping the first occurrence: browsers send broadcast (older)
+// cookies before host-only (newer) ones when paths are equal, so the first cart= is the cart the
+// customer's other pages use. Used only for the best-effort "already in cart?" read below — the add
+// itself is now a first-party browser form to the store, so there is no cookie relay to plumb.
 function dedupeCartCookie(cookieHeader: string): string {
   let seenCart = false
   return cookieHeader
@@ -62,19 +59,6 @@ function dedupeCartCookie(cookieHeader: string): string {
     .join('; ')
 }
 
-// "https://tshirtdeli.com" → ".tshirtdeli.com"
-function getCookieDomain(storeOrigin: string): string {
-  return `.${storeOrigin.replace(/^https?:\/\//, '').replace(/\/$/, '')}`
-}
-
-// Rewrite a Shopify Set-Cookie so the browser stores it for the parent
-// registrable domain (visible to all subdomains) instead of host-only on
-// whoever served the response — which would be create.tshirtdeli.com.
-function ensureCookieDomain(cookieString: string, domain: string): string {
-  if (/;\s*Domain=/i.test(cookieString)) return cookieString
-  return `${cookieString}; Domain=${domain}`
-}
-
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -84,7 +68,7 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid id' }, { status: 400 })
   }
 
-  let body: { quantities?: unknown; notes?: unknown; desired_by?: unknown; replaceDesignOrderId?: unknown }
+  let body: { quantities?: unknown; notes?: unknown; desired_by?: unknown; replaceDesignOrderId?: unknown; force?: unknown }
   try {
     body = await request.json()
   } catch {
@@ -102,6 +86,15 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid desired_by' }, { status: 400 })
   }
   const desiredBy = typeof body.desired_by === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.desired_by) ? body.desired_by : null
+
+  // Explicit "add another copy" from the order page's confirm — bypasses the already-in-cart guard below.
+  const forceAdd = body.force === true
+  // Edit-from-cart (item 28): the ORIGINAL design row whose cart line(s) this add replaces (dormant until
+  // the theme link ships). Hoisted here so the idempotency guard can exempt the intentional-re-add flow.
+  const replaceId =
+    typeof body.replaceDesignOrderId === 'string' && UUID_RE.test(body.replaceDesignOrderId) && body.replaceDesignOrderId !== id
+      ? body.replaceDesignOrderId
+      : null
 
   let storeOrigin: string
   try {
@@ -127,6 +120,16 @@ export async function POST(
   }
   if (!design) {
     return NextResponse.json({ error: 'Design not found' }, { status: 404 })
+  }
+
+  // Idempotency (first-party model). The store cart cookie is host-only on tshirtdeli.com and never
+  // reaches create.tshirtdeli.com, so we can't read the live cart to dedupe. Use our OWN persisted status
+  // instead: a design already handed off (status='cart_created') must NOT silently mint a SECOND
+  // chargeable product/line on a repeat click or a browser-Back re-add — that is a real double-charge.
+  // Route them to the cart to adjust quantity natively. Exempt: an edit-from-cart replace (intentionally
+  // re-adds), or an explicit "add another copy" (force) that the order page confirms with the customer.
+  if (!replaceId && !forceAdd && design.status === 'cart_created') {
+    return NextResponse.json({ cartUrl, alreadyInCart: true })
   }
 
   // Sizes from the design's captured available_sizes (Shopify variant order).
@@ -254,12 +257,9 @@ export async function POST(
     // usually costs nothing extra; capped + non-throwing, so a slow/failed render never blocks the add.
     await waitForMediaReady(product.productId)
 
-    // 3. One items[] POST to the customer's own /cart/add.js. A just-
-    // published variant can take a moment to reach the Online Store catalog
-    // (Day-1/Day-6 probes: ~3-5s), so retry "Cannot find variant" briefly.
-    // N&N: one line PER ROSTER ENTRY with VISIBLE Name/Number/Title so the coach proof-reads their
-    // roster in the cart before paying (_design_order_id stays hidden with its underscore). Otherwise
-    // the classic one-line-per-size shape, unchanged.
+    // 3. Build the cart line items the browser will submit to the store. N&N: one line PER ROSTER ENTRY
+    // with VISIBLE Name/Number/Title so the coach proof-reads their roster in the cart before paying
+    // (_design_order_id stays hidden with its underscore). Otherwise the classic one-line-per-size shape.
     const items = nnActive
       ? rosterEntries.map((e) => {
           const props: Record<string, string> = {}
@@ -279,85 +279,48 @@ export async function POST(
           properties: { _design_order_id: id },
         }))
 
-    let addRes: Response | null = null
+    // Defensive: the guards above (per-size sum > 0 / roster shirt count > 0) guarantee ≥1 line, but the
+    // probe and the client form both index items[0] — never hand off an empty add.
+    if (items.length === 0) {
+      throw new Error('no line items to add')
+    }
+
+    // 4. Confirm the just-published variant is catalog-ready. Online-Store publication propagates to the
+    // cart surface ASYNCHRONOUSLY (~3-5s, Day-1/6 probes), so the browser's form POST could otherwise race
+    // ahead and hit "Cannot find variant" with no retry. Probe with a THROWAWAY server-side cart (no
+    // customer cookie — nothing touches their cart; the response is discarded), reusing the retry the old
+    // inline add.js loop had. Once a probe succeeds the product is in the catalog, so the browser's own
+    // /cart/add below is guaranteed to find every variant of it.
+    let ready = false
     let lastError = ''
     for (let attempt = 1; attempt <= 6; attempt++) {
-      addRes = await fetch(`${storeOrigin}/cart/add.js`, {
+      const probe = await fetch(`${storeOrigin}/cart/add.js`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          cookie: forwardCookies,
-        },
-        body: JSON.stringify({ items }),
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ items: [{ id: items[0].id, quantity: 1 }] }),
       })
-      if (addRes.ok) break
-      const err = await addRes.json().catch(() => null)
-      lastError = err?.description || err?.message || `HTTP ${addRes.status}`
+      if (probe.ok) { ready = true; break }
+      const err = await probe.json().catch(() => null)
+      lastError = err?.description || err?.message || `HTTP ${probe.status}`
       if (/cannot find variant/i.test(lastError) && attempt < 6) {
         await new Promise((r) => setTimeout(r, 1500))
         continue
       }
       break
     }
-    if (!addRes || !addRes.ok) {
-      throw new Error(`cart-add failed: ${lastError}`)
-    }
+    if (!ready) throw new Error(`variant not ready: ${lastError}`)
 
-    // 3b. EDIT-FROM-CART replace (item 28). If this add is replacing an edited design, remove the OLD
-    // design's cart line(s) now that the edited one is in. Editing minted a NEW design_order row, so the
-    // old lines carry a DIFFERENT _design_order_id — we can NEVER remove the just-added lines. We add
-    // first (so a failed add leaves the old line intact), then remove-and-VERIFY-GONE (the cart change
-    // is idempotent): re-read the cart until no old line remains, so a stray line can't leave a
-    // duplicate / double-charge. Only if it truly can't be removed do we return a soft warning.
-    let replaceWarning: string | null = null
-    const replaceId =
-      typeof body.replaceDesignOrderId === 'string' && UUID_RE.test(body.replaceDesignOrderId) && body.replaceDesignOrderId !== id
-        ? body.replaceDesignOrderId : null
-    if (replaceId) {
-      // Self-contained: the add already SUCCEEDED here, so NOTHING in this block may throw out to the
-      // outer rollback catch — that catch deletes the just-added product Y (would betray the customer's
-      // edited design AND leave the old one). Any failure degrades to a soft warning instead.
-      try {
-        // Returns matching line keys on a SUCCESSFUL read, or null when the cart couldn't be read
-        // (network / non-OK HTTP). null ≠ [] on purpose: [] means "read OK, no old lines"; null means
-        // "we don't know" — which must NEVER be trusted as removed (else a failed read silently leaves
-        // the old line = a double-charge with no warning).
-        const oldLineKeys = async (): Promise<string[] | null> => {
-          const cartRes = await fetch(`${storeOrigin}/cart.js`, { headers: { Accept: 'application/json', cookie: forwardCookies } }).catch(() => null)
-          if (!cartRes || !cartRes.ok) return null
-          const cart = (await cartRes.json().catch(() => null)) as { items?: Array<{ key: string; properties?: Record<string, unknown> | null }> } | null
-          if (!cart) return null
-          return (cart.items ?? [])
-            .filter((it) => it.properties && String(it.properties._design_order_id) === replaceId)
-            .map((it) => it.key)
-        }
-        let keys = await oldLineKeys()
-        // Only a SUCCESSFUL read showing zero old lines counts as "confirmed gone".
-        let confirmedGone = keys !== null && keys.length === 0
-        for (let attempt = 0; attempt < 4 && keys && keys.length; attempt++) {
-          const updates: Record<string, number> = {}
-          for (const k of keys) updates[k] = 0
-          await fetch(`${storeOrigin}/cart/update.js`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Accept: 'application/json', cookie: forwardCookies },
-            body: JSON.stringify({ updates }),
-          }).catch(() => null)
-          keys = await oldLineKeys() // verify gone before trusting it
-          if (keys !== null && keys.length === 0) confirmedGone = true
-        }
-        if (!confirmedGone) {
-          replaceWarning = 'Your edited design was added, but the previous version could not be removed — please remove the old line in your cart.'
-          console.error('[add-to-cart] replace: old lines not confirmed removed for', replaceId, keys)
-        }
-      } catch (e) {
-        replaceWarning = 'Your edited design was added, but the previous version could not be removed — please remove the old line in your cart.'
-        console.error('[add-to-cart] replace failed (add succeeded, product kept):', e)
-      }
-    }
+    // EDIT-FROM-CART (item 28), first-party model: the browser adds the EDITED design as a normal new
+    // line; we cannot remove the OLD line for them from this subdomain (the store cart cookie is
+    // first-party on tshirtdeli.com and never reaches create.tshirtdeli.com), so we warn them to remove it
+    // on the cart page — they see both lines, so there is no silent double-charge. Seamless first-party
+    // removal is a follow-up for when the edit-from-cart link actually ships. Normal adds carry no warning.
+    const warning = replaceId
+      ? 'Your edited design will be added as a new line. Your previous version is still in the cart — please remove that older line before checkout.'
+      : null
 
-    // 4. Persist the outcome. Failure here is logged, not fatal — the
-    // customer's cart line is real either way.
+    // 5. Persist the outcome (optimistic — the browser completes the add next). Non-fatal: the design row
+    // is the source of truth, and the ORDERS_PAID webhook reconciles the real order on payment.
     const { error: updateError } = await supabase
       .from('design_orders')
       .update({
@@ -373,15 +336,10 @@ export async function POST(
       .in('status', ['draft', 'ordering', 'cart_created'])
     if (updateError) console.error('[add-to-cart] persist failed:', updateError)
 
-    // 5. Relay Shopify's Set-Cookie (a fresh cart cookie when the customer
-    // had none) with the broadcast Domain so every *.tshirtdeli.com page
-    // sees the same cart.
-    const response = NextResponse.json({ cartUrl, ...(replaceWarning ? { warning: replaceWarning } : {}) })
-    const cookieDomain = getCookieDomain(storeOrigin)
-    for (const sc of addRes.headers.getSetCookie()) {
-      response.headers.append('set-cookie', ensureCookieDomain(sc, cookieDomain))
-    }
-    return response
+    // 6. Hand the browser the line items. The order page submits a TOP-LEVEL form to the STORE's /cart/add
+    // (return_to=/cart), so the STORE sets the cart cookie FIRST-PARTY — no cross-subdomain cookie relay
+    // for the browser to drop (the drop that was emptying carts).
+    return NextResponse.json({ cartUrl, addUrl: `${storeOrigin}/cart/add`, items, ...(warning ? { warning } : {}) })
   } catch (e) {
     // Atomic toward Shopify: no cart line → no product left behind.
     console.error('[add-to-cart] failed after product creation:', e)
