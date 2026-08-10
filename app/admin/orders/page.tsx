@@ -2,7 +2,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { Tables } from '@/types/database'
-import { orderFileStem } from '../../lib/orderFiles'
 import { useT } from '../../components/StringsProvider'
 
 // The full Shopify address shape as captured verbatim by the webhook (both
@@ -135,8 +134,8 @@ export default function OrdersAdmin() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
-  const [downloading, setDownloading] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [downloading, setDownloading] = useState<string | null>(null)
 
   useEffect(() => {
     supabase
@@ -201,6 +200,8 @@ export default function OrdersAdmin() {
   const groupTotal = (g: OrderGroup) => g.rows.reduce((s, r) => s + Number(r.total_price ?? 0), 0)
   const groupQty = (g: OrderGroup) => g.rows.reduce((s, r) => s + (r.total_qty ?? 0), 0)
 
+  // Download a file (still used by the customer-uploads / originals section below; the design-preview
+  // PNG/SVG and per-side cut-file quick-grabs were removed for beta — item 29).
   const downloadFile = async (url: string, filename: string) => {
     setDownloading(filename)
     try {
@@ -228,9 +229,26 @@ export default function OrdersAdmin() {
     const ids = group.rows.map(r => r.id)
     const label = group.orderNumber ? `Order #${group.orderNumber}` : 'this draft order'
     const n = ids.length
+    // Guard the saved_designs cascade: check (via an admin route — saved_designs is service-role-only)
+    // whether any of these rows back a customer's "My Designs" entry. If so, warn SPECIFICALLY (deleting
+    // destroys their saved work); if verified none, don't cry wolf; if the check fails, fall back to the
+    // generic caution.
+    let savedCount: number | null = null
+    try {
+      const res = await fetch('/api/admin/orders/saved-check', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }),
+      })
+      if (res.ok) savedCount = (await res.json()).savedCount ?? 0
+    } catch { /* leave null → generic caution */ }
+    const savedWarn =
+      savedCount === null
+        ? `\n\nIf a customer saved any of these to "My Designs", that saved entry is removed too.`
+        : savedCount > 0
+          ? `\n\n🚨 ${savedCount} of these ${savedCount > 1 ? "are customers'" : "is a customer's"} SAVED design${savedCount > 1 ? 's' : ''} (My Designs) — deleting will PERMANENTLY DESTROY their saved work.`
+          : ''
     if (!confirm(
-      `Permanently delete ${label} (${n} design${n > 1 ? 's' : ''})?\n\n` +
-      `This cannot be undone. If a customer saved any of these to "My Designs", that saved entry is removed too.`
+      `Permanently delete ${label} (${n} design${n > 1 ? 's' : ''})?${savedWarn}\n\n` +
+      `This cannot be undone.`
     )) return
     setDeleting(true)
     const { error } = await supabase.from('design_orders').delete().in('id', ids)
@@ -462,8 +480,6 @@ export default function OrdersAdmin() {
 
               {/* One section per design */}
               {selected.rows.map((row, i) => {
-                // Distinct download names when an order has several designs
-                const stem = `${orderFileStem(row)}${multi ? `-d${i + 1}` : ''}`
                 return (
                   <div key={row.id} className={multi ? 'border border-gray-300 rounded-2xl p-4 flex flex-col gap-4' : 'flex flex-col gap-5'}>
                     {multi && (
@@ -518,40 +534,16 @@ export default function OrdersAdmin() {
                         {row.canvas_png_front && (
                           <div>
                             <p className="text-xs font-mono text-gray-600 mb-2">FRONT PREVIEW</p>
-                            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mb-2">
+                            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                               <img src={row.canvas_png_front} alt="Front" className="w-full object-contain max-h-64" />
-                            </div>
-                            <div className="flex gap-2">
-                              <button onClick={() => downloadFile(row.canvas_png_front!, `${stem}-front.png`)}
-                                className="flex-1 py-1.5 rounded text-xs font-mono bg-[#dd3333] text-white hover:bg-red-700 transition-all text-center">
-                                {downloading === `${stem}-front.png` ? '...' : '↓ PNG'}
-                              </button>
-                              {row.canvas_svg_front && (
-                                <button onClick={() => downloadFile(row.canvas_svg_front!, `${stem}-front.svg`)}
-                                  className="flex-1 py-1.5 rounded text-xs font-mono bg-[#dd3333] text-white hover:bg-red-700 transition-all text-center">
-                                  {downloading === `${stem}-front.svg` ? '...' : '↓ SVG'}
-                                </button>
-                              )}
                             </div>
                           </div>
                         )}
                         {row.canvas_png_back && (
                           <div>
                             <p className="text-xs font-mono text-gray-600 mb-2">BACK PREVIEW</p>
-                            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mb-2">
+                            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                               <img src={row.canvas_png_back} alt="Back" className="w-full object-contain max-h-64" />
-                            </div>
-                            <div className="flex gap-2">
-                              <button onClick={() => downloadFile(row.canvas_png_back!, `${stem}-back.png`)}
-                                className="flex-1 py-1.5 rounded text-xs font-mono bg-[#dd3333] text-white hover:bg-red-700 transition-all text-center">
-                                {downloading === `${stem}-back.png` ? '...' : '↓ PNG'}
-                              </button>
-                              {row.canvas_svg_back && (
-                                <button onClick={() => downloadFile(row.canvas_svg_back!, `${stem}-back.svg`)}
-                                  className="flex-1 py-1.5 rounded text-xs font-mono bg-[#dd3333] text-white hover:bg-red-700 transition-all text-center">
-                                  {downloading === `${stem}-back.svg` ? '...' : '↓ SVG'}
-                                </button>
-                              )}
                             </div>
                           </div>
                         )}
@@ -575,29 +567,10 @@ export default function OrdersAdmin() {
                         </div>
                       )}
 
-                      {/* Individual cut file per side — outlined, physically-sized SVG for the
-                          Roland (via Illustrator). All 58 fonts + curved text + clipart supported
-                          (Stage 2). A side with no vector artwork returns a short message.
-                          Cookie-authed GET, so a plain download link (no JS). */}
-                      {(row.canvas_png_front || row.canvas_png_back) && (
-                        <div className="mt-4 pt-3 border-t border-gray-200">
-                          <p className="text-xs font-mono text-gray-600 mb-2">CUT FILE — INDIVIDUAL SIDES</p>
-                          <div className="flex gap-2">
-                            {row.canvas_png_front && (
-                              <a href={`/api/admin/cut-file?order=${row.id}&side=front`}
-                                className="flex-1 py-1.5 rounded text-xs font-mono bg-black text-white hover:bg-[#dd3333] transition-all text-center">
-                                ⬇ Cut file — Front
-                              </a>
-                            )}
-                            {row.canvas_png_back && (
-                              <a href={`/api/admin/cut-file?order=${row.id}&side=back`}
-                                className="flex-1 py-1.5 rounded text-xs font-mono bg-black text-white hover:bg-[#dd3333] transition-all text-center">
-                                ⬇ Cut file — Back
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      )}
+                      {/* Item 29 (beta): the individual PNG/SVG + per-side cut-file quick-grabs were
+                          removed — the Production Bundle above is the single source for beta so the
+                          bench can't grab a stale/partial piece. Bring one back deliberately if the
+                          team misses it. (The /api/admin/cut-file route still exists, just unlinked.) */}
                     </div>
 
                     {/* Customer uploaded files */}
