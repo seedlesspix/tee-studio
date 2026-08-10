@@ -55,7 +55,7 @@ import { type UploadItem } from './MyUploadsPanel'
 import {
   AlignStartVertical, AlignCenterVertical, AlignEndVertical,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
-  Undo2, Redo2,
+  Undo2, Redo2, ZoomIn, ZoomOut,
 } from 'lucide-react'
 import MyDesignsDrawer, { type SavedDesign } from './MyDesignsDrawer'
 import ProductPickerModal, { type TemplateProduct } from './ProductPickerModal'
@@ -1318,26 +1318,30 @@ export default function DesignerCanvas({
     const isArt = (o: any) =>
       o && !o.excludeFromExport && !o[NN_ROLE_PROP] && !o._uploadSrc &&
       (o.type === 'i-text' || o.type === 'textbox' || o.type === 'group' || o.type === 'path' || o.type === 'image')
-    // Thread tint: a baked curved text carries its real color in _curveFill (its image `fill` is a default
-    // string that would wrongly win), so read _curveFill FIRST; else the object's own fill; else the thread.
+    // Embroidery look = one THREAD of a chosen color, so it applies ONLY where a single thread color
+    // exists: TEXT (its fill), a recolored single-color CLIP ART (its _currentColor), and baked CURVED
+    // text (_curveFill — its image `fill` is a default that would wrongly win). Multicolor raster clip art
+    // / pre-made designs have no single thread color (and often already read as stitched), so they render
+    // PLAIN — no black-stitch overlay. (Denise 2026-08-10; clip-art side still exploratory.)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const embInk = (o: any): string =>
-      (o._isCurvedText && typeof o._curveFill === 'string' && o._curveFill) ? o._curveFill
-        : (typeof o.fill === 'string' && o.fill) ? o.fill : textColor
+    const singleThread = (o: any): string | null => {
+      if (o._isCurvedText) return typeof o._curveFill === 'string' && o._curveFill ? o._curveFill : null
+      if (o.type === 'i-text' || o.type === 'textbox') return typeof o.fill === 'string' && o.fill ? o.fill : textColor
+      if (typeof o._currentColor === 'string' && o._currentColor) return o._currentColor // recolored SVG clip art
+      return null // raster / un-recolored multicolor art → no single thread color
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const seen = new Set<any>()
     for (const o of [...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current]) {
       if (!o || seen.has(o)) continue
       seen.add(o)
       if (!isArt(o)) continue
-      if (emb) {
-        // A raster clip-art image (not a baked curved-text image) is multicolor — preserve its colors
-        // (modulate) instead of flattening to one thread ink. Text / vector / curved bakes are single-ink.
-        const preserveColor = o.type === 'image' && !o._isCurvedText
-        applyEmbroideryLook(o, embInk(o), preserveColor)
+      const ink = emb ? singleThread(o) : null
+      if (ink) {
+        applyEmbroideryLook(o, ink, false) // always colored satin now — the neutral multicolor path is retired
         if (!o._embShadow) { o.set('shadow', new Shadow({ color: 'rgba(0,0,0,0.45)', blur: 3, offsetX: 0, offsetY: 2 })); o._embShadow = true }
       } else {
-        removeEmbroideryLook(o)
+        removeEmbroideryLook(o) // print mode, OR embroidery on multicolor art → leave it plain
         if (o._embShadow) { o.set('shadow', null); o._embShadow = false }
       }
     }
@@ -2012,6 +2016,15 @@ export default function DesignerCanvas({
       setIsLoading(false)
   }
 
+  // Desktop magnify — reuses the coordinate-safe `view` transform the mobile pinch already uses (centered
+  // zoom, x/y = 0). Fabric re-reads the live bounding rect per pointer event, so selecting/dragging stays
+  // correct at any zoom. Controls live in the desktop Align bar (magnify glass +/−, click % to reset).
+  const ZOOM_MIN = 1, ZOOM_MAX = 3, ZOOM_STEP = 0.25
+  const zoomTo = (z: number) => {
+    const zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 4) / 4)) // snap to 0.25 steps
+    setView(zoom <= 1 ? { zoom: 1, x: 0, y: 0 } : { zoom, x: 0, y: 0 })
+  }
+
   // 1b: replaces the window._alignObject bridge — align the active object to the
   // print-area edges/center. Reads the live canvas from fabricCanvasRef.
   const alignObject = (fn: string) => {
@@ -2422,6 +2435,9 @@ export default function DesignerCanvas({
       obj.filters = [new filters.BlendColor({ color: hex, mode: 'tint', alpha: 1 })]
       obj.applyFilters()
       canvas.renderAll()
+      // In embroidery mode the thread color follows the chosen clip-art color — re-apply the look so the
+      // satin thread re-tints to `hex` (the overlay bakes its ink at apply time). No-op in print mode.
+      if (printMethod === 'embroidery') void refreshEmbroideryLook()
     })
   }
 
@@ -4362,6 +4378,30 @@ export default function DesignerCanvas({
       alert(t('designer.next_empty', 'Please add a design before continuing. Add text, clipart, or upload an image.'))
       return
     }
+    // Item 31 — Names & Numbers content gate. If personalization placeholders are ON the shirt, their
+    // roster columns must actually be filled. Only require the TYPES present (a numbers-only jersey needs
+    // no names — mirrors the "only require what's there" nuance of the blank-SIZE blocker), and name
+    // exactly what's missing. Blocks Next Step → the cart. Wording via the language editor.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const nnObjs = [...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current]
+      .filter((o: any) => o && o[NN_ROLE_PROP])
+    if (nnObjs.length) {
+      const rolesPresent = Array.from(new Set(nnObjs.map((o: any) => o[NN_ROLE_PROP] as NnRole)))
+      const roleFilled = (role: NnRole) => roster.some(e =>
+        (role === 'name' ? e.name : role === 'title' ? e.title : e.number).trim() !== '')
+      const labels: Record<NnRole, string> = {
+        name: t('designer.nn_field_name', 'name'),
+        number: t('designer.nn_field_number', 'number'),
+        title: t('designer.nn_field_title', 'title'),
+      }
+      const missing = rolesPresent.filter(r => !roleFilled(r)).map(r => labels[r])
+      if (missing.length) {
+        const fields = missing.length === 1 ? missing[0]
+          : missing.slice(0, -1).join(', ') + ' ' + t('designer.and', 'and') + ' ' + missing[missing.length - 1]
+        alert(format(t('designer.nn_empty_roster', 'Your Names & Numbers list has no {fields} filled in yet. Add at least one in the Names & Numbers panel before continuing.'), { fields }))
+        return
+      }
+    }
     // Deselect all objects so handles don't show in preview
     canvas.discardActiveObject()
     canvas.renderAll()
@@ -4797,6 +4837,24 @@ export default function DesignerCanvas({
                 <Icon size={16} strokeWidth={1.75} />
               </button>
             ))}
+            <span className="w-px h-4 bg-gray-200 mx-1" />
+            {/* Zoom — magnify the shirt to place fine detail (view-only; object coordinates unchanged).
+                Centered zoom; click the % to reset to 100%. */}
+            <button title={t('designer.zoom_out', 'Zoom out')} disabled={view.zoom <= ZOOM_MIN}
+              onPointerDown={e => { e.preventDefault(); zoomTo(view.zoom - ZOOM_STEP) }}
+              className="flex items-center justify-center px-2 py-1.5 rounded bg-gray-100 border border-gray-200 text-gray-700 hover:border-[#dd3333] hover:text-gray-900 transition-all disabled:opacity-40 disabled:hover:border-gray-200">
+              <ZoomOut size={16} strokeWidth={1.75} />
+            </button>
+            <button title={t('designer.zoom_reset', 'Reset zoom to 100%')}
+              onPointerDown={e => { e.preventDefault(); zoomTo(1) }}
+              className="min-w-[2.75rem] text-center px-1.5 py-1.5 rounded text-xs font-mono bg-gray-100 border border-gray-200 text-gray-700 hover:border-[#dd3333] hover:text-gray-900 transition-all">
+              {Math.round(view.zoom * 100)}%
+            </button>
+            <button title={t('designer.zoom_in', 'Zoom in')} disabled={view.zoom >= ZOOM_MAX}
+              onPointerDown={e => { e.preventDefault(); zoomTo(view.zoom + ZOOM_STEP) }}
+              className="flex items-center justify-center px-2 py-1.5 rounded bg-gray-100 border border-gray-200 text-gray-700 hover:border-[#dd3333] hover:text-gray-900 transition-all disabled:opacity-40 disabled:hover:border-gray-200">
+              <ZoomIn size={16} strokeWidth={1.75} />
+            </button>
             <span className="w-px h-4 bg-gray-200 mx-1" />
             <button
               title={t('designer.clear_all_title', 'Clear all objects from canvas')}
