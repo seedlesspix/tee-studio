@@ -7,6 +7,7 @@
 //
 // Canvas comes from a factory so the SAME code runs against the browser DOM canvas in production AND
 // node-canvas in tests (the parity guard) — no other behavioral difference.
+import { curveArcGeometry } from './curveGeometry'
 
 export interface CurveParams {
   // Signed DEGREES of arc the text subtends: sign = up/down, magnitude = how far it wraps.
@@ -58,34 +59,22 @@ export function renderCurvedArc(rawText: string, p: CurveParams, makeCanvas: Can
   tmpCtx.font = fontStr
   const chars = rawText.split('')
   const charWidths = chars.map((ch) => tmpCtx.measureText(ch).width)
-  const totalWidth = charWidths.reduce((a, b) => a + b, 0)
-  // Arc length the glyphs (+ their spacing) occupy — sets the radius for the requested angle.
-  const totalEff = totalWidth + spacingPx * chars.length
-
-  // curveAmount IS the subtended angle in degrees now. Clamp to a full circle; guard a tiny floor so a
-  // near-zero value renders nearly straight instead of dividing by zero. radius follows from arc length
-  // ÷ angle, so the text ALWAYS spans exactly `curveAmount` degrees (was: radius chosen, angle emergent).
-  const totalAngle = Math.max((Math.min(360, Math.abs(curveAmount)) * Math.PI) / 180, 1e-3)
-  const radius = totalEff / totalAngle
-  const dy = direction === 'curve-up' ? -radius : radius
 
   const orderedChars = isDown ? [...chars].reverse() : chars
   const orderedWidths = isDown ? [...charWidths].reverse() : charWidths
 
-  // First pass: each glyph's arc angle (centered on the glyph; advance includes its spacing) and its
-  // center point relative to the circle centre. We bbox those points so the canvas fits ANY angle —
-  // a shallow cap OR a full circle — instead of the old fixed 1200 box + partial-arc assumption.
-  const angles: number[] = []
-  let cur = -totalAngle / 2
+  // SHARED arc geometry (curveGeometry.ts) — the cut engine uses the exact same function, so preview
+  // and print can't diverge. Returns the radius + each glyph's center angle for the requested degrees.
+  const { radius, angles } = curveArcGeometry(orderedWidths, spacingPx, curveAmount)
+  const dy = direction === 'curve-up' ? -radius : radius
+
+  // Bbox the glyph-center points so the canvas fits ANY angle — a shallow cap OR a full circle.
   let cMinX = Infinity, cMinY = Infinity, cMaxX = -Infinity, cMaxY = -Infinity
-  orderedChars.forEach((_ch, idx) => {
-    const a = cur + (orderedWidths[idx] / radius) / 2
-    angles.push(a)
+  angles.forEach((a) => {
     const px = -dy * Math.sin(a) // world of (0,dy) after rotate(a): (−dy·sin a, dy·cos a)
     const py = dy * Math.cos(a)
     if (px < cMinX) cMinX = px; if (px > cMaxX) cMaxX = px
     if (py < cMinY) cMinY = py; if (py > cMaxY) cMaxY = py
-    cur += (orderedWidths[idx] + spacingPx) / radius
   })
   const margin = fSize * 1.15 // glyph extent (asc/desc) + a little breathing room
   const W0 = Math.min(4000, Math.max(1, Math.ceil((cMaxX - cMinX) + margin * 2)))

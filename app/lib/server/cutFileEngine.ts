@@ -3,6 +3,7 @@
 // named layer per print color (Denise's "one file per side, colors as layers"). No
 // <text>, no stroke, no transform; coordinates baked absolute in a 300-units/in space.
 import * as opentype from 'opentype.js'
+import { curveArcGeometry } from '../curveGeometry'
 import type { CanvasBox } from './cutFileGeometry'
 
 export type PhysBox = { width_in: number; height_in: number }
@@ -131,10 +132,11 @@ export function outlineText(
 }
 
 export type CurveParams = {
-  curveAmount: number   // _curveAmount (signed; sign = up/down)
+  curveAmount: number   // _curveAmount (signed; sign = up/down; magnitude = subtended degrees)
   fontSizePx: number    // _curveFontSize (canvas-px em)
   bold: boolean
   italic: boolean
+  charSpacing?: number  // _curveCharSpacing (Fabric 1/1000 em; letter spacing) — default 0
 }
 export type ImagePlacement = {
   left: number; top: number      // baked-image CENTER in 680×850 (originX/originY=center)
@@ -158,9 +160,10 @@ function glyphArcAffine(charAngle: number, advPx: number, midPx: number, Px: num
   return [co, si, -si, co, co * tx - si * ty + Px, si * tx + co * ty + Py]
 }
 
-// Curved text -> TRUE vector glyph paths from the stored bake params (_curve*), replaying
-// the designer's arc rasterizer math (radius = max(S*1.5, 800-|A|*7.5); per-char angle;
-// curve-down reverses order). Places the content-bbox center at the baked image's
+// Curved text -> TRUE vector glyph paths from the stored bake params (_curve*), using the SHARED
+// arc geometry (curveGeometry.ts) so the cut matches the on-screen preview EXACTLY — degrees model
+// (curveAmount = subtended degrees) + letter spacing; curve-down reverses order. Places the
+// content-bbox center at the baked image's
 // left/top, applies its scaleX/scaleY + angle, then the same canvas->physical transform
 // as outlineText. Single-line only (curved text is). Returns merged path 'd'; caller
 // supplies fill = _curveFill.
@@ -179,26 +182,25 @@ export function curvedTextToCutPath(
   const scale = S / font.unitsPerEm
 
   const A = curve.curveAmount, up = A > 0
-  const radius = Math.max(S * 1.5, 800 - Math.abs(A) * 7.5)
+  const spacingPx = ((curve.charSpacing ?? 0) / 1000) * S   // Fabric 1/1000 em → px (matches the preview)
   const glyphs = glyphsForLine(font, line)
   const widths = glyphs.map(g => (g.advanceWidth ?? 0) * scale)
-  const totalWidth = widths.reduce((s, w) => s + w, 0)
-  const totalAngle = totalWidth / radius
   const seq = glyphs.map((g, i) => ({ g, w: widths[i] }))
   const ordered = up ? seq : [...seq].reverse()
+  const orderedWidths = ordered.map(s => s.w)
+  // SHARED degrees-model geometry (curveGeometry.ts) — identical to the on-screen preview, incl. spacing.
+  const { radius, angles } = curveArcGeometry(orderedWidths, spacingPx, A)
   const midPx = ((font.ascender + font.descender) / 2) * scale
 
-  let angle = -totalAngle / 2
   const arcCmds: Cmd[][] = []
-  for (const { g, w } of ordered) {
-    const ca = angle + w / radius / 2
+  ordered.forEach(({ g, w }, i) => {
+    const ca = angles[i]
     const Px = up ? radius * Math.sin(ca) : -radius * Math.sin(ca)
     const Py = up ? -radius * Math.cos(ca) : radius * Math.cos(ca)
     let cmds = (g.getPath(0, 0, S).commands as unknown) as Cmd[]
     if (curve.italic) cmds = transformCmds(cmds, shearItalic(0))
     arcCmds.push(transformCmds(cmds, glyphArcAffine(ca, w, midPx, Px, Py)))
-    angle += w / radius
-  }
+  })
 
   // content-bbox center in arc-space (matches the raster's tight centered crop)
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity

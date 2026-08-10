@@ -109,7 +109,7 @@ export async function outlineVectorObject(
     if (curved) {
       const d = curvedTextToCutPath(
         font, String(t._originalText ?? ''),
-        { curveAmount: Number(t._curveAmount ?? 0), fontSizePx: Number(t._curveFontSize ?? 36), bold: !!t._curveBold, italic: !!t._curveItalic },
+        { curveAmount: Number(t._curveAmount ?? 0), fontSizePx: Number(t._curveFontSize ?? 36), bold: !!t._curveBold, italic: !!t._curveItalic, charSpacing: Number(t._curveCharSpacing ?? 0) },
         { left: Number(t.left), top: Number(t.top), scaleX: Number(t.scaleX ?? 1), scaleY: Number(t.scaleY ?? 1), angle: Number(t.angle ?? 0) },
         canvasBox, phys,
       )
