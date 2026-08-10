@@ -1047,7 +1047,10 @@ export default function DesignerCanvas({
     // Uppercase isn't a stored flag: it's ON iff the displayed text is the
     // original upper-cased AND the original actually had lowercase to fold
     // (an already-all-caps source reads as OFF, harmlessly — re-upper is a no-op).
-    const uppercase = !!orig && orig !== orig.toUpperCase() && flat === orig.toUpperCase()
+    // Flatten newlines on BOTH sides so multi-line text detects correctly (obj.text's wrap
+    // newlines are spaces while orig's are real \n — comparing them directly never matched).
+    const flatOrig = orig.replace(/\n/g, ' ')
+    const uppercase = !!orig && flatOrig !== flatOrig.toUpperCase() && flat === flatOrig.toUpperCase()
     setSelectedFont(obj.fontFamily || selectedFont)
     setFontSize(Math.round(obj.fontSize || fontSize))
     setTextColor(fill)

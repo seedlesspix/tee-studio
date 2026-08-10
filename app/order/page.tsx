@@ -76,8 +76,13 @@ function OrderPage() {
   // isn't one of this product's sizes (pasted, or ported from a different garment) would otherwise
   // vanish from the total and silently $0-out the order (disabling checkout with no explanation). We
   // surface any such mismatch instead so the customer can fix it in the designer, not hit a dead end.
+  // Compare against the product's TRUE available sizes (what the cart-add route validates), NOT the
+  // orderedSizes state — which falls back to the roster's OWN sizes when available_sizes is empty and
+  // would then never flag a mismatch, letting the customer click into the route's raw 422. An order
+  // with no available sizes therefore blocks here with the actionable message, keeping page ⇄ route in step.
+  const availSizes = (design?.available_sizes ?? []) as string[]
   const badRosterSizes = nnActive
-    ? [...new Set(rosterEntries.filter(e => !e.size || !orderedSizes.includes(e.size)).map(e => e.size || '(blank)'))]
+    ? [...new Set(rosterEntries.filter(e => !e.size || !availSizes.includes(e.size)).map(e => e.size || '(blank)'))]
     : []
   const totalQty = nnActive ? rosterShirtCount(rosterEntries) : Object.values(quantities).reduce((a, b) => a + b, 0)
   const pricePerItem = design ? ((design.unit_price ?? 0) + (design.print_charge ?? 0)) : 0
