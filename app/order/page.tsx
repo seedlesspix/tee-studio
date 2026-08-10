@@ -18,6 +18,9 @@ function OrderPage() {
   const t = useT()
   const searchParams = useSearchParams()
   const designId = searchParams.get('design_id')
+  // Edit-from-cart (item 28): the design_order id whose existing cart line(s) this add should REPLACE
+  // (the edit minted a new design row, so this is the ORIGINAL). Threaded through from the designer.
+  const replaceCart = searchParams.get('replace_cart') || ''
   const [design, setDesign] = useState<DesignOrder | null>(null)
   const [quantities, setQuantities] = useState<Record<string, number>>({})
   // Sizes in Shopify variant order (from the design's available_sizes) — the
@@ -125,7 +128,7 @@ function OrderPage() {
     const res = await fetch(`/api/design-orders/${design.id}/add-to-cart`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ quantities, notes: notes.trim() || null }),
+      body: JSON.stringify({ quantities, notes: notes.trim() || null, ...(replaceCart ? { replaceDesignOrderId: replaceCart } : {}) }),
     }).catch(() => null)
 
     if (!res || !res.ok) {
@@ -135,7 +138,10 @@ function OrderPage() {
       return
     }
 
-    const { cartUrl } = (await res.json()) as { cartUrl: string }
+    const { cartUrl, warning } = (await res.json()) as { cartUrl: string; warning?: string }
+    // Rare: the edited design was added but the old cart line couldn't be removed — tell them so they
+    // can remove it, rather than silently sending them to a cart with a duplicate.
+    if (warning) alert(warning)
     window.location.href = cartUrl
   }
 

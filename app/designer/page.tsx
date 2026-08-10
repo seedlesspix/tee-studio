@@ -20,6 +20,9 @@ function DesignerContent() {
   const refit = searchParams.get('refit') === '1'
   // D2 color reconcile: preferred color carried from the ported design (used when no variant pins one).
   const initialColor = searchParams.get('color') || ''
+  // Edit-from-cart (item 28): the design_order id whose existing cart line(s) this edit should replace
+  // on finish (carried through to the order page's add-to-cart as replaceDesignOrderId).
+  const replaceCart = searchParams.get('replace_cart') || ''
   
   // Safely decode title - handle any encoding issues
   let title = 'Custom Product'
@@ -42,6 +45,7 @@ function DesignerContent() {
         initialQuantity={quantity}
         refit={refit}
         initialColor={initialColor}
+        replaceCart={replaceCart}
       />
     </main>
   )

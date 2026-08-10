@@ -150,6 +150,9 @@ interface Props {
   // lands on the SAME color when the target offers it (exact name match), else the target's first color.
   // Only used when no variant_id pins a color.
   initialColor?: string
+  // Edit-from-cart (item 28): the design_order id whose existing cart line(s) to replace when this edit
+  // finishes. Carried through Next Step → the order page's add-to-cart (as replaceDesignOrderId).
+  replaceCart?: string
 }
 
 const COLOR_HEX_MAP: Record<string, string> = {
@@ -241,7 +244,7 @@ function getImageNaturalSize(url: string): Promise<{ w: number; h: number } | nu
 }
 
 export default function DesignerCanvas({
-  productId, variantId, productTitle, productPrice, designId = '', restoreId = '', initialQuantity = '', refit = false, initialColor = ''
+  productId, variantId, productTitle, productPrice, designId = '', restoreId = '', initialQuantity = '', refit = false, initialColor = '', replaceCart = ''
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const shirtImgRef = useRef<HTMLImageElement>(null)
@@ -4260,7 +4263,11 @@ export default function DesignerCanvas({
         if (totalQty > 0) backUrl.searchParams.set('quantity', String(totalQty))
         window.history.replaceState({}, '', backUrl.pathname + backUrl.search)
       } catch { /* ignore */ }
-      window.location.href = `/order?design_id=${result.orderId}`
+      // Carry the edit-from-cart replace target to the order page (item 28) so its Add to Cart replaces
+      // the old line(s) instead of duplicating.
+      const orderParams = new URLSearchParams({ design_id: result.orderId })
+      if (replaceCart) orderParams.set('replace_cart', replaceCart)
+      window.location.href = `/order?${orderParams.toString()}`
     } else {
       alert(t('designer.save_error', 'Error saving design. Please try again.'))
     }

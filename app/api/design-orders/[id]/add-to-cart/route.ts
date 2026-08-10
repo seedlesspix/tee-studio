@@ -79,7 +79,7 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid id' }, { status: 400 })
   }
 
-  let body: { quantities?: unknown; notes?: unknown }
+  let body: { quantities?: unknown; notes?: unknown; replaceDesignOrderId?: unknown }
   try {
     body = await request.json()
   } catch {
@@ -294,6 +294,42 @@ export async function POST(
       throw new Error(`cart-add failed: ${lastError}`)
     }
 
+    // 3b. EDIT-FROM-CART replace (item 28). If this add is replacing an edited design, remove the OLD
+    // design's cart line(s) now that the edited one is in. Editing minted a NEW design_order row, so the
+    // old lines carry a DIFFERENT _design_order_id — we can NEVER remove the just-added lines. We add
+    // first (so a failed add leaves the old line intact), then remove-and-VERIFY-GONE (the cart change
+    // is idempotent): re-read the cart until no old line remains, so a stray line can't leave a
+    // duplicate / double-charge. Only if it truly can't be removed do we return a soft warning.
+    let replaceWarning: string | null = null
+    const replaceId =
+      typeof body.replaceDesignOrderId === 'string' && UUID_RE.test(body.replaceDesignOrderId) && body.replaceDesignOrderId !== id
+        ? body.replaceDesignOrderId : null
+    if (replaceId) {
+      const oldLineKeys = async (): Promise<string[]> => {
+        const cartRes = await fetch(`${storeOrigin}/cart.js`, { headers: { Accept: 'application/json', cookie: forwardCookies } })
+        if (!cartRes.ok) return []
+        const cart = (await cartRes.json()) as { items?: Array<{ key: string; properties?: Record<string, unknown> | null }> }
+        return (cart.items ?? [])
+          .filter((it) => it.properties && String(it.properties._design_order_id) === replaceId)
+          .map((it) => it.key)
+      }
+      let keys = await oldLineKeys()
+      for (let attempt = 0; attempt < 4 && keys.length; attempt++) {
+        const updates: Record<string, number> = {}
+        for (const k of keys) updates[k] = 0
+        await fetch(`${storeOrigin}/cart/update.js`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json', cookie: forwardCookies },
+          body: JSON.stringify({ updates }),
+        }).catch(() => null)
+        keys = await oldLineKeys() // verify gone before trusting it
+      }
+      if (keys.length) {
+        replaceWarning = 'Your edited design was added, but the previous version could not be removed — please remove the old line in your cart.'
+        console.error('[add-to-cart] replace: old lines remained for', replaceId, keys)
+      }
+    }
+
     // 4. Persist the outcome. Failure here is logged, not fatal — the
     // customer's cart line is real either way.
     const { error: updateError } = await supabase
@@ -313,7 +349,7 @@ export async function POST(
     // 5. Relay Shopify's Set-Cookie (a fresh cart cookie when the customer
     // had none) with the broadcast Domain so every *.tshirtdeli.com page
     // sees the same cart.
-    const response = NextResponse.json({ cartUrl })
+    const response = NextResponse.json({ cartUrl, ...(replaceWarning ? { warning: replaceWarning } : {}) })
     const cookieDomain = getCookieDomain(storeOrigin)
     for (const sc of addRes.headers.getSetCookie()) {
       response.headers.append('set-cookie', ensureCookieDomain(sc, cookieDomain))
