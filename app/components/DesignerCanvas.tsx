@@ -667,6 +667,7 @@ export default function DesignerCanvas({
             uploaded_files: unknown
             roster: unknown
             quantities: unknown
+            print_method: string | null
           } | undefined
           if (!data) return
           try {
@@ -719,6 +720,12 @@ export default function DesignerCanvas({
                 const backJson = JSON.parse(data.canvas_json_back)
                 backObjectsRef.current = backJson.objects?.length ? (await util.enlivenObjects(backJson.objects)) as any[] : []
               }
+              // Preserve the SAVED method through the Edit-design flow: the row's print_method is
+              // authoritative (same product), so an EMBROIDERY design must not reopen in the product's
+              // default (usually Print). Mark userToggled so the async product-load resolution can't
+              // overwrite it back to the default. (Port/refit path intentionally adopts the target
+              // product's default instead.)
+              if (data.print_method) { userToggledMethodRef.current = true; setPrintMethod(data.print_method) }
             }
             if (Array.isArray(data.uploaded_files)) {
               uploadedFilesRef.current = data.uploaded_files as typeof uploadedFilesRef.current
@@ -889,6 +896,9 @@ export default function DesignerCanvas({
   // which only happens on the first flip to Back. This holds the back re-fit scale until then; a flip
   // to Back consumes it (see the lazy back-refit effect). null = nothing pending.
   const backRefitPendingRef = useRef<number | null>(null)
+  // One-shot latch for the N&N auto-open-on-back (below): once we've auto-flipped to Back for the Names
+  // tool this session, never do it again, so a deliberate flip to Front is respected. Reset by Clear All.
+  const autoShownBackForNamesRef = useRef(false)
 
   // Mobile: a REDUCED control set (Instagram/Canva-style) instead of Fabric's 8 tiny
   // handles. THREE controls sitting OUTSIDE the selection box corners so they never
@@ -1180,7 +1190,12 @@ export default function DesignerCanvas({
     const forMethod = areas.filter(a => a.print_method === m)
     const pickSide = (side: string) =>
       forMethod.filter(a => a.side === side).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))[0] || null
-    const toPct = (a: any) => (a ? toPctContain(a, natural.w, natural.h, 680, 850) : null)
+    // Convert px→% against the mockup the box was DRAWN on (mockup_natural_w/h, recorded by the admin
+    // editor) when present — so a box drawn on a back/flat mockup of different dimensions lands exactly
+    // where drawn. Falls back to the first-loaded product image's natural size for legacy rows (null).
+    const toPct = (a: any) => a
+      ? toPctContain(a, a.mockup_natural_w || natural.w, a.mockup_natural_h || natural.h, 680, 850)
+      : null
     const frontArea = pickSide('front')
     const backArea = pickSide('back')
     const pa = { front: toPct(frontArea), back: toPct(backArea) }
@@ -1562,7 +1577,11 @@ export default function DesignerCanvas({
           // for the method AND tags configMethod — so there's no separate inline fetch to keep in sync
           // (removing it also kills the old double-fetch race when template method ≠ metafield method).
           const method = data.printMethod?.value || 'screen_print'
-          setPrintMethod(method)
+          // Guard against clobbering a method the Edit-restore already set (an embroidery design must
+          // keep embroidery). userToggled starts false on a normal open, so this still sets the method
+          // then; it only yields when a restore raced ahead and set userToggled=true. (The template
+          // resolution below is guarded the same way.)
+          if (!userToggledMethodRef.current) setPrintMethod(method)
 
           // Print area: prefer admin-managed product_templates; fall back to the
           // legacy Shopify metafield for products without a template row.
@@ -1571,7 +1590,7 @@ export default function DesignerCanvas({
               const { supabase } = await import('../lib/supabase')
               const { data: tpl } = await supabase
                 .from('product_templates')
-                .select('id, default_print_method, supported_print_methods, supports_names_numbers, product_template_print_areas(*), product_template_colors(*)')
+                .select('id, category, default_print_method, supported_print_methods, supports_names_numbers, product_template_print_areas(*), product_template_colors(*)')
                 .eq('shopify_product_id', data.id)
                 .eq('is_active', true)
                 .maybeSingle()
@@ -2672,14 +2691,10 @@ export default function DesignerCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shirtView, selectedColor, colorImageMap])
 
-  // Auto-show-back on the Names tab was REMOVED (Denise, 2026-08-06). An effect-triggered switchView
-  // raced the async product load (colorImageMap not yet populated), flipping the buttons to Back while
-  // the image stayed on Front — most visibly when porting a back-stack N&N design. The whole surface is
-  // simpler without it: N&N opens on the current side and the customer flips manually (which always
-  // shows the right image, backed by the image↔side sync effect above). Restore/port still land on
-  // Front; the jersey stack is re-fit onto the correct side regardless (eager back-N&N re-stack + the
-  // lazy back-refit on first flip). If a default-to-back-on-fresh-N&N is ever wanted again, drive it
-  // from an explicit user action, not a load-time effect.
+  // N&N auto-open-on-back lives in the tab-CLICK handler (handleSelectTab), NOT a [activeTab] effect —
+  // an effect fires on every entry into the tab (re-yanking a deliberate flip to Front) and also on the
+  // selection-driven activeTab→names that clicking a front placeholder causes. The click-handler + one-
+  // shot ref confines it to a real user "open the Names tool" action, once per session.
 
   // Leaving the Names tab must drop the preview (its controls unmount, but the substituted text
   // would otherwise stay on the canvas). Side-swap and every save path guard synchronously at their
@@ -2724,6 +2739,17 @@ export default function DesignerCanvas({
       canvas.renderAll()
     }
     setActiveTab(tab)
+    // N&N's most likely home is the BACK — on the FIRST explicit open of the Names tool this session,
+    // land on the back side. One-shot (autoShownBackForNamesRef) so a later deliberate flip to Front is
+    // respected and re-opening the tab never yanks back; living in this click handler (not a bare
+    // activeTab effect) means a selection-driven activeTab→names — e.g. clicking a front placeholder —
+    // can't trigger it. Only when the product has a back to design.
+    if (tab === 'names' && !autoShownBackForNamesRef.current
+        && shirtViewRef.current !== 'back'
+        && (printAreaDataRef.current?.back || backObjectsRef.current.length > 0)) {
+      autoShownBackForNamesRef.current = true
+      switchView('back')
+    }
   }
 
   // Print/Embroidery toggle (embroidery mode). Changing the method re-swaps fonts/colors/pricing/print
@@ -2815,6 +2841,7 @@ export default function DesignerCanvas({
     // (silently turning it into an N&N order + a phantom print charge). (broken #2)
     frontObjectsRef.current = []
     backObjectsRef.current = []
+    autoShownBackForNamesRef.current = false // a fresh design may re-auto-open on Back for N&N
     setRoster([])
     setNnFields({ name: false, number: false, title: false })
     clearAutodraft()
@@ -4957,6 +4984,7 @@ export default function DesignerCanvas({
         open={!!portDesign}
         onClose={() => setPortDesign(null)}
         excludeProductId={portDesign?.productId ?? null}
+        preferCategory={loadedTemplateRef.current?.category ?? null}
         subtitle={portDesign ? `Re-fit "${portDesign.name || portDesign.productTitle || 'your design'}" onto:` : undefined}
         onPick={(target) => { if (portDesign) openSavedOnProduct(portDesign, target) }}
       />
@@ -4967,6 +4995,7 @@ export default function DesignerCanvas({
         open={switchOpen}
         onClose={() => setSwitchOpen(false)}
         excludeProductId={product?.id ?? null}
+        preferCategory={loadedTemplateRef.current?.category ?? null}
         subtitle={t('designer.switch_subtitle', 'Switch this design to another garment — it re-fits onto:')}
         onPick={(target) => { void switchToProduct(target) }}
       />
