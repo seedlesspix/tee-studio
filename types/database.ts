@@ -631,6 +631,50 @@ export type Database = {
           },
         ]
       }
+      product_template_mockups: {
+        Row: {
+          color_name: string
+          created_at: string
+          id: string
+          image_url: string
+          natural_h: number | null
+          natural_w: number | null
+          sort_order: number
+          template_id: string
+          zone: string
+        }
+        Insert: {
+          color_name: string
+          created_at?: string
+          id?: string
+          image_url: string
+          natural_h?: number | null
+          natural_w?: number | null
+          sort_order?: number
+          template_id: string
+          zone: string
+        }
+        Update: {
+          color_name?: string
+          created_at?: string
+          id?: string
+          image_url?: string
+          natural_h?: number | null
+          natural_w?: number | null
+          sort_order?: number
+          template_id?: string
+          zone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_template_mockups_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "product_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_template_print_areas: {
         Row: {
           height_in: number
@@ -710,6 +754,7 @@ export type Database = {
           name: string
           shopify_product_id: string
           sort_order: number
+          style_number: string | null
           supported_print_methods: string[]
           supports_names_numbers: boolean
           updated_at: string
@@ -725,6 +770,7 @@ export type Database = {
           name: string
           shopify_product_id: string
           sort_order?: number
+          style_number?: string | null
           supported_print_methods: string[]
           supports_names_numbers?: boolean
           updated_at?: string
@@ -740,6 +786,7 @@ export type Database = {
           name?: string
           shopify_product_id?: string
           sort_order?: number
+          style_number?: string | null
           supported_print_methods?: string[]
           supports_names_numbers?: boolean
           updated_at?: string

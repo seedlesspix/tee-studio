@@ -17,6 +17,7 @@ const TEMPLATE_CATEGORIES = ['Unisex', "Women's", "Kid's", "Baby's", 'Accessorie
 type Draft = {
   name: string
   shopify_product_id: string
+  style_number: string
   category: string
   supported_print_methods: string[]
   default_print_method: string
@@ -30,6 +31,7 @@ type Draft = {
 const EMPTY_DRAFT: Draft = {
   name: '',
   shopify_product_id: '',
+  style_number: '',
   category: '',
   supported_print_methods: [],
   default_print_method: '',
@@ -119,6 +121,7 @@ export default function TemplatesAdmin() {
     setDraft({
       name: t.name,
       shopify_product_id: t.shopify_product_id,
+      style_number: t.style_number ?? '',
       category: t.category ?? '',
       supported_print_methods: [...t.supported_print_methods],
       default_print_method: t.default_print_method,
@@ -208,6 +211,7 @@ export default function TemplatesAdmin() {
       // lookup (keyed off the GID) always matches, regardless of what form the
       // admin pasted (GID, bare numeric, product URL, or a "Products" typo).
       shopify_product_id: normalizeShopifyProductId(draft.shopify_product_id)!,
+      style_number: draft.style_number.trim() || null,
       category: draft.category.trim() || null,
       supported_print_methods: draft.supported_print_methods,
       default_print_method: draft.default_print_method,
@@ -407,6 +411,16 @@ export default function TemplatesAdmin() {
                   <option value="">— none —</option>
                   {TEMPLATE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
+              </div>
+
+              <div className="mt-4">
+                <label className="text-[10px] text-gray-600 font-mono uppercase">
+                  Style number <span className="text-gray-400 normal-case">(matches the mockup filename token — e.g. 2001 in 2001_White_LeftSleeve.png)</span>
+                </label>
+                <input value={draft.style_number}
+                  onChange={e => setDraft(p => ({ ...p, style_number: e.target.value }))}
+                  placeholder="2001"
+                  className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm text-black outline-none focus:border-[#dd3333] font-mono mt-1 placeholder-gray-400" />
               </div>
 
               <div className="mt-4">
