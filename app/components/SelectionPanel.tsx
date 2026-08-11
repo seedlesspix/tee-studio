@@ -245,15 +245,15 @@ export default function SelectionPanel({
                 <div>
                   <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">{t('designer.text.format_label', 'Format')}</label>
                   <div className="grid grid-cols-3 gap-2 mt-1">
-                    {/* Text glyphs in ONE font family (not mixed Lucide icons) so B / I / AA read as a unified
-                        set: heavy B, italic I, literal "AA" for all-caps (Denise 2026-08-xx). */}
+                    {/* Text glyphs (not mixed Lucide icons): heavy "B", a SERIF italic "I" (the serifs are
+                        what make it read as a letter, not a bare slash — Denise), literal "AA" for all-caps. */}
                     <button onClick={() => setIsBold(b => !b)} title={t('designer.text.bold_tooltip', 'Bold')}
                       className={`flex items-center justify-center py-2 rounded border transition-all ${isBold ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'}`}>
                       <span className="text-[17px] font-black leading-none">B</span>
                     </button>
                     <button onClick={() => setIsItalic(i => !i)} title={t('designer.text.italic_tooltip', 'Italic')}
                       className={`flex items-center justify-center py-2 rounded border transition-all ${isItalic ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'}`}>
-                      <span className="text-[17px] font-bold italic leading-none">I</span>
+                      <span className="text-[18px] font-serif font-bold italic leading-none">I</span>
                     </button>
                     <button onClick={() => setIsUppercase(u => !u)} disabled={selectedIsCurved} title={t('designer.text.uppercase_tooltip', 'UPPERCASE')}
                       className={`flex items-center justify-center py-2 rounded border transition-all disabled:opacity-40 disabled:cursor-default ${isUppercase ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'}`}>

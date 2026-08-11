@@ -266,7 +266,7 @@ export default function MobileTextBand({
               >{t('designer.text.bold', 'B')}</button>
               <button
                 onClick={() => setIsItalic((i: boolean) => !i)}
-                className={`flex-1 rounded py-1.5 text-xs italic transition-all ${isItalic ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 border border-gray-200'}`}
+                className={`flex-1 rounded py-1.5 text-sm font-serif font-bold italic transition-all ${isItalic ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 border border-gray-200'}`}
               >{t('designer.text.italic', 'I')}</button>
               <button
                 onClick={() => setIsUppercase((u: boolean) => !u)}
