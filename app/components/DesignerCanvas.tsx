@@ -10,7 +10,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import CanvasStage from './CanvasStage'
 import { getProduct } from '../lib/shopify'
-import { buildColorImageMap, getColorImages, normalizeShopifyProductId } from '../lib/productImages'
+import { buildColorImageMap, getColorImages } from '../lib/productImages'
 import { AUTODRAFT_KEY, buildEnvelope, parseEnvelope, shouldRestore } from '../lib/autodraft'
 import { placedInches, lowResTier } from '../lib/lowRes'
 import { maxScaleForRotation } from '../lib/rotationFit'
@@ -666,13 +666,17 @@ export default function DesignerCanvas({
       const isReloadNav = nav?.type === 'reload'
       let env = null
       try { env = parseEnvelope(sessionStorage.getItem(AUTODRAFT_KEY)) } catch { /* storage disabled */ }
-      const targetGid = normalizeShopifyProductId(productId) ?? undefined
-      if (isReloadNav && targetGid && shouldRestore(env, { isReload: true, currentProductId: targetGid })) return
+      // On a RELOAD with a valid auto-draft, DEFER to the auto-draft restore effect (it holds the post-port
+      // edits) — do NOT re-port, or BOTH run and their objects DUPLICATE on the canvas (one nudged copy from
+      // the restore, one original copy from the re-port). NO product-match here: matching by GID was
+      // unreliable (product.id vs the URL param GID-normalized didn't always agree — the failed match let
+      // the re-port run alongside the restore = the duplicate). Instead this is the EXACT condition the
+      // auto-draft effect restores on (isPortReload), so the two can never disagree, and the fresh-nav clear
+      // below guarantees the only snapshot present on a reload is THIS port's own.
+      if (isReloadNav && env) return
       // FRESH port nav ONLY (never a reload): drop any leftover same-tab auto-draft NOW, so a reload landing
-      // inside the port's async window can't restore a stale earlier same-product snapshot instead of this
-      // port. The port re-establishes its own snapshot once it applies (markDirty in the finally). A RELOAD
-      // never clears — a genuine port-reload's snapshot holds the nudge, and even a narrow match miss above
-      // must not destroy it.
+      // inside the port's async window can't restore a stale earlier snapshot instead of this port. The port
+      // re-establishes its own snapshot once it applies (markDirty in the finally). A reload never clears.
       if (!isReloadNav) clearAutodraft()
     }
     let attempts = 0
@@ -1552,21 +1556,24 @@ export default function DesignerCanvas({
     const isReload = nav?.type === 'reload'
     let env = null
     try { env = parseEnvelope(sessionStorage.getItem(AUTODRAFT_KEY)) } catch { /* storage disabled */ }
-    const canRestore = shouldRestore(env, { isReload, currentProductId: product.id || productId })
-    // design_id restore (Edit / port) is authoritative on a FRESH load; but on a RELOAD of an in-progress
-    // PORT with a valid same-product auto-draft, that snapshot holds the customer's post-port edits
-    // (arrow-nudge / drag) and MUST win — otherwise the port effect re-ports from scratch and loses them
-    // (P3). The design_id effect defers in the same case, so only this restore runs.
-    if (designId && !(refit && isReload && canRestore)) return
+    // A port-RELOAD: the design_id effect defers to us on EXACTLY `refit && isReload && a valid envelope`
+    // (no product-match — the fresh port nav cleared any stale same-tab snapshot, so on a reload the only
+    // snapshot is this port's own). Use the SAME condition here so the two effects never disagree — the
+    // asymmetry (defer here but restore product-matched there) is what produced the re-port + restore
+    // DUPLICATE / could otherwise strand a blank canvas.
+    const isPortReload = !!designId && refit && isReload && !!env
+    // For a plain fresh-design reload (no design_id) keep the product-matched anti-hijack gate.
+    const canRestoreFresh = shouldRestore(env, { isReload, currentProductId: product.id || productId })
+    if (designId && !isPortReload) return // design_id restore (Edit / fresh port) is authoritative otherwise
     autodraftRestoredRef.current = true
-    if (!canRestore) {
+    if (!isPortReload && !canRestoreFresh) {
       // Fresh (non-reload) navigation into a blank designer: drop any leftover same-product snapshot
       // so a later accidental reload can't resurrect an abandoned design onto THIS new session. As
       // the customer designs, the writer re-persists this session's own work.
       if (!isReload) clearAutodraft()
       return
     }
-    if (designId) autodraftWonRef.current = true // port-reload: tell the design_id poll to stand down
+    if (designId) autodraftWonRef.current = true // port-reload: tell the design_id poll to stand down (backup)
     applyDesignState((env as { state: unknown }).state)
   }, [fabricCanvas, product, restoreId, designId, productId, refit, applyDesignState, clearAutodraft])
 
