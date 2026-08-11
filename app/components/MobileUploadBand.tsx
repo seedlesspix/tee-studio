@@ -13,6 +13,8 @@ const ACCEPT = 'image/png,image/jpeg,image/svg+xml,image/webp,application/pdf,.p
 export default function MobileUploadBand({
   handleImageUpload,
   uploadGuidance,
+  uploadRightsOk,
+  setUploadRightsOk,
   libraryUploads,
   libraryLoading,
   pickLibraryUpload,
@@ -38,6 +40,8 @@ export default function MobileUploadBand({
 }: {
   handleImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
   uploadGuidance: string
+  uploadRightsOk: boolean // BETA #32(a)
+  setUploadRightsOk: React.Dispatch<React.SetStateAction<boolean>>
   libraryUploads: UploadItem[]
   libraryLoading: boolean
   pickLibraryUpload: (item: UploadItem) => void
@@ -115,10 +119,16 @@ export default function MobileUploadBand({
   // Nothing selected → upload + library.
   return (
     <div className="flex h-full flex-col gap-2">
+      {/* BETA #32(a) — rights confirmation, pre-checked. Unchecking disables the uploader. */}
+      <label className="flex shrink-0 items-start gap-2 cursor-pointer">
+        <input type="checkbox" checked={uploadRightsOk} onChange={e => setUploadRightsOk(e.target.checked)}
+          className="mt-0.5 h-4 w-4 shrink-0 accent-[#dd3333] cursor-pointer" />
+        <span className="text-[11px] leading-snug text-gray-500">{t('designer.upload.rights_confirm', "I own this artwork or have permission to use it. Uploading images that belong to someone else — photos, logos, or trademarked designs — is against the law, and it's on me, not T-Shirt Deli.")}</span>
+      </label>
       <div className="flex shrink-0 items-center gap-2">
-        <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-700 transition-colors hover:border-[#dd3333] hover:text-[#dd3333]">
+        <label className={`flex shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-700 transition-colors ${uploadRightsOk ? 'cursor-pointer hover:border-[#dd3333] hover:text-[#dd3333]' : 'opacity-50 cursor-not-allowed'}`}>
           <span className="text-lg leading-none">⬆</span> {t('designer.upload.upload_image', 'Upload image')}
-          <input type="file" accept={ACCEPT} onChange={handleImageUpload} className="hidden" />
+          <input type="file" accept={ACCEPT} onChange={handleImageUpload} disabled={!uploadRightsOk} className="hidden" />
         </label>
         <span className="truncate text-[11px] text-gray-400">{t('designer.upload.formats', 'JPG · PNG · SVG · AI · PSD · PDF')}</span>
       </div>

@@ -72,6 +72,8 @@ type SelectionPanelProps = {
     handleImageUpload: ChangeEventHandler<HTMLInputElement>
     handleImageDrop: DragEventHandler
     uploadGuidance: string
+    uploadRightsOk: boolean // BETA #32(a) — pre-checked rights confirmation; unchecking disables uploading
+    setUploadRightsOk: Dispatch<SetStateAction<boolean>>
     libraryUploads: UploadItem[]
     libraryLoading: boolean
     pickLibraryUpload: (item: UploadItem) => void
@@ -119,7 +121,7 @@ export default function SelectionPanel({
     textAlign, handleTextAlign, isBold, setIsBold, isItalic, setIsItalic,
     isUppercase, setIsUppercase,
   } = text
-  const { handleImageUpload, handleImageDrop, uploadGuidance, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload,
+  const { handleImageUpload, handleImageDrop, uploadGuidance, uploadRightsOk, setUploadRightsOk, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload,
     removeWhite, removeBackground, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy,
     colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop, lowResWarning } = upload
   const { printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor } = clipart
@@ -338,16 +340,22 @@ export default function SelectionPanel({
             {activeTab === 'upload' && (
               <div>
                 <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">{t('designer.upload.artwork_label', 'Upload Artwork')}</label>
+                {/* BETA #32(a) — rights confirmation, pre-checked. Unchecking disables the uploader. */}
+                <label className="mt-2 flex items-start gap-2 cursor-pointer">
+                  <input type="checkbox" checked={uploadRightsOk} onChange={e => setUploadRightsOk(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-[#dd3333] cursor-pointer" />
+                  <span className="text-[11px] leading-snug text-gray-600">{t('designer.upload.rights_confirm', "I own this artwork or have permission to use it. Uploading images that belong to someone else — photos, logos, or trademarked designs — is against the law, and it's on me, not T-Shirt Deli.")}</span>
+                </label>
                 <label
                   onDragOver={e => e.preventDefault()}
-                  onDrop={handleImageDrop}
-                  className="mt-2 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-xl p-8 cursor-pointer hover:border-[#dd3333] hover:bg-[#dd3333]/5 transition-all">
+                  onDrop={uploadRightsOk ? handleImageDrop : (e => e.preventDefault())}
+                  className={`mt-2 flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-8 transition-all ${uploadRightsOk ? 'border-gray-200 cursor-pointer hover:border-[#dd3333] hover:bg-[#dd3333]/5' : 'border-gray-200 opacity-50 cursor-not-allowed'}`}>
                   <Upload size={28} className="mb-3 text-gray-500" strokeWidth={1.75} />
                   <span className="text-sm text-gray-800 text-center">
                     {t('designer.upload.drop_here', 'Drop image here')}<br />
                     <span className="text-xs opacity-60">{t('designer.upload.formats', 'JPG · PNG · SVG · AI · PSD · PDF')}</span>
                   </span>
-                  <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,application/pdf,.pdf,.svg,.png,.jpg,.jpeg,.webp,.ai,.psd" onChange={handleImageUpload} className="hidden" />
+                  <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,application/pdf,.pdf,.svg,.png,.jpg,.jpeg,.webp,.ai,.psd" onChange={handleImageUpload} disabled={!uploadRightsOk} className="hidden" />
                 </label>
                 <p className="mt-1.5 text-[11px] text-gray-500 leading-snug">{uploadGuidance}</p>
                 {/* A selected upload — image-editing tools (Phase 5) + Delete, ABOVE the uploads

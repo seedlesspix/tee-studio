@@ -64,6 +64,7 @@ function OrderPage() {
   const [error, setError] = useState('')
   const [notes, setNotes] = useState('')
   const [desiredBy, setDesiredBy] = useState('') // BETA #30 — optional ISO date (YYYY-MM-DD)
+  const [acknowledged, setAcknowledged] = useState(false) // BETA #32 — must be actively checked to add to cart
   // This garment's per-product volume ladder (product_templates.volume_tiers, public read) — drives
   // the incentive display only; the real % comes off at checkout via the Shopify discount Function.
   const [volumeTiers, setVolumeTiers] = useState<VolumeTier[]>([])
@@ -165,7 +166,7 @@ function OrderPage() {
     const res = await fetch(`/api/design-orders/${design.id}/add-to-cart`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ quantities, notes: notes.trim() || null, desired_by: desiredBy || null, ...(replaceCart ? { replaceDesignOrderId: replaceCart } : {}), ...(force === true ? { force: true } : {}) }),
+      body: JSON.stringify({ quantities, notes: notes.trim() || null, desired_by: desiredBy || null, acknowledged: true, ...(replaceCart ? { replaceDesignOrderId: replaceCart } : {}), ...(force === true ? { force: true } : {}) }),
     }).catch(() => null)
 
     if (!res || !res.ok) {
@@ -526,9 +527,19 @@ function OrderPage() {
           {/* Error */}
           {error && <p className="text-red-400 text-sm font-mono text-center">{error}</p>}
 
+          {/* BETA #32 — pre-cart design acknowledgment. Must be ACTIVELY checked (never pre-ticked); Add to
+              Cart stays disabled until it is, and the checked state is saved onto the order as dated proof. */}
+          <label className="flex items-start gap-3 rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 cursor-pointer">
+            <input type="checkbox" checked={acknowledged} onChange={e => setAcknowledged(e.target.checked)}
+              className="mt-0.5 h-5 w-5 shrink-0 accent-[#dd3333] cursor-pointer" />
+            <span className="text-xs leading-relaxed text-gray-700">
+              {t('order.ack_label', "I've double-checked my design — spelling, image quality, and placement. What I see on screen is exactly what T-Shirt Deli will be cooking up, and they can't fix errors in my artwork or text after I order. For the sharpest print, I'm using high-resolution images.")}
+            </span>
+          </label>
+
           {/* Add to Cart — lands in the customer's real storefront cart,
               alongside other designs and off-the-shelf products */}
-          <button onClick={() => handleAddToCart()} disabled={adding || totalQty === 0 || (nnActive && badRosterSizes.length > 0)}
+          <button onClick={() => handleAddToCart()} disabled={adding || totalQty === 0 || !acknowledged || (nnActive && badRosterSizes.length > 0)}
             className="w-full py-4 rounded-xl bg-[#dd3333] text-white font-black text-lg tracking-wide hover:bg-red-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
             {adding
               ? <span className="inline-flex items-center justify-center gap-2"><Spinner size={16} />{t('order.adding_to_cart', 'Adding to Cart...')}</span>

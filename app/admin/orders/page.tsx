@@ -542,6 +542,9 @@ export default function OrdersAdmin() {
                         {row.desired_by && (
                           <div className="flex justify-between font-bold text-amber-800"><span>⏰ {t('admin.desired_by_label', 'Desired by')}</span><span>{new Date(row.desired_by + 'T00:00:00').toLocaleDateString()}</span></div>
                         )}
+                        {row.design_acknowledged_at && (
+                          <div className="flex justify-between text-emerald-700"><span>✓ {t('admin.acknowledged_label', 'Design acknowledged')}</span><span>{new Date(row.design_acknowledged_at).toLocaleString()}</span></div>
+                        )}
                         <div className="border-t border-gray-200 pt-2 flex justify-between"><span className="text-gray-600">Blank + Print</span><span>${row.unit_price} + ${row.print_charge}</span></div>
                         <div className="flex justify-between font-bold"><span className="text-black">Total ({row.total_qty} items)</span><span className="text-[#dd3333]">${row.total_price}</span></div>
                       </div>

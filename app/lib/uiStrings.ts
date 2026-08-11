@@ -24,6 +24,7 @@ export const UI_STRINGS = {
   'order.blank_line': { default: 'Blank product', group: 'Order page', desc: 'Label for the blank-garment line in the order summary (sometimes a hat, not a shirt — BETA #16).' },
   // Desired-by date (BETA #30) — optional; turnaround copy is method-aware.
   'order.desired_by_label': { default: 'Desired by', group: 'Order page', desc: 'Label for the optional "desired by" date picker on the order page (BETA #30).' },
+  'order.ack_label': { default: "I've double-checked my design — spelling, image quality, and placement. What I see on screen is exactly what T-Shirt Deli will be cooking up, and they can't fix errors in my artwork or text after I order. For the sharpest print, I'm using high-resolution images.", group: 'Order page', desc: 'BETA #32(b): pre-cart design acknowledgment. Must be actively checked (not pre-ticked) — Add to Cart is blocked until then, and the checked state is saved onto the order as proof.' },
   'order.desired_by_help_print': { default: 'Typical turnaround: print 24–72 hours.', group: 'Order page', desc: 'Turnaround expectation shown beside the Desired-by date for PRINT orders (BETA #30).' },
   'order.desired_by_help_embroidery': { default: 'Typical turnaround: embroidery about a week.', group: 'Order page', desc: 'Turnaround expectation shown beside the Desired-by date for EMBROIDERY orders (BETA #30).' },
   'order.desired_by_nudge': { default: "That's sooner than our usual turnaround — we'll do our best, but please call us to confirm.", group: 'Order page', desc: 'Soft nudge (never blocks) shown when the chosen desired-by date is sooner than turnaround (BETA #30).' },
@@ -35,6 +36,7 @@ export const UI_STRINGS = {
   'admin.design_number': { default: 'Design #', group: 'Admin — Art', desc: 'Label for an art item’s design number in the Art admin (was "Decal #" — BETA #22).' },
   'admin.designs_used': { default: 'Designs Used', group: 'Admin — Orders', desc: 'Heading over the list of design numbers used on an order (was "Decals Used").' },
   'admin.desired_by_label': { default: 'Desired by', group: 'Admin — Orders', desc: 'Label for the customer-requested "desired by" date shown on an order in admin (BETA #30).' },
+  'admin.acknowledged_label': { default: 'Design acknowledged', group: 'Admin — Orders', desc: 'Label shown with the timestamp of when the customer ticked the pre-cart design acknowledgment (BETA #32).' },
   'admin.design_notes_heading': { default: 'Design Notes', group: 'Admin — Orders', desc: 'Heading over the customer design-notes on an order in admin.' },
 
   // ── Designer (customer) — a starter set of the most-visible labels/notes ─────
@@ -208,6 +210,7 @@ export const UI_STRINGS = {
 
   // ── Designer — Upload ──
   'designer.upload.artwork_label': { default: "Upload Artwork", group: "Designer — Upload", desc: "Label above the file-upload dropzone." },
+  'designer.upload.rights_confirm': { default: "I own this artwork or have permission to use it. Uploading images that belong to someone else — photos, logos, or trademarked designs — is against the law, and it's on me, not T-Shirt Deli.", group: "Designer — Upload", desc: "BETA #32(a): pre-checked upload-rights confirmation next to the uploader. Unchecking it disables uploading." },
   'designer.upload.drop_here': { default: "Drop image here", group: "Designer — Upload", desc: "Primary prompt inside the upload dropzone." },
   'designer.upload.formats': { default: "JPG · PNG · SVG · AI · PSD · PDF", group: "Designer — Upload", desc: "List of accepted upload file formats shown under the dropzone prompt." },
   'designer.upload.edit_image_label': { default: "Edit Image", group: "Designer — Upload", desc: "Label above the image-editing tools shown for a selected uploaded image." },

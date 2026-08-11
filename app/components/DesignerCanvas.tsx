@@ -331,6 +331,11 @@ export default function DesignerCanvas({
   const [lineHeight, setLineHeight] = useState(1.16) // Fabric IText default; the Line Spacing slider drives this (multi-line text)
   const [isBold, setIsBold] = useState(false)
   const [isItalic, setIsItalic] = useState(false)
+  // BETA #32(a) — upload-rights confirmation, defaulted CHECKED. Unchecking blocks uploads (enforced in
+  // handleImageUpload via the ref, which also covers drag-drop). Ref mirrors state for the stable handler.
+  const [uploadRightsOk, setUploadRightsOk] = useState(true)
+  const uploadRightsOkRef = useRef(true)
+  useEffect(() => { uploadRightsOkRef.current = uploadRightsOk }, [uploadRightsOk])
   const [isUppercase, setIsUppercase] = useState(false)
   const [textShadow, setTextShadow] = useState(false)
   const [textOutline, setTextOutline] = useState(false)
@@ -658,6 +663,16 @@ export default function DesignerCanvas({
       const targetReady = !refit || !!printAreaDataRef.current
       if (!canvas || !targetReady) { if (attempts > 40) clearInterval(poll); return }
       clearInterval(poll)
+      // P3 — on a RELOAD of an in-progress PORT, the sessionStorage auto-draft holds the customer's
+      // post-port edits (arrow-nudge / drag). Defer to the auto-draft restore effect instead of re-porting
+      // from scratch, which would discard them. Only for refit (ports); product is loaded here
+      // (targetReady). A FIRST port load (not a reload) still re-ports normally.
+      if (refit && typeof window !== 'undefined') {
+        const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+        let env = null
+        try { env = parseEnvelope(sessionStorage.getItem(AUTODRAFT_KEY)) } catch { /* storage disabled */ }
+        if (nav?.type === 'reload' && shouldRestore(env, { isReload: true, currentProductId: product?.id || productId })) return
+      }
       fetch(`/api/design-orders/${designId}`)
         .then((r) => (r.ok ? r.json() : null))
         .then(async (payload) => {
@@ -1514,14 +1529,20 @@ export default function DesignerCanvas({
   const autodraftRestoredRef = useRef(false)
   useEffect(() => {
     if (autodraftRestoredRef.current || !fabricCanvas || !product) return
-    if (restoreId || designId) return
-    autodraftRestoredRef.current = true
+    if (restoreId) return // login-snapshot restore path owns this
     if (typeof window === 'undefined') return
     const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
     const isReload = nav?.type === 'reload'
     let env = null
     try { env = parseEnvelope(sessionStorage.getItem(AUTODRAFT_KEY)) } catch { /* storage disabled */ }
-    if (!shouldRestore(env, { isReload, currentProductId: product.id || productId })) {
+    const canRestore = shouldRestore(env, { isReload, currentProductId: product.id || productId })
+    // design_id restore (Edit / port) is authoritative on a FRESH load; but on a RELOAD of an in-progress
+    // PORT with a valid same-product auto-draft, that snapshot holds the customer's post-port edits
+    // (arrow-nudge / drag) and MUST win — otherwise the port effect re-ports from scratch and loses them
+    // (P3). The design_id effect defers in the same case, so only this restore runs.
+    if (designId && !(refit && isReload && canRestore)) return
+    autodraftRestoredRef.current = true
+    if (!canRestore) {
       // Fresh (non-reload) navigation into a blank designer: drop any leftover same-product snapshot
       // so a later accidental reload can't resurrect an abandoned design onto THIS new session. As
       // the customer designs, the writer re-persists this session's own work.
@@ -1529,7 +1550,7 @@ export default function DesignerCanvas({
       return
     }
     applyDesignState((env as { state: unknown }).state)
-  }, [fabricCanvas, product, restoreId, designId, productId, applyDesignState, clearAutodraft])
+  }, [fabricCanvas, product, restoreId, designId, productId, refit, applyDesignState, clearAutodraft])
 
   // Flush the pending debounced snapshot before the page unloads/hides, so the last <=1s of work
   // (including the FIRST edit of a fresh design, which has no prior snapshot to fall back to) survives
@@ -3196,6 +3217,7 @@ export default function DesignerCanvas({
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !fabricCanvas) return
+    if (!uploadRightsOkRef.current) return // BETA #32(a) — rights not affirmed; block the upload (covers drop too)
 
     // Reject oversize BEFORE any upload attempt. Cloudinary rejects files over the plan
     // cap (MAX_UPLOAD_MB); that failure used to be silent (esp. PDFs — preview kept,
@@ -4632,7 +4654,7 @@ export default function DesignerCanvas({
       dbColors={dbColors}
       deleteSelected={deleteSelected}
       text={textProps}
-      upload={{ handleImageUpload, handleImageDrop, uploadGuidance: uploadGuidanceText, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload, removeWhite: removeWhiteFromSelected, removeBackground: removeBackgroundFromSelected, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy, colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop: cleanupCrop, lowResWarning }}
+      upload={{ handleImageUpload, handleImageDrop, uploadGuidance: uploadGuidanceText, uploadRightsOk, setUploadRightsOk, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload, removeWhite: removeWhiteFromSelected, removeBackground: removeBackgroundFromSelected, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy, colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop: cleanupCrop, lowResWarning }}
       clipart={{ printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor }}
     />
   )
@@ -4720,6 +4742,8 @@ export default function DesignerCanvas({
       <MobileUploadBand
         handleImageUpload={handleImageUpload}
         uploadGuidance={uploadGuidanceText}
+        uploadRightsOk={uploadRightsOk}
+        setUploadRightsOk={setUploadRightsOk}
         libraryUploads={libraryUploads}
         libraryLoading={libraryLoading}
         pickLibraryUpload={pickLibraryUpload}

@@ -68,7 +68,7 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid id' }, { status: 400 })
   }
 
-  let body: { quantities?: unknown; notes?: unknown; desired_by?: unknown; replaceDesignOrderId?: unknown; force?: unknown }
+  let body: { quantities?: unknown; notes?: unknown; desired_by?: unknown; replaceDesignOrderId?: unknown; force?: unknown; acknowledged?: unknown }
   try {
     body = await request.json()
   } catch {
@@ -89,6 +89,9 @@ export async function POST(
 
   // Explicit "add another copy" from the order page's confirm — bypasses the already-in-cart guard below.
   const forceAdd = body.force === true
+  // BETA #32 — the customer actively checked the pre-cart design acknowledgment. Persist WHEN they did as
+  // dated proof (the order page blocks Add to Cart until it's ticked, so this is true on every real add).
+  const acknowledgedAt = body.acknowledged === true ? new Date().toISOString() : null
   // Edit-from-cart (item 28): the ORIGINAL design row whose cart line(s) this add replaces (dormant until
   // the theme link ships). Hoisted here so the idempotency guard can exempt the intentional-re-add flow.
   const replaceId =
@@ -332,6 +335,7 @@ export async function POST(
         total_price: Number((effTotalQty * price).toFixed(2)),
         notes: typeof body.notes === 'string' ? body.notes.trim() || null : (body.notes ?? design.notes),
         desired_by: desiredBy,
+        ...(acknowledgedAt ? { design_acknowledged_at: acknowledgedAt } : {}),
         status: 'cart_created',
         shopify_cart_url: cartUrl,
       })
