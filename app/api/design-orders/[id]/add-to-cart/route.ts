@@ -126,9 +126,12 @@ export async function POST(
   // reaches create.tshirtdeli.com, so we can't read the live cart to dedupe. Use our OWN persisted status
   // instead: a design already handed off (status='cart_created') must NOT silently mint a SECOND
   // chargeable product/line on a repeat click or a browser-Back re-add — that is a real double-charge.
-  // Route them to the cart to adjust quantity natively. Exempt: an edit-from-cart replace (intentionally
-  // re-adds), or an explicit "add another copy" (force) that the order page confirms with the customer.
-  if (!replaceId && !forceAdd && design.status === 'cart_created') {
+  // Route them to the cart to adjust quantity natively; the explicit "add another copy" (force) that the
+  // order page confirms is the escape hatch. NOTE: this is NOT exempted for the edit-from-cart replace —
+  // the EDITED design is always a fresh draft on its first add (so this never blocks the legit edit-add),
+  // and on a browser-Back re-add the edited row IS now cart_created, so the guard correctly catches the
+  // duplicate (a replace exemption here would silently double-charge — caught in item-28 review).
+  if (!forceAdd && design.status === 'cart_created') {
     return NextResponse.json({ cartUrl, alreadyInCart: true })
   }
 

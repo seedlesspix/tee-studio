@@ -153,6 +153,8 @@ interface Props {
   // Edit-from-cart (item 28): the design_order id whose existing cart line(s) to replace when this edit
   // finishes. Carried through Next Step → the order page's add-to-cart (as replaceDesignOrderId).
   replaceCart?: string
+  // …and the exact cart line KEY, so the order page can remove that line first-party (seamless replace).
+  replaceLine?: string
 }
 
 const COLOR_HEX_MAP: Record<string, string> = {
@@ -244,7 +246,7 @@ function getImageNaturalSize(url: string): Promise<{ w: number; h: number } | nu
 }
 
 export default function DesignerCanvas({
-  productId, variantId, productTitle, productPrice, designId = '', restoreId = '', initialQuantity = '', refit = false, initialColor = '', replaceCart = ''
+  productId, variantId, productTitle, productPrice, designId = '', restoreId = '', initialQuantity = '', refit = false, initialColor = '', replaceCart = '', replaceLine = ''
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const shirtImgRef = useRef<HTMLImageElement>(null)
@@ -4427,6 +4429,7 @@ export default function DesignerCanvas({
       // the old line(s) instead of duplicating.
       const orderParams = new URLSearchParams({ design_id: result.orderId })
       if (replaceCart) orderParams.set('replace_cart', replaceCart)
+      if (replaceLine) orderParams.set('replace_line', replaceLine) // the exact old cart line to remove
       window.location.href = `/order?${orderParams.toString()}`
     } else {
       alert(t('designer.save_error', 'Error saving design. Please try again.'))

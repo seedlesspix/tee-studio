@@ -52,6 +52,8 @@ function OrderPage() {
   // Edit-from-cart (item 28): the design_order id whose existing cart line(s) this add should REPLACE
   // (the edit minted a new design row, so this is the ORIGINAL). Threaded through from the designer.
   const replaceCart = searchParams.get('replace_cart') || ''
+  // …and the exact old cart LINE KEY, so we can remove just that line first-party (seamless replace).
+  const replaceLine = searchParams.get('replace_line') || ''
   const [design, setDesign] = useState<DesignOrder | null>(null)
   const [quantities, setQuantities] = useState<Record<string, number>>({})
   // Sizes in Shopify variant order (from the design's available_sizes) — the
@@ -189,9 +191,35 @@ function OrderPage() {
       if (viewCart) { window.location.assign(data.cartUrl); return }
       return handleAddToCart(true)
     }
-    // Edit-from-cart: the edited design goes in as a new line; the customer removes the older line on the
-    // cart page (they see both — no silent duplicate). We tell them before handing off.
-    if (data.warning) alert(data.warning)
+    // Edit-from-cart (item 28), SEAMLESS replace. We have the old line's KEY, so remove exactly that line
+    // ourselves — first-party — BEFORE adding the edited one, so the customer ends with a single line (no
+    // duplicate). The store cart cookie is host-only on tshirtdeli.com and never reaches this subdomain,
+    // so the removal is a same-site "simple" cross-origin POST to /cart/update (form-encoded, no preflight,
+    // credentials included → the Lax cart cookie rides along). We AWAIT it so it lands before we navigate
+    // away, and it's best-effort: the edited design is added regardless. The variant was already
+    // probe-confirmed server-side, so the add below won't fail — safe to remove first.
+    if (replaceLine && data.addUrl) {
+      const storeOrigin = new URL(data.cartUrl).origin
+      let removeFailed = false
+      const remove = fetch(`${storeOrigin}/cart/update`, {
+        method: 'POST',
+        mode: 'no-cors',
+        credentials: 'include',
+        keepalive: true, // survive the top-level navigation below, so a slow removal still lands (never dropped)
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `updates[${encodeURIComponent(replaceLine)}]=0`,
+      }).catch(() => { removeFailed = true }) // network-level failure — fall back to the warning below
+      // Cap the wait so a slow store never hangs checkout — proceed to the add either way (keepalive
+      // finishes the removal in the background if it's slow).
+      await Promise.race([remove, new Promise(res => setTimeout(res, 4000))])
+      // Only the DETECTABLE failure (network reject) restores the "remove the old line yourself" note —
+      // an opaque no-cors response can't reveal an HTTP error, but keepalive makes the drop-on-navigation
+      // case (the common concern) moot.
+      if (removeFailed && data.warning) alert(data.warning)
+    } else if (data.warning) {
+      // No line key (older link / un-updated theme) — fall back to the "remove the old line yourself" note.
+      alert(data.warning)
+    }
     // Robust first-party hand-off: let the STORE add the item + set the cart cookie itself, via a
     // top-level form POST to /cart/add. This is the fix for the cross-subdomain cookie drop that was
     // emptying carts. (alreadyInCart and other edge paths return no items and just navigate.)

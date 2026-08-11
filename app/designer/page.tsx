@@ -23,6 +23,8 @@ function DesignerContent() {
   // Edit-from-cart (item 28): the design_order id whose existing cart line(s) this edit should replace
   // on finish (carried through to the order page's add-to-cart as replaceDesignOrderId).
   const replaceCart = searchParams.get('replace_cart') || ''
+  // …and the exact cart line KEY to remove first-party on finish (seamless replace, no duplicate line).
+  const replaceLine = searchParams.get('replace_line') || ''
   
   // Safely decode title - handle any encoding issues
   let title = 'Custom Product'
@@ -46,6 +48,7 @@ function DesignerContent() {
         refit={refit}
         initialColor={initialColor}
         replaceCart={replaceCart}
+        replaceLine={replaceLine}
       />
     </main>
   )
