@@ -10,7 +10,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import CanvasStage from './CanvasStage'
 import { getProduct } from '../lib/shopify'
-import { buildColorImageMap, getColorImages } from '../lib/productImages'
+import { buildColorImageMap, getColorImages, normalizeShopifyProductId } from '../lib/productImages'
 import { AUTODRAFT_KEY, buildEnvelope, parseEnvelope, shouldRestore } from '../lib/autodraft'
 import { placedInches, lowResTier } from '../lib/lowRes'
 import { maxScaleForRotation } from '../lib/rotationFit'
@@ -655,6 +655,26 @@ export default function DesignerCanvas({
   // print_area snapshots ride along (the port needs the frozen source box).
   useEffect(() => {
     if (!designId) return
+    // P3 — on a RELOAD of an in-progress PORT, the sessionStorage auto-draft holds the customer's
+    // post-port edits (arrow-nudge / drag). Defer to the auto-draft restore effect instead of re-porting
+    // from scratch (which discards them). Decided UP FRONT from the URL product id (GID-normalized to
+    // match the snapshot's productId) — NOT from `product` state, which the setInterval closure below
+    // captures STALE (deps are [designId, refit]; that stale read was why the first fix didn't fire). A
+    // FIRST port load (not a reload) still re-ports normally.
+    if (refit && typeof window !== 'undefined') {
+      const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+      const isReloadNav = nav?.type === 'reload'
+      let env = null
+      try { env = parseEnvelope(sessionStorage.getItem(AUTODRAFT_KEY)) } catch { /* storage disabled */ }
+      const targetGid = normalizeShopifyProductId(productId) ?? undefined
+      if (isReloadNav && targetGid && shouldRestore(env, { isReload: true, currentProductId: targetGid })) return
+      // FRESH port nav ONLY (never a reload): drop any leftover same-tab auto-draft NOW, so a reload landing
+      // inside the port's async window can't restore a stale earlier same-product snapshot instead of this
+      // port. The port re-establishes its own snapshot once it applies (markDirty in the finally). A RELOAD
+      // never clears — a genuine port-reload's snapshot holds the nudge, and even a narrow match miss above
+      // must not destroy it.
+      if (!isReloadNav) clearAutodraft()
+    }
     let attempts = 0
     const poll = setInterval(() => {
       attempts++
@@ -663,16 +683,10 @@ export default function DesignerCanvas({
       const targetReady = !refit || !!printAreaDataRef.current
       if (!canvas || !targetReady) { if (attempts > 40) clearInterval(poll); return }
       clearInterval(poll)
-      // P3 — on a RELOAD of an in-progress PORT, the sessionStorage auto-draft holds the customer's
-      // post-port edits (arrow-nudge / drag). Defer to the auto-draft restore effect instead of re-porting
-      // from scratch, which would discard them. Only for refit (ports); product is loaded here
-      // (targetReady). A FIRST port load (not a reload) still re-ports normally.
-      if (refit && typeof window !== 'undefined') {
-        const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
-        let env = null
-        try { env = parseEnvelope(sessionStorage.getItem(AUTODRAFT_KEY)) } catch { /* storage disabled */ }
-        if (nav?.type === 'reload' && shouldRestore(env, { isReload: true, currentProductId: product?.id || productId })) return
-      }
+      // Backup deferral (authoritative): the auto-draft restore effect uses the LIVE product, so if it
+      // already claimed this reload we must not re-port over it. It runs before this poll reaches
+      // targetReady (product loads before the print box), so the flag is set by now.
+      if (refit && autodraftWonRef.current) return
       fetch(`/api/design-orders/${designId}`)
         .then((r) => (r.ok ? r.json() : null))
         .then(async (payload) => {
@@ -1527,6 +1541,9 @@ export default function DesignerCanvas({
   // The reload gate is the anti-hijack rule: a fresh navigation to a product you designed earlier
   // this session must NOT resurrect that snapshot onto a blank canvas.
   const autodraftRestoredRef = useRef(false)
+  // Set the instant this effect claims a reload (uses the LIVE product), so the port effect's poll stands
+  // down instead of re-porting over the restored edits (P3 backup — see the design_id effect).
+  const autodraftWonRef = useRef(false)
   useEffect(() => {
     if (autodraftRestoredRef.current || !fabricCanvas || !product) return
     if (restoreId) return // login-snapshot restore path owns this
@@ -1549,6 +1566,7 @@ export default function DesignerCanvas({
       if (!isReload) clearAutodraft()
       return
     }
+    if (designId) autodraftWonRef.current = true // port-reload: tell the design_id poll to stand down
     applyDesignState((env as { state: unknown }).state)
   }, [fabricCanvas, product, restoreId, designId, productId, refit, applyDesignState, clearAutodraft])
 
