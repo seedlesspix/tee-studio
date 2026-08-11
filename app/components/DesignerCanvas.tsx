@@ -698,21 +698,24 @@ export default function DesignerCanvas({
                 // it's mounted — otherwise a ported jersey keeps its source-box position/size.
                 applyStackLayout()
               }
-              // Back geometry re-fits into the ref. Its DOM-coupled follow-ups (text re-wrap, curved
-              // re-bake) still defer to the first flip to Back (they need the back overlay to measure).
-              // But the N&N stack is PURE geometry — re-stack it EAGERLY onto the back box (derived from
-              // printAreaDataRef %, no DOM) so a jersey ported with its stack on the back is correct even
-              // if the customer saves/orders WITHOUT ever flipping to Back.
+              // Back re-fit is now FULLY EAGER + headless (P2/P3). refitSide already re-projected the
+              // geometry; here we also run the DOM-coupled refinements against the back box derived from
+              // printAreaDataRef % (no overlay needed — reWrapText takes an explicit box, bakeCurvedArc is
+              // headless): plain-text re-wrap, curved re-bake, image constrain, then re-stack N&N. So a
+              // ported design's back is correct in the preview / order / auto-draft even if the customer
+              // never flips to Back — and nothing is deferred, so the auto-draft captures a complete design.
               const back = refitJson(data.canvas_json_back, data.print_area_back, printAreaDataRef.current?.back)
-              const backObjs = back.objs.length ? (await util.enlivenObjects(back.objs)) as any[] : []
-              backObjectsRef.current = backObjs
               const backPct = printAreaDataRef.current?.back
+              const backLTRB = backPct ? (() => { const bx = boxFromPct(backPct); return { left: bx.left, top: bx.top, right: bx.left + bx.width, bottom: bx.top + bx.height } })() : null
+              let backObjs = back.objs.length ? (await util.enlivenObjects(back.objs)) as any[] : []
+              // Only run the follow-ups when the target actually HAS a back print area (backLTRB non-null).
+              // Otherwise reWrapText(undefined) would fall back to the live overlay — which is the FRONT box
+              // during a port — and mis-wrap orphan back text. refitSide already left them untransformed.
+              if (backObjs.length && backLTRB) backObjs = await refitBackFollowups(backObjs, back.scale, backLTRB)
+              backObjectsRef.current = backObjs
               const backPh = backObjs.filter((o: any) => o[NN_ROLE_PROP])
-              if (backPh.length && backPct) {
-                const bx = boxFromPct(backPct)
-                layoutStackInto(backPh, { left: bx.left, top: bx.top, right: bx.left + bx.width, bottom: bx.top + bx.height })
-              }
-              backRefitPendingRef.current = backObjs.length ? back.scale : null
+              if (backPh.length && backLTRB) layoutStackInto(backPh, backLTRB)
+              backRefitPendingRef.current = null // fully re-fit eagerly — nothing deferred to a flip
             } else {
               if (data.canvas_json_front) {
                 const frontJson = JSON.parse(data.canvas_json_front)
@@ -1275,7 +1278,8 @@ export default function DesignerCanvas({
   // the print font list has loaded, reset any text whose font is NOT in that list to the print default,
   // then re-fit (the emb font's metrics differ, same overflow trap as the forward path). A font valid in
   // BOTH methods is left untouched — we only repair the invalid ones, never override a real choice.
-  // (Curved-text bakes are NOT handled here — see the deferred curved-text-on-method-switch follow-up.)
+  // Curved-text bakes (E2) are handled too: they can't reflow, so an invalid baked font is RE-BAKED with
+  // the print default (recurveInvalidFonts below), so preview and cut agree.
   useEffect(() => {
     if (printMethod === 'embroidery' || !pendingPrintReconcileRef.current) return
     if (configMethod !== printMethod || !dbFonts.length) return // print palette not loaded yet
@@ -1291,15 +1295,60 @@ export default function DesignerCanvas({
       o.initDimensions?.()
       fitAndConstrain(o)
     }
-    const apply = () => {
-      ;[...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current].forEach(reconcile)
-      canvas.renderAll()
-      pendingPrintReconcileRef.current = false
-      markDirty()
+    // E2 — a curved-text bake carries its font in the PIXELS (a raster), so it can't be reflowed like
+    // plain text; the baked embroidery-only font IS the one the cut outliner would fail on. So RE-BAKE any
+    // curved text whose baked font isn't a valid print font, with the print default — preview AND cut then
+    // agree. The bake is headless (bakeCurvedArc); the current side uses the live overlay box, the other
+    // side its printAreaDataRef % box. Only the non-current side's REF is authoritative (the canvas owns
+    // the current side), so we re-bake canvas + that one ref — never the current side's stale ref.
+    const needsRecurve = (o: any) => o?._isCurvedText && o._curveFontFamily && !valid.has(String(o._curveFontFamily))
+    const recurveWithFont = (o: any, bounds: { left: number; top: number; right: number; bottom: number } | null) =>
+      bakeCurvedArc(
+        String(o._originalText || ''),
+        { curveAmount: Number(o._curveAmount) || 0, fontSize: Number(o._curveFontSize) || 36, fontFamily: fallback, fill: String(o._curveFill || '#000000'), bold: !!o._curveBold, italic: !!o._curveItalic, charSpacing: Number(o._curveCharSpacing) || 0 },
+        o.left, o.top, bounds, Number(o.angle) || 0,
+      )
+    const recurveInvalidFonts = async () => {
+      const view0 = shirtViewRef.current
+      const curLTRB = getPrintAreaBounds()
+      const otherIsBack = view0 !== 'back' // viewing front → the OTHER side is back
+      const otherRef = otherIsBack ? backObjectsRef : frontObjectsRef
+      const otherPct = otherIsBack ? printAreaDataRef.current?.back : printAreaDataRef.current?.front
+      const otherLTRB = otherPct ? (() => { const bx = boxFromPct(otherPct); return { left: bx.left, top: bx.top, right: bx.left + bx.width, bottom: bx.top + bx.height } })() : null
+      for (const o of [...canvas.getObjects()]) {
+        if (!needsRecurve(o)) continue
+        const rebaked = await recurveWithFont(o, curLTRB)
+        // A Front/Back flip during the async bake would have swapped sides — never land the re-bake on the
+        // wrong canvas. If the object is gone or the view changed, skip it (it re-bakes on the next switch).
+        if (shirtViewRef.current !== view0 || !canvas.contains(o)) continue
+        canvas.remove(o); canvas.add(rebaked)
+      }
+      if (shirtViewRef.current !== view0) return // sides swapped mid-bake — don't mutate the (now-swapped) refs
+      const arr = otherRef.current
+      for (let i = 0; i < arr.length; i++) {
+        if (!needsRecurve(arr[i])) continue
+        const rebaked = await recurveWithFont(arr[i], otherLTRB)
+        if (shirtViewRef.current !== view0) return
+        arr[i] = rebaked
+      }
+    }
+    const apply = async () => {
+      // isRestoringRef suppresses the auto-draft writer so it can't snapshot a mid-re-bake canvas; the
+      // view-change checks inside recurveInvalidFonts close the cross-side half (a flip during a bake).
+      isRestoringRef.current = true
+      try {
+        ;[...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current].forEach(reconcile)
+        await recurveInvalidFonts()
+        canvas.renderAll()
+        pendingPrintReconcileRef.current = false
+      } finally {
+        isRestoringRef.current = false
+        markDirty()
+      }
     }
     const fonts = (document as unknown as { fonts?: { load?: (f: string) => Promise<unknown> } }).fonts
     if (fonts?.load) fonts.load(`32px "${fallback}"`).then(apply).catch(apply)
-    else apply()
+    else void apply()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [printMethod, configMethod, dbFonts])
 
@@ -2095,11 +2144,13 @@ export default function DesignerCanvas({
     p: { curveAmount: number; fontSize: number; fontFamily: string; fill: string; bold: boolean; italic: boolean; charSpacing?: number },
     left: number, top: number,
     bounds: { left: number; top: number; right: number; bottom: number } | null,
+    angle: number = 0, // carry the source object's rotation through the re-bake (E2 / D2 re-fit) — else a rotated curved text snaps back to horizontal
   ): Promise<any> => {
     const { dataUrl } = renderCurvedArc(rawText, p)
     const { FabricImage } = await import('fabric')
     const img: any = await FabricImage.fromURL(dataUrl)
     img.set({ left, top, originX: 'center', originY: 'center' })
+    if (angle) { img.set({ angle }); img.setCoords() }
     img._isCurvedText = true
     img._originalText = rawText
     // Stamp the exact params this was baked with, so selecting the curved text reflects them and
@@ -2139,7 +2190,7 @@ export default function DesignerCanvas({
         const rebaked = await bakeCurvedArc(
           String(obj._originalText || ''),
           { curveAmount: p.curveAmount, fontSize: p.curveFontSize, fontFamily: String(obj._curveFontFamily || 'Impact'), fill: String(obj._curveFill || '#000000'), bold: !!obj._curveBold, italic: !!obj._curveItalic, charSpacing: Number(obj._curveCharSpacing) || 0 },
-          obj.left, obj.top, targetLTRB,
+          obj.left, obj.top, targetLTRB, Number(obj.angle) || 0,
         )
         canvas.remove(obj); canvas.add(rebaked)
       } else if (obj.type === 'i-text' || obj.type === 'textbox') {
@@ -2153,6 +2204,40 @@ export default function DesignerCanvas({
       }
     }
     canvas.renderAll()
+  }
+
+  // Headless variant of refitFollowups for the BACK during a D2 port: the SAME per-object refinements
+  // (curved re-bake, plain-text re-wrap, image constrain) but against the OFF-canvas back ref array using
+  // the back box from printAreaDataRef % (no DOM overlay). So a ported design's back is fully re-fit for
+  // the preview / order / auto-draft even if the customer never flips to it (P2/P3). Curved re-bake
+  // REPLACES the object → returns the new array; N&N is re-stacked by the caller (layoutStackInto).
+  const refitBackFollowups = async (objs: any[], scale: number, backLTRB: { left: number; top: number; right: number; bottom: number } | null): Promise<any[]> => {
+    const norm = (s: string) => s.replace(/\s+/g, ' ').trim()
+    const box = backLTRB ? { maxWidth: (backLTRB.right - backLTRB.left) * 0.92, maxHeight: (backLTRB.bottom - backLTRB.top) * 0.92 } : undefined
+    const out: any[] = []
+    for (const obj of objs) {
+      if (obj[NN_ROLE_PROP]) { out.push(obj); continue } // caller re-stacks N&N
+      if (obj._isCurvedText) {
+        const p = rebakeCurveParams(Number(obj._curveFontSize) || 36, Number(obj._curveAmount) || 0, scale)
+        const rebaked = await bakeCurvedArc(
+          String(obj._originalText || ''),
+          { curveAmount: p.curveAmount, fontSize: p.curveFontSize, fontFamily: String(obj._curveFontFamily || 'Impact'), fill: String(obj._curveFill || '#000000'), bold: !!obj._curveBold, italic: !!obj._curveItalic, charSpacing: Number(obj._curveCharSpacing) || 0 },
+          obj.left, obj.top, backLTRB, Number(obj.angle) || 0,
+        )
+        out.push(rebaked)
+      } else if (obj.type === 'i-text' || obj.type === 'textbox') {
+        const raw = String(obj._originalText || obj.text || '')
+        const { text, fontSize } = reWrapText(raw, Number(obj.fontSize) || 36, obj.fontFamily, obj.fontWeight === 'bold', obj.fontStyle === 'italic', Number(obj.charSpacing) || 0, typeof obj.lineHeight === 'number' ? obj.lineHeight : 1.2, box)
+        const wasUpper = raw !== '' && norm(String(obj.text || '')) === norm(raw.toUpperCase()) && norm(String(obj.text || '')) !== norm(raw)
+        obj.set({ text: wasUpper ? text.toUpperCase() : text, fontSize })
+        if (backLTRB) constrainObject(obj, backLTRB)
+        out.push(obj)
+      } else {
+        if (backLTRB) constrainObject(obj, backLTRB)
+        out.push(obj)
+      }
+    }
+    return out
   }
 
   // Curved text is a baked raster, so a manual corner-drag scales the BITMAP → pixelation. When a
@@ -2277,16 +2362,23 @@ export default function DesignerCanvas({
   // pushes normally. Runs every commit; idempotent when the guard is already off.
   useEffect(() => { reflectingRef.current = false })
 
-  const reWrapText = (text: string, targetFontSize: number, fontFamily: string, bold: boolean, italic: boolean, charSpacing: number = 0, lineHeightFactor: number = 1.2): { text: string; fontSize: number } => {
-    const canvasEl = canvasRef.current
-    const overlay = document.querySelector('[data-print-area]') as HTMLElement
-    if (!overlay || !canvasEl) return { text, fontSize: targetFontSize }
-
-    const canvasRect = canvasEl.getBoundingClientRect()
-    const overlayRect = overlay.getBoundingClientRect()
-    const scaleX = CANVAS_W / canvasRect.width
-    const maxWidth = overlayRect.width * scaleX * 0.92
-    const maxHeight = overlayRect.height * (CANVAS_H / canvasRect.height) * 0.92
+  // `boxOverride` (canvas-px maxWidth/maxHeight) lets this run HEADLESS — used to re-wrap the BACK side
+  // during a D2 port before its overlay is mounted (P2/P3). Without it, it measures the live DOM overlay.
+  const reWrapText = (text: string, targetFontSize: number, fontFamily: string, bold: boolean, italic: boolean, charSpacing: number = 0, lineHeightFactor: number = 1.2, boxOverride?: { maxWidth: number; maxHeight: number }): { text: string; fontSize: number } => {
+    let maxWidth: number, maxHeight: number
+    if (boxOverride) {
+      maxWidth = boxOverride.maxWidth
+      maxHeight = boxOverride.maxHeight
+    } else {
+      const canvasEl = canvasRef.current
+      const overlay = document.querySelector('[data-print-area]') as HTMLElement
+      if (!overlay || !canvasEl) return { text, fontSize: targetFontSize }
+      const canvasRect = canvasEl.getBoundingClientRect()
+      const overlayRect = overlay.getBoundingClientRect()
+      const scaleX = CANVAS_W / canvasRect.width
+      maxWidth = overlayRect.width * scaleX * 0.92
+      maxHeight = overlayRect.height * (CANVAS_H / canvasRect.height) * 0.92
+    }
 
     const tmpCanvas = document.createElement('canvas')
     const tmpCtx = tmpCanvas.getContext('2d')!
