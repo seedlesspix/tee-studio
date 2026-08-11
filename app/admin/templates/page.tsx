@@ -7,6 +7,7 @@ import { useT } from '../../components/StringsProvider'
 import type { Tables } from '@/types/database'
 import PrintAreaEditor from './PrintAreaEditor'
 import TemplateColorsEditor from './TemplateColorsEditor'
+import MockupBatchUpload from './MockupBatchUpload'
 
 type Template = Tables<'product_templates'>
 type PrintMethod = Tables<'designer_print_methods'>
@@ -284,6 +285,16 @@ export default function TemplatesAdmin() {
             message.type === 'success' ? 'bg-[#dd3333] text-white' : 'bg-red-600 text-white'
           }`}>
             {message.text}
+          </div>
+        )}
+
+        {/* ---------- BATCH MOCKUP UPLOAD (Print Zones Z0) ---------- */}
+        {!editing && !loading && templates.length > 0 && (
+          <div className="mb-6">
+            <MockupBatchUpload
+              templates={templates.map(t => ({ id: t.id, name: t.name, style_number: t.style_number }))}
+              onMessage={showMessage}
+            />
           </div>
         )}
 
