@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { Tables } from '@/types/database'
+import { ZONE_LABELS } from '../../lib/mockupFilename'
 
 type AreaRow = Tables<'product_template_print_areas'>
 
@@ -38,7 +39,11 @@ type Props = {
 // convert these px -> percentages using the same mockup natural dimensions
 // (see CLAUDE.md "pixels vs. percentages" note).
 const DISPLAY_W = 520
-const SIDES = ['front', 'back'] as const
+// Print Zones Z1 — front/back plus the new zones. `side` is free text in the DB, so these are just more
+// rows. Front/back can draw on the Shopify photo; the new zones draw on their uploaded mockup (Z0).
+const SIDES = ['front', 'back', 'left_sleeve', 'right_sleeve', 'hat_back'] as const
+const SHOPIFY_FALLBACK_SIDES = new Set<string>(['front', 'back']) // only these can fall back to a Shopify photo
+const sideLabel = (s: string) => ZONE_LABELS[s] ?? s
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
 let keyCounter = 0
@@ -64,6 +69,9 @@ export default function PrintAreaEditor({
   const [imgError, setImgError] = useState<string | null>(null)
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
   const [side, setSide] = useState<string>('front')
+  // Z1 — one representative uploaded mockup per zone (the box is the same across colors, so any color's
+  // mockup is a fine drawing reference). Front/back prefer their mockup over the Shopify photo (single source).
+  const [zoneMockups, setZoneMockups] = useState<Record<string, { url: string; color: string }>>({})
   const [areas, setAreas] = useState<EditArea[]>([])
   const [deletedIds, setDeletedIds] = useState<string[]>([])
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
@@ -82,6 +90,15 @@ export default function PrintAreaEditor({
   // Keep the pointer-handler refs in sync with the latest natural size / scale.
   useEffect(() => { naturalRef.current = natural; scaleRef.current = scale }, [natural, scale])
 
+  // The drawing background for the current zone: its uploaded mockup wins (single source); front/back
+  // fall back to the Shopify photo until a mockup is uploaded. New zones have no Shopify fallback.
+  const zoneMockup = zoneMockups[side] ?? null
+  const bgSrc = zoneMockup?.url ?? (SHOPIFY_FALLBACK_SIDES.has(side) ? images[imgIdx] : undefined)
+  // Switch the drawing background (zone or Shopify image) and drop the stale natural size so boxes don't
+  // render at the previous image's scale until the new one's onLoad measures it.
+  const switchSide = (s: string) => { setSide(s); setNatural(null); setSelectedKey(null) }
+  const switchImg = (i: number) => { setImgIdx(i); setNatural(null) }
+
   // Load existing print areas for this template.
   useEffect(() => {
     supabase
@@ -91,6 +108,24 @@ export default function PrintAreaEditor({
       .order('sort_order')
       .then(({ data }) => {
         if (data) setAreas(data.map((r: AreaRow) => ({ ...r, _key: r.id })))
+      })
+  }, [templateId])
+
+  // Load one representative uploaded mockup per zone (the lowest sort_order per zone) as the drawing
+  // reference for that zone. Z0's batch uploader populates product_template_mockups.
+  useEffect(() => {
+    supabase
+      .from('product_template_mockups')
+      .select('color_name, zone, image_url, sort_order')
+      .eq('template_id', templateId)
+      .order('sort_order')
+      .then(({ data }) => {
+        if (!data) return
+        const map: Record<string, { url: string; color: string }> = {}
+        for (const m of data as { color_name: string; zone: string; image_url: string }[]) {
+          if (!map[m.zone]) map[m.zone] = { url: m.image_url, color: m.color_name } // first = the reference
+        }
+        setZoneMockups(map)
       })
   }, [templateId])
 
@@ -161,7 +196,7 @@ export default function PrintAreaEditor({
     const h = Math.round(natural.h * 0.4)
     const area: EditArea = {
       _key: nextKey(),
-      name: side === 'front' ? 'Front' : 'Back',
+      name: sideLabel(side),
       side,
       print_method: supportedMethods[0] ?? '',
       x_px: Math.round((natural.w - w) / 2),
@@ -244,20 +279,20 @@ export default function PrintAreaEditor({
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-5">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <h2 className="text-sm font-mono uppercase tracking-widest text-[#dd3333]">Print areas</h2>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <div className="flex rounded border border-gray-300 overflow-hidden">
             {SIDES.map(s => (
-              <button key={s} onClick={() => setSide(s)}
-                className={`px-3 py-1 text-xs font-mono capitalize ${side === s ? 'bg-[#dd3333] text-white' : 'bg-white text-black hover:bg-gray-50'}`}>
-                {s}
+              <button key={s} onClick={() => switchSide(s)}
+                className={`px-2.5 py-1 text-xs font-mono whitespace-nowrap ${side === s ? 'bg-[#dd3333] text-white' : 'bg-white text-black hover:bg-gray-50'}`}>
+                {sideLabel(s)}
               </button>
             ))}
           </div>
           <button onClick={addArea}
-            className="px-3 py-1 rounded text-xs font-mono bg-white text-[#dd3333] border border-[#dd3333] hover:bg-red-50">
-            + Add area ({side})
+            className="px-3 py-1 rounded text-xs font-mono bg-white text-[#dd3333] border border-[#dd3333] hover:bg-red-50 whitespace-nowrap">
+            + Add area ({sideLabel(side)})
           </button>
           <button onClick={save} disabled={saving}
             className="px-4 py-1.5 rounded text-xs font-mono bg-[#dd3333] text-white hover:bg-red-700 disabled:opacity-60">
@@ -269,10 +304,10 @@ export default function PrintAreaEditor({
       <div className="flex gap-6 flex-wrap">
         {/* ---- Mockup with draggable rectangles ---- */}
         <div>
-          {images.length > 1 && (
+          {!zoneMockup && images.length > 1 && (
             <div className="flex gap-2 mb-2 flex-wrap">
               {images.map((url, i) => (
-                <button key={url} onClick={() => setImgIdx(i)}
+                <button key={url} onClick={() => switchImg(i)}
                   className={`w-10 h-10 rounded border overflow-hidden ${i === imgIdx ? 'border-[#dd3333] ring-1 ring-[#dd3333]' : 'border-gray-300'}`}>
                   <img src={url} alt={`mockup ${i + 1}`} className="w-full h-full object-cover" />
                 </button>
@@ -280,15 +315,17 @@ export default function PrintAreaEditor({
             </div>
           )}
 
-          {imgError ? (
-            <div className="w-[520px] max-w-full rounded border border-dashed border-gray-300 bg-gray-50 p-8 text-center">
-              <p className="text-xs font-mono text-gray-600">{imgError}</p>
-              <p className="text-[10px] font-mono text-gray-400 mt-1">You can still enter coordinates numerically below.</p>
-            </div>
-          ) : images.length > 0 ? (
-            <div className="relative select-none touch-none" style={{ width: displayW }}>
+          {bgSrc ? (
+            <>
+              {zoneMockup && (
+                <p className="text-[10px] font-mono text-gray-400 mb-1">
+                  Drawing on the <span className="text-gray-600">{zoneMockup.color}</span> mockup — the box applies to every color of this zone.
+                </p>
+              )}
+              <div className="relative select-none touch-none" style={{ width: displayW }}>
               <img
-                src={images[imgIdx]}
+                key={bgSrc}
+                src={bgSrc}
                 alt="mockup"
                 draggable={false}
                 onLoad={e => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
@@ -322,9 +359,17 @@ export default function PrintAreaEditor({
                 )
               })}
             </div>
+            </>
           ) : (
             <div className="w-[520px] max-w-full rounded border border-dashed border-gray-300 bg-gray-50 p-8 text-center">
-              <p className="text-xs font-mono text-gray-500">Loading mockup…</p>
+              <p className="text-xs font-mono text-gray-600">
+                {SHOPIFY_FALLBACK_SIDES.has(side) ? (imgError ?? 'Loading mockup…') : `No ${sideLabel(side)} mockup yet`}
+              </p>
+              <p className="text-[10px] font-mono text-gray-400 mt-1">
+                {SHOPIFY_FALLBACK_SIDES.has(side)
+                  ? 'You can still enter coordinates numerically below.'
+                  : 'Batch-upload a mockup for this zone on the Product Templates list, then reopen this editor.'}
+              </p>
             </div>
           )}
           {natural && (
@@ -364,8 +409,8 @@ export default function PrintAreaEditor({
                   <label className="text-[10px] text-gray-600 font-mono uppercase">Side</label>
                   <select value={selected.side}
                     onChange={e => patch(selected._key, { side: e.target.value })}
-                    className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm font-mono mt-1 outline-none focus:border-[#dd3333] capitalize">
-                    {SIDES.map(s => <option key={s} value={s}>{s}</option>)}
+                    className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm font-mono mt-1 outline-none focus:border-[#dd3333]">
+                    {SIDES.map(s => <option key={s} value={s}>{sideLabel(s)}</option>)}
                   </select>
                 </div>
                 <div>
