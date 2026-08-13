@@ -7,6 +7,7 @@ import { useT } from '../../components/StringsProvider'
 import type { Tables } from '@/types/database'
 import PrintAreaEditor from './PrintAreaEditor'
 import TemplateColorsEditor from './TemplateColorsEditor'
+import TemplateMockupsEditor from './TemplateMockupsEditor'
 import MockupBatchUpload from './MockupBatchUpload'
 
 type Template = Tables<'product_templates'>
@@ -528,6 +529,11 @@ export default function TemplatesAdmin() {
                   shopifyProductId={editingTemplate.shopify_product_id}
                   supportedMethods={editingTemplate.supported_print_methods}
                   methodLabel={labelFor}
+                  onMessage={showMessage}
+                />
+                <TemplateMockupsEditor
+                  templateId={editing.id}
+                  shopifyProductId={editingTemplate.shopify_product_id}
                   onMessage={showMessage}
                 />
                 <TemplateColorsEditor
