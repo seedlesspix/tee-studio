@@ -4,7 +4,10 @@ import { supabase } from '../../lib/supabase'
 import { useT } from '../../components/StringsProvider'
 import type { Tables } from '@/types/database'
 
-type PricingRow = Tables<'designer_pricing'>
+// This admin manages ONLY the Front/Back rows (sides 1/2). The new sleeve/hat zone rows have sides=NULL
+// and no zone editor here yet (named follow-up before Print-Zones cutover), so they're filtered out at
+// load and this type asserts the non-null sides the screen relies on.
+type PricingRow = Omit<Tables<'designer_pricing'>, 'sides'> & { sides: number }
 type PrintMethod = Tables<'designer_print_methods'>
 
 // designer_pricing.sides is a SIDE IDENTITY, not a count: 1 = Front, 2 = Back.
@@ -61,8 +64,10 @@ export default function PricingAdmin() {
       supabase.from('designer_print_methods').select('*').order('sort_order'),
     ]).then(([p, m]) => {
       if (p.data) {
-        setPricing(p.data)
-        seedEditValues(p.data)
+        // Front/Back rows only (sides 1/2); sleeve/hat zone rows (sides NULL) aren't editable here yet.
+        const frontBack = p.data.filter(r => r.sides != null) as PricingRow[]
+        setPricing(frontBack)
+        seedEditValues(frontBack)
       }
       if (m.data) setMethods(m.data)
       setLoading(false)
@@ -148,7 +153,7 @@ export default function PricingAdmin() {
     setCreating(false)
     if (error) { showMessage('Error: ' + error.message, 'error'); return }
     if (data) {
-      setPricing(prev => [...prev, data].sort(
+      setPricing(prev => [...prev, data as PricingRow].sort(
         (a, b) => a.print_method_key.localeCompare(b.print_method_key) || a.sides - b.sides
       ))
       setEditValues(prev => ({

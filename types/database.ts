@@ -237,6 +237,7 @@ export type Database = {
           total_qty: number | null
           unit_price: number | null
           uploaded_files: Json | null
+          zones: Json | null
         }
         Insert: {
           available_sizes?: string[] | null
@@ -284,6 +285,7 @@ export type Database = {
           total_qty?: number | null
           unit_price?: number | null
           uploaded_files?: Json | null
+          zones?: Json | null
         }
         Update: {
           available_sizes?: string[] | null
@@ -331,6 +333,7 @@ export type Database = {
           total_qty?: number | null
           unit_price?: number | null
           uploaded_files?: Json | null
+          zones?: Json | null
         }
         Relationships: [
           {
@@ -444,8 +447,9 @@ export type Database = {
           price_add: number
           print_method_key: string
           shopify_variant_id: string | null
-          sides: number
+          sides: number | null
           updated_at: string | null
+          zone: string | null
         }
         Insert: {
           created_at?: string | null
@@ -455,8 +459,9 @@ export type Database = {
           price_add?: number
           print_method_key: string
           shopify_variant_id?: string | null
-          sides: number
+          sides?: number | null
           updated_at?: string | null
+          zone?: string | null
         }
         Update: {
           created_at?: string | null
@@ -466,8 +471,9 @@ export type Database = {
           price_add?: number
           print_method_key?: string
           shopify_variant_id?: string | null
-          sides?: number
+          sides?: number | null
           updated_at?: string | null
+          zone?: string | null
         }
         Relationships: []
       }
