@@ -4901,8 +4901,37 @@ export default function DesignerCanvas({
   )
   const zoneSelectorBar = (
     <div className="absolute bottom-5 flex flex-col items-center gap-2">
-      <div className="flex gap-2">
+      <div className="flex gap-2 items-center">
         {mainZones.map(zonePill)}
+        {/* Copy-to-Back/Front carried over from the classic toggle (front↔back convenience). */}
+        {hasBackImages && shirtView === 'front' && frontHasContent && (
+          <button
+            onClick={() => {
+              const canvas = fabricCanvasRef.current
+              if (!canvas) return
+              import('fabric').then(async () => {
+                frontObjectsRef.current = canvas.getObjects().map((o: any) => o)
+                backObjectsRef.current = await Promise.all(frontObjectsRef.current.map((o: any) => o.clone()))
+              })
+            }}
+            className="px-3 py-1.5 rounded-full text-xs font-mono tracking-widest bg-white text-gray-700 border border-gray-200 hover:border-gray-400 transition-all">
+            {t('designer.copy_to_back', 'Copy to Back')}
+          </button>
+        )}
+        {hasBackImages && shirtView === 'back' && backHasContent && (
+          <button
+            onClick={() => {
+              const canvas = fabricCanvasRef.current
+              if (!canvas) return
+              import('fabric').then(async () => {
+                backObjectsRef.current = canvas.getObjects().map((o: any) => o)
+                frontObjectsRef.current = await Promise.all(backObjectsRef.current.map((o: any) => o.clone()))
+              })
+            }}
+            className="px-3 py-1.5 rounded-full text-xs font-mono tracking-widest bg-white text-gray-700 border border-gray-200 hover:border-gray-400 transition-all">
+            {t('designer.copy_to_front', 'Copy to Front')}
+          </button>
+        )}
         {otherZones.map(zonePill)}
       </div>
       {sleeveZones.length > 0 && (
