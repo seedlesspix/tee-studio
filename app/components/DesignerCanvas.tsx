@@ -12,6 +12,7 @@ import CanvasStage from './CanvasStage'
 import { getProduct } from '../lib/shopify'
 import { buildColorImageMap, getColorImages } from '../lib/productImages'
 import { normalizeColorKey } from '../lib/mockupFilename'
+import { deriveProductZones, zoneLabel, isSleeveZone } from '../lib/zones'
 import { AUTODRAFT_KEY, buildEnvelope, parseEnvelope, shouldRestore } from '../lib/autodraft'
 import { placedInches, lowResTier } from '../lib/lowRes'
 import { maxScaleForRotation } from '../lib/rotationFit'
@@ -269,6 +270,9 @@ export default function DesignerCanvas({
   // selector (Z2b) + capture (Z3) land.
   const [shirtView, setShirtView] = useState<string>('front')
   const [hasBackImages, setHasBackImages] = useState(false)
+  // Print Zones Z2b: this product's zones in canonical order (front, back, sleeves, hat_back), derived
+  // from its template print areas. Drives the zone selector. Default front/back; set at product load.
+  const [zones, setZones] = useState<string[]>(['front', 'back'])
   const [printArea, setPrintArea] = useState<{xPct:number,yPct:number,widthPct:number,heightPct:number} | null>(null)
   const [activeTab, setActiveTab] = useState<'text' | 'upload' | 'clipart' | 'style' | 'names' | 'layers'>('text')
   // Names & Numbers roster (Phase 1: component state + auto-draft; DB persistence = Phase 2 migration).
@@ -1772,6 +1776,9 @@ export default function DesignerCanvas({
               zoneMockupMapRef.current = zmap
 
               const areas = (tpl?.product_template_print_areas || []) as any[]
+              // Print Zones Z2b: derive this product's zones (front, back, sleeves, hat_back) from its
+              // print-area sides. A secondary front row (Chest) collapses into 'front' — not a zone.
+              setZones(deriveProductZones({ areaSides: areas.map((a: any) => a.side), hasBackImages: anyBack }))
               if (tpl) {
                 // The TEMPLATE is the source of truth for the print method (embroidery mode). Keep the
                 // metafield method when the template supports it, else fall to the template default;
@@ -4876,6 +4883,44 @@ export default function DesignerCanvas({
     : activeTab === 'names' ? namesPanel
     : selectionPanel
 
+  // Print Zones Z2b: the multi-zone selector, GATED OFF until capture (Z3) persists sleeve/hat designs —
+  // a customer must never design a zone that wouldn't save. While gated, the classic Front/Back toggle
+  // (below) renders unchanged; flip ZONES_ENABLED to true with Z3. Active zone uses a QUIET non-red fill
+  // (locked red-vocab rule: red = action only). Sleeve buttons show the +$12 add-on (pricing wired in Z3).
+  const ZONES_ENABLED = false
+  const mainZones = zones.filter(z => z === 'front' || z === 'back')
+  const sleeveZones = zones.filter(isSleeveZone)
+  const otherZones = zones.filter(z => z !== 'front' && z !== 'back' && !isSleeveZone(z)) // hat_back, future
+  const zonePill = (z: string) => (
+    <button key={z} onClick={() => switchView(z)}
+      className={`px-4 py-1.5 rounded-full text-xs font-mono tracking-widest transition-all ${
+        shirtView === z ? 'bg-gray-900 text-white' : 'bg-white text-gray-700 border border-gray-200 hover:border-gray-400'
+      }`}>
+      {zoneLabel(z).toUpperCase()}
+    </button>
+  )
+  const zoneSelectorBar = (
+    <div className="absolute bottom-5 flex flex-col items-center gap-2">
+      <div className="flex gap-2">
+        {mainZones.map(zonePill)}
+        {otherZones.map(zonePill)}
+      </div>
+      {sleeveZones.length > 0 && (
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-mono uppercase tracking-widest text-gray-400">Add sleeve prints</span>
+          {sleeveZones.map(z => (
+            <button key={z} onClick={() => switchView(z)}
+              className={`px-3 py-1 rounded-full text-[11px] font-mono transition-all ${
+                shirtView === z ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-400'
+              }`}>
+              {zoneLabel(z)} <span className="opacity-60">+$12</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+
   // Root shell. Mobile: the shirt is pinch-zoomable via the app-level two-finger
   // gesture handler (not native browser pinch), and pull-to-refresh is intentionally
   // OFF (Option A) — overscroll-behavior:none in globals.css backs that up so an
@@ -5110,9 +5155,10 @@ export default function DesignerCanvas({
           </div>
         </div>
 
-          {/* Front / Back toggle. The band is below the shirt now (not an overlay),
-              so the toggle sits at the bottom of the stage on both platforms —
-              one identical string, byte-for-byte. */}
+          {/* Print Zones Z2b: the new multi-zone selector when enabled; else the classic Front/Back toggle
+              (unchanged, byte-for-byte) — gated so nothing customer-facing changes until capture ships. */}
+          {ZONES_ENABLED && zoneSelectorBar}
+          {!ZONES_ENABLED && (
           <div className="absolute bottom-5 flex gap-2">
             <button
               onClick={() => switchView('front')}
@@ -5169,6 +5215,7 @@ export default function DesignerCanvas({
               </button>
             )}
           </div>
+          )}
         </section>
 
         {/* Right panel */}
