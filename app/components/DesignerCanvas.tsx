@@ -11,6 +11,7 @@ import { supabase } from '../lib/supabase'
 import CanvasStage from './CanvasStage'
 import { getProduct } from '../lib/shopify'
 import { buildColorImageMap, getColorImages } from '../lib/productImages'
+import { normalizeColorKey } from '../lib/mockupFilename'
 import { AUTODRAFT_KEY, buildEnvelope, parseEnvelope, shouldRestore } from '../lib/autodraft'
 import { placedInches, lowResTier } from '../lib/lowRes'
 import { maxScaleForRotation } from '../lib/rotationFit'
@@ -945,6 +946,10 @@ export default function DesignerCanvas({
   // product_template_print_areas; empty until then, so extra zones simply have no image/box yet.
   const extraZoneImageRef = useRef<Record<string, string>>({})
   const extraZonePrintAreaRef = useRef<Record<string, PrintAreaPct | null>>({})
+  // Per-color per-zone mockup images from product_template_mockups (Z0), keyed by normalized color →
+  // zone → url. Populated at template load; a color change copies the current color's extra-zone images
+  // into extraZoneImageRef so switchView can show a sleeve/hat its own mockup.
+  const zoneMockupMapRef = useRef<Record<string, Record<string, string>>>({})
   const zoneObjs = (zone: string): any[] =>
     zone === 'front' ? frontObjectsRef.current
     : zone === 'back' ? backObjectsRef.current
@@ -1307,6 +1312,13 @@ export default function DesignerCanvas({
   useEffect(() => {
     if (printMethod) applyTemplateAreaForMethod(printMethod)
   }, [printMethod, templateReadyTick, applyTemplateAreaForMethod])
+
+  // Print Zones Z2b: keep the extra zones' garment image (sleeves / hat) in sync with the selected color,
+  // from the per-color per-zone mockup map. Ref write only (switchView reads it imperatively) — no
+  // re-render, no setState-in-effect. Front/back are unaffected (they use getColorImages / Shopify).
+  useEffect(() => {
+    extraZoneImageRef.current = { ...(zoneMockupMapRef.current[normalizeColorKey(selectedColor)] || {}) }
+  }, [selectedColor, templateReadyTick])
 
   // If this product doesn't offer Names & Numbers, never sit on the (now-hidden) Names tab.
   useEffect(() => {
@@ -1737,7 +1749,7 @@ export default function DesignerCanvas({
               const { supabase } = await import('../lib/supabase')
               const { data: tpl } = await supabase
                 .from('product_templates')
-                .select('id, category, default_print_method, supported_print_methods, supports_names_numbers, product_template_print_areas(*), product_template_colors(*)')
+                .select('id, category, default_print_method, supported_print_methods, supports_names_numbers, product_template_print_areas(*), product_template_colors(*), product_template_mockups(*)')
                 .eq('shopify_product_id', data.id)
                 .eq('is_active', true)
                 .maybeSingle()
@@ -1750,6 +1762,14 @@ export default function DesignerCanvas({
                 tplColors.forEach((c: any) => { cmap[c.color_name] = { hex: c.hex, swatch_image_url: c.swatch_image_url } })
                 setTemplateColors(cmap)
               }
+
+              // Per-zone mockup images (Z2b): normalized color → zone → url. Feeds the extra zones'
+              // garment image (sleeves/hat) when a customer switches to them. Normalized color key so a
+              // mockup saved under any spelling lines up with the selected Shopify color.
+              const tplMockups = (tpl?.product_template_mockups || []) as any[]
+              const zmap: Record<string, Record<string, string>> = {}
+              tplMockups.forEach((mk: any) => { (zmap[normalizeColorKey(mk.color_name)] ??= {})[mk.zone] = mk.image_url })
+              zoneMockupMapRef.current = zmap
 
               const areas = (tpl?.product_template_print_areas || []) as any[]
               if (tpl) {
