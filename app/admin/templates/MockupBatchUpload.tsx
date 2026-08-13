@@ -1,7 +1,7 @@
 'use client'
 import { useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { parseMockupFilename, ZONE_LABELS } from '../../lib/mockupFilename'
+import { parseMockupFilename, normalizeColorKey, ZONE_LABELS } from '../../lib/mockupFilename'
 
 // Print Zones Z0 — global mockup batch uploader. Drop every mockup at once, named
 // `stylenumber_color_position` (e.g. 2001_White_LeftSleeve.png); each file auto-routes to its template
@@ -49,6 +49,19 @@ export default function MockupBatchUpload({
     if (!files.length) return
     setBusy(true)
     setResults([])
+
+    // Canonicalize each filename's color to the product's REAL color name (from product_template_colors),
+    // so "ColumbiaBlue", "Columbia_Blue", and "columbia blue" all resolve to one canonical name → one row,
+    // one storage path (no spelling-driven duplicates). Falls back to the parsed color verbatim when the
+    // product has no saved colors yet (the grid still lines it up by normalized key).
+    const { data: colorRows } = await supabase.from('product_template_colors').select('template_id, color_name')
+    const canonicalByTemplate = new Map<string, Map<string, string>>()
+    ;(colorRows ?? []).forEach((r) => {
+      let m = canonicalByTemplate.get(r.template_id)
+      if (!m) { m = new Map(); canonicalByTemplate.set(r.template_id, m) }
+      m.set(normalizeColorKey(r.color_name), r.color_name)
+    })
+
     const out: Result[] = []
     for (let i = 0; i < files.length; i++) {
       setProgress({ done: i, total: files.length })
@@ -58,8 +71,9 @@ export default function MockupBatchUpload({
       const tmpl = byStyle.get(parsed.style.trim().toLowerCase())
       if (!tmpl) { out.push({ name: file.name, ok: false, detail: `No product has style number “${parsed.style}”` }); continue }
       if (!parsed.zone) { out.push({ name: file.name, ok: false, detail: 'Unrecognized position (last part of the name)' }); continue }
+      const color = canonicalByTemplate.get(tmpl.id)?.get(normalizeColorKey(parsed.color)) ?? parsed.color
       const ext = (file.name.match(/\.([a-z0-9]+)$/i)?.[1] || 'png').toLowerCase()
-      const path = `mockups/${tmpl.id}/${slug(parsed.color)}_${parsed.zone}.${ext}`
+      const path = `mockups/${tmpl.id}/${slug(color)}_${parsed.zone}.${ext}`
       const { error: upErr } = await supabase.storage.from('garment-swatches').upload(path, file, { upsert: true, contentType: file.type || 'image/png' })
       if (upErr) { out.push({ name: file.name, ok: false, detail: `Upload failed: ${upErr.message}` }); continue }
       const { data } = supabase.storage.from('garment-swatches').getPublicUrl(path)
@@ -67,7 +81,7 @@ export default function MockupBatchUpload({
       const { error: dbErr } = await supabase.from('product_template_mockups').upsert(
         {
           template_id: tmpl.id,
-          color_name: parsed.color,
+          color_name: color,
           zone: parsed.zone,
           image_url: `${data.publicUrl}?v=${Date.now()}`, // cache-bust an overwrite
           natural_w: dims.w || null,
@@ -76,7 +90,7 @@ export default function MockupBatchUpload({
         { onConflict: 'template_id,color_name,zone' },
       )
       if (dbErr) { out.push({ name: file.name, ok: false, detail: `Save failed: ${dbErr.message}` }); continue }
-      out.push({ name: file.name, ok: true, detail: `${tmpl.name} · ${parsed.color} · ${ZONE_LABELS[parsed.zone] ?? parsed.zone}` })
+      out.push({ name: file.name, ok: true, detail: `${tmpl.name} · ${color} · ${ZONE_LABELS[parsed.zone] ?? parsed.zone}` })
     }
     setProgress(null)
     setResults(out)
@@ -95,11 +109,20 @@ export default function MockupBatchUpload({
         <h3 className="text-sm font-bold text-black">Batch upload mockups</h3>
         <span className="text-[11px] text-gray-400 font-mono">{withStyle}/{templates.length} products have a style #</span>
       </div>
-      <p className="mt-1 text-xs text-gray-500 leading-snug">
-        Drop all your mockup files at once, named <code className="bg-gray-100 px-1 rounded">stylenumber_color_position</code> —
-        e.g. <code className="bg-gray-100 px-1 rounded">2001_White_LeftSleeve.png</code>. Each routes to its product, color, and zone automatically.
-        Positions: Front · Back · LeftSleeve · RightSleeve · HatBack.
-      </p>
+      <div className="mt-1 text-xs text-gray-500 leading-snug space-y-1">
+        <p>
+          Drop all your mockup files at once, named <code className="bg-gray-100 px-1 rounded">stylenumber_color_position</code> —
+          e.g. <code className="bg-gray-100 px-1 rounded">2001_White_LeftSleeve.png</code>. Each routes to its product, color, and zone automatically.
+        </p>
+        <p>
+          <span className="font-semibold text-gray-600">Positions:</span> Front · Back · LeftSleeve · RightSleeve · <span className="font-semibold">HatBack</span>.
+          For a cap, the back of the hat is <code className="bg-gray-100 px-1 rounded">HatBack</code> — not <code className="bg-gray-100 px-1 rounded">Back</code> (that&apos;s a shirt&apos;s back).
+        </p>
+        <p>
+          <span className="font-semibold text-gray-600">Multi-word colors:</span> either way works —
+          <code className="bg-gray-100 px-1 rounded">Columbia_Blue</code> or <code className="bg-gray-100 px-1 rounded">ColumbiaBlue</code>. Capitalization doesn&apos;t matter.
+        </p>
+      </div>
 
       <label
         onDragOver={(e) => e.preventDefault()}

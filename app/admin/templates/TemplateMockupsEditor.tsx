@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { ZONE_LABELS } from '../../lib/mockupFilename'
+import { ZONE_LABELS, normalizeColorKey } from '../../lib/mockupFilename'
 import { buildColorImageMap, getColorImages } from '../../lib/productImages'
 import type { Tables } from '@/types/database'
 
@@ -89,11 +89,18 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
       ])
       if (!active) return
 
+      // Key the grid by the product's REAL color name. Resolve each stored mockup's color_name to its
+      // Shopify color by normalized key, so a mockup saved "ColumbiaBlue" lines up under the "Columbia
+      // Blue" row (legacy/differently-spelled rows; the uploader now stores canonical going forward).
+      const shopifyByKey = new Map(shopifyColors.map(c => [normalizeColorKey(c), c]))
       const map: Record<string, Record<string, MockupRow>> = {}
-      ;(mk ?? []).forEach(r => { (map[r.color_name] ??= {})[r.zone] = r })
+      ;(mk ?? []).forEach(r => {
+        const displayColor = shopifyByKey.get(normalizeColorKey(r.color_name)) ?? r.color_name
+        ;(map[displayColor] ??= {})[r.zone] = r
+      })
 
-      // Rows = Shopify colors first (real order), then any mockup-only colors (e.g. a color pulled from
-      // Shopify since a mockup was uploaded) so orphaned mockups stay visible + deletable.
+      // Rows = Shopify colors first (real order), then any mockup-only colors (a color no longer in the
+      // Shopify list) so orphaned mockups stay visible + deletable.
       const extra = Object.keys(map).filter(c => !shopifyColors.includes(c))
       const colorNames = [...shopifyColors, ...extra]
 
@@ -119,8 +126,11 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
     const key = `${color}::${zone}`
     setBusy(key)
     const prev = mockups[color]?.[zone] ?? null
+    // Replace targets the existing row's own color_name (updates in place — no dup if that legacy row was
+    // stored under a different spelling); a brand-new cell stores the canonical display color.
+    const storeColor = prev?.color_name ?? color
     const ext = (file.name.match(/\.([a-z0-9]+)$/i)?.[1] || 'png').toLowerCase()
-    const path = `mockups/${templateId}/${slug(color)}_${zone}.${ext}`
+    const path = `mockups/${templateId}/${slug(storeColor)}_${zone}.${ext}`
     const { error: upErr } = await supabase.storage.from('garment-swatches').upload(path, file, { upsert: true, contentType: file.type || 'image/png' })
     if (upErr) { setBusy(null); onMessage(`Upload failed for ${color} · ${zoneLabel(zone)}: ${upErr.message}`, 'error'); return }
     const { data: pub } = supabase.storage.from('garment-swatches').getPublicUrl(path)
@@ -128,7 +138,7 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
     const { data, error: dbErr } = await supabase.from('product_template_mockups').upsert(
       {
         template_id: templateId,
-        color_name: color,
+        color_name: storeColor,
         zone,
         image_url: `${pub.publicUrl}?v=${file.lastModified}`, // cache-bust the overwrite (file's own mtime)
         natural_w: dims.w || null,

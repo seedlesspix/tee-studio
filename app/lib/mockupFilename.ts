@@ -22,26 +22,43 @@ export const ZONE_LABELS: Record<string, string> = {
   hat_back: 'Hat Back',
 }
 
-// A filename zone token → canonical zone string, or null if unrecognized.
+// A filename zone token → canonical zone string, or null if unrecognized. Case- and separator-
+// insensitive, so "HatBack", "hatback", "hat-back" all resolve the same.
 export function normalizeZone(token: string): string | null {
   const k = token.toLowerCase().replace(/[\s_-]+/g, '')
   return ZONE_ALIASES[k] ?? null
 }
 
+// Collapse a color to a comparison key: lowercase, alphanumerics only. So "Columbia Blue",
+// "ColumbiaBlue", "columbia_blue", "COLUMBIA BLUE" ALL become "columbiablue". Shared by the batch
+// uploader (to canonicalize a filename color to the product's real Shopify color) and the Mockups grid
+// (to line a stored mockup up with its color row regardless of how the filename was spelled).
+export const normalizeColorKey = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+
 export type ParsedMockupName = { style: string; color: string; zone: string | null }
 
 // `2001_White_LeftSleeve.png` → { style: '2001', color: 'White', zone: 'left_sleeve' }.
-// FIRST token = style number, LAST token = zone, EVERYTHING BETWEEN = color joined with spaces — so a
-// multi-word color survives (`2001_Light_Blue_LeftSleeve.png` → color "Light Blue"). Returns null when
-// there aren't at least 3 tokens; returns zone:null when the last token isn't a recognized zone (so the
-// caller can surface "unknown zone" rather than silently mis-assigning).
+// FIRST token = style number; the ZONE is the LAST token, OR the last TWO tokens when they combine into a
+// recognized zone (so `HatBack` AND `Hat_Back`, `LeftSleeve` AND `Left_Sleeve` all resolve); EVERYTHING
+// between style and zone = the color, joined with spaces — so a multi-word color survives written either
+// way (`Columbia_Blue` OR `ColumbiaBlue`). The 2-token zone only wins when it's actually a known zone, so
+// a multi-word color ending in an ordinary word (`..._Columbia_Blue_Back`) still parses as color
+// "Columbia Blue" + zone Back, NOT a bogus "Blue Back" zone. Returns null when there aren't at least 3
+// tokens; returns zone:null when the tail isn't a recognized zone (caller surfaces "unknown zone").
 export function parseMockupFilename(filename: string): ParsedMockupName | null {
   const base = filename.replace(/\.[a-z0-9]+$/i, '').trim() // strip extension
   const parts = base.split('_').map((s) => s.trim()).filter(Boolean)
   if (parts.length < 3) return null
   const style = parts[0]
-  const zone = normalizeZone(parts[parts.length - 1])
-  const color = parts.slice(1, -1).join(' ')
+  // Greedy from the end: prefer a 2-token zone (e.g. "Hat"+"Back" → hat_back) when it's recognized,
+  // else fall back to the single last token. colorEnd marks where the color slice stops.
+  let zone = normalizeZone(parts[parts.length - 1])
+  let colorEnd = parts.length - 1
+  if (parts.length >= 4) {
+    const two = normalizeZone(parts.slice(-2).join(''))
+    if (two) { zone = two; colorEnd = parts.length - 2 }
+  }
+  const color = parts.slice(1, colorEnd).join(' ')
   if (!style || !color) return null
   return { style, color, zone }
 }
