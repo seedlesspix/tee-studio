@@ -262,7 +262,11 @@ export default function DesignerCanvas({
   // the selected_color_hex capture, with COLOR_HEX_MAP as the fallback for
   // non-templated products.
   const [templateColors, setTemplateColors] = useState<Record<string, { hex: string; swatch_image_url: string | null }>>({})
-  const [shirtView, setShirtView] = useState<'front' | 'back'>('front')
+  // Print Zones Z2: the active print zone. Retyped from 'front'|'back' to a zone string so the same state
+  // can hold sleeves / hat_back. All existing `=== 'front'` / `=== 'back'` comparisons stay valid; new
+  // zones simply add more possible values. Front/back remain the only reachable values until the zone
+  // selector (Z2b) + capture (Z3) land.
+  const [shirtView, setShirtView] = useState<string>('front')
   const [hasBackImages, setHasBackImages] = useState(false)
   const [printArea, setPrintArea] = useState<{xPct:number,yPct:number,widthPct:number,heightPct:number} | null>(null)
   const [activeTab, setActiveTab] = useState<'text' | 'upload' | 'clipart' | 'style' | 'names' | 'layers'>('text')
@@ -820,7 +824,7 @@ export default function DesignerCanvas({
     // pick lands on every placeholder, on this side or the other.
     if ((active as any)[NN_ROLE_PROP]) {
       (active as any).set({ fontFamily: selectedFont })
-      ;[...(canvas.getObjects() as any[]), ...frontObjectsRef.current, ...backObjectsRef.current]
+      ;[...(canvas.getObjects() as any[]), ...allZoneObjs()]
         .forEach((o: any) => { if (o && o[NN_ROLE_PROP]) o.set({ fill: textColor }) })
       canvas.renderAll()
       return
@@ -929,6 +933,34 @@ export default function DesignerCanvas({
   const selectingFromLayersRef = useRef(false)
   const frontObjectsRef = useRef<any[]>([])
   const backObjectsRef = useRef<any[]>([])
+  // Print Zones Z2 — zone-object accessor layer. Front/back keep their dedicated refs above (proven,
+  // byte-identical behavior); any NEW zone (left_sleeve/right_sleeve/hat_back) stores its off-canvas
+  // objects in this map. The accessors let generic code paths (view-switch, both-sides merges, export,
+  // snapshot, pricing) treat every zone uniformly without desyncing front/back — reads delegate to the
+  // SAME underlying refs, so mixing direct `frontObjectsRef.current` access and `zoneObjs('front')` is
+  // always consistent. Reads are non-mutating (safe to call during render).
+  const extraZoneObjectsRef = useRef<Record<string, any[]>>({})
+  // Per-zone garment image + print-area box for the NEW zones (front/back still come from
+  // getColorImages() / printAreaDataRef). Populated in Z2b from product_template_mockups +
+  // product_template_print_areas; empty until then, so extra zones simply have no image/box yet.
+  const extraZoneImageRef = useRef<Record<string, string>>({})
+  const extraZonePrintAreaRef = useRef<Record<string, PrintAreaPct | null>>({})
+  const zoneObjs = (zone: string): any[] =>
+    zone === 'front' ? frontObjectsRef.current
+    : zone === 'back' ? backObjectsRef.current
+    : (extraZoneObjectsRef.current[zone] ?? [])
+  const setZoneObjs = (zone: string, objs: any[]) => {
+    if (zone === 'front') frontObjectsRef.current = objs
+    else if (zone === 'back') backObjectsRef.current = objs
+    else extraZoneObjectsRef.current[zone] = objs
+  }
+  // Every OFF-canvas zone's objects (front + back + any extra zones). Replaces the hardcoded
+  // `[...frontObjectsRef.current, ...backObjectsRef.current]` merges; identical when only front/back exist.
+  const allZoneObjs = (): any[] => {
+    const out = [...frontObjectsRef.current, ...backObjectsRef.current]
+    for (const k of Object.keys(extraZoneObjectsRef.current)) out.push(...extraZoneObjectsRef.current[k])
+    return out
+  }
   // D2 port: the back side re-fits its GEOMETRY into backObjectsRef up front, but the DOM-coupled
   // follow-ups (text re-wrap, curved re-bake, N&N re-stack) need the back print-area overlay mounted,
   // which only happens on the first flip to Back. This holds the back re-fit scale until then; a flip
@@ -1290,7 +1322,7 @@ export default function DesignerCanvas({
       fitAndConstrain(o)
     }
     const applyConversion = () => {
-      ;[...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current].forEach(restyle)
+      ;[...canvas.getObjects(), ...allZoneObjs()].forEach(restyle)
       canvas.renderAll()
       pendingEmbConvertRef.current = false
       markDirty()
@@ -1370,7 +1402,7 @@ export default function DesignerCanvas({
       // view-change checks inside recurveInvalidFonts close the cross-side half (a flip during a bake).
       isRestoringRef.current = true
       try {
-        ;[...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current].forEach(reconcile)
+        ;[...canvas.getObjects(), ...allZoneObjs()].forEach(reconcile)
         await recurveInvalidFonts()
         canvas.renderAll()
         pendingPrintReconcileRef.current = false
@@ -1416,7 +1448,7 @@ export default function DesignerCanvas({
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const seen = new Set<any>()
-    for (const o of [...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current]) {
+    for (const o of [...canvas.getObjects(), ...allZoneObjs()]) {
       if (!o || seen.has(o)) continue
       seen.add(o)
       if (!isArt(o)) continue
@@ -2688,7 +2720,7 @@ export default function DesignerCanvas({
     // Font + color DEFAULT-MATCH an existing field (jerseys want one look); SIZE + POSITION are
     // canonical/locked — applyStackLayout arranges the whole stack right after this add. Sibling may
     // be on the other side, so look across both refs.
-    const sibling = [...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current]
+    const sibling = [...canvas.getObjects(), ...allZoneObjs()]
       .find((o: any) => o && o[NN_ROLE_PROP] && o[NN_ROLE_PROP] !== role)
     const font = sibling?.fontFamily ?? selectedFont
     const fill = sibling?.fill ?? textColor
@@ -2789,23 +2821,23 @@ export default function DesignerCanvas({
   // Front/Back toggle, shared by the two stage buttons AND the N&N auto-show-back effect. Saves the
   // current side's objects into its ref, loads the target side's objects, and swaps the shirt image +
   // print area. Exits any live preview first so a substitution can't be swapped into the other side.
-  const switchView = (target: 'front' | 'back') => {
+  const switchView = (target: string) => {
     if (shirtView === target) return
     exitNnPreview()
     const canvas = fabricCanvasRef.current
     if (canvas) {
-      if (shirtView === 'front') frontObjectsRef.current = canvas.getObjects().map((o: any) => o)
-      else backObjectsRef.current = canvas.getObjects().map((o: any) => o)
+      setZoneObjs(shirtView, canvas.getObjects().map((o: any) => o)) // save the live zone into its slot
       canvas.clear()
-      const targetObjs = target === 'front' ? frontObjectsRef.current : backObjectsRef.current
-      targetObjs.forEach((o: any) => canvas.add(o))
+      zoneObjs(target).forEach((o: any) => canvas.add(o))            // load the target zone
       canvas.renderAll()
     }
     setShirtView(target)
     const imgs = getColorImages(selectedColor, colorImageMap)
-    const src = (target === 'front' ? imgs?.front : imgs?.back) || firstImageUrlRef.current
+    const src = (target === 'front' ? imgs?.front : target === 'back' ? imgs?.back : extraZoneImageRef.current[target]) || firstImageUrlRef.current
     if (src && shirtImgRef.current) shirtImgRef.current.src = src
-    const pa = target === 'front' ? printAreaDataRef.current?.front : printAreaDataRef.current?.back
+    const pa = target === 'front' ? printAreaDataRef.current?.front
+      : target === 'back' ? printAreaDataRef.current?.back
+      : extraZonePrintAreaRef.current[target]
     if (pa) { setPrintArea(pa); window.dispatchEvent(new Event('printAreaChanged')) }
   }
 
@@ -2876,7 +2908,7 @@ export default function DesignerCanvas({
   useEffect(() => {
     const c = fabricCanvasRef.current
     if (!c) return
-    const all = [...(c.getObjects() as any[]), ...frontObjectsRef.current, ...backObjectsRef.current]
+    const all = [...(c.getObjects() as any[]), ...allZoneObjs()]
     setNnFields({
       name: all.some(o => o[NN_ROLE_PROP] === 'name'),
       number: all.some(o => o[NN_ROLE_PROP] === 'number'),
@@ -2916,8 +2948,8 @@ export default function DesignerCanvas({
     userToggledMethodRef.current = true // an in-flight product load must not clobber this choice
     const canvas = fabricCanvasRef.current
     const all = canvas
-      ? [...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current]
-      : [...frontObjectsRef.current, ...backObjectsRef.current]
+      ? [...canvas.getObjects(), ...allZoneObjs()]
+      : allZoneObjs()
 
     const isUpload = (o: any) => !!o?._uploadSrc
     const isClipart = (o: any) => typeof o?._isSvg === 'boolean' && !o?._uploadSrc // library art (not an upload)
@@ -3930,7 +3962,7 @@ export default function DesignerCanvas({
       // that broke the image-filename parser. An explicit stamp is exact.
       // Deleting an image removes its object, so it drops out for free.
       const usedSrcs = new Set<string>()
-      ;[...frontObjectsRef.current, ...backObjectsRef.current].forEach((o: any) => {
+      ;allZoneObjs().forEach((o: any) => {
         if (o?._uploadSrc) usedSrcs.add(o._uploadSrc)
       })
       const seenUrls = new Set<string>()
@@ -3944,7 +3976,7 @@ export default function DesignerCanvas({
       // sides, dedup by decal number so the same decal on front + back counts once for sell-through.
       // Deleting a decal removes its object, so it drops out for free.
       const decalMap = new Map<number, { number: number; name: string }>()
-      ;[...frontObjectsRef.current, ...backObjectsRef.current].forEach((o: any) => {
+      ;allZoneObjs().forEach((o: any) => {
         if (o?._decalNumber != null && !decalMap.has(o._decalNumber)) {
           decalMap.set(o._decalNumber, { number: o._decalNumber, name: o._decalName || '' })
         }
@@ -3984,7 +4016,7 @@ export default function DesignerCanvas({
       // roster WITHOUT adding a Name/Number/Title field must NOT turn this into an N&N order (bug #1).
       // Both refs hold the true per-side content (synced above), so a _nnRole stamp on either side =
       // applied — same walk-the-refs technique as the _uploadSrc / _decalNumber capture above.
-      const nnPlaced = [...frontObjectsRef.current, ...backObjectsRef.current].some((o: any) => o?.[NN_ROLE_PROP])
+      const nnPlaced = allZoneObjs().some((o: any) => o?.[NN_ROLE_PROP])
       const nnEntries = nnPlaced ? roster.filter(entryHasContent) : []
       const nnActive = nnEntries.length > 0
       const effQuantities = nnActive ? rosterSizeQuantities(nnEntries) : quantities
@@ -4524,7 +4556,7 @@ export default function DesignerCanvas({
     // no names — mirrors the "only require what's there" nuance of the blank-SIZE blocker), and name
     // exactly what's missing. Blocks Next Step → the cart. Wording via the language editor.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const nnObjs = [...canvas.getObjects(), ...frontObjectsRef.current, ...backObjectsRef.current]
+    const nnObjs = [...canvas.getObjects(), ...allZoneObjs()]
       .filter((o: any) => o && o[NN_ROLE_PROP])
     if (nnObjs.length) {
       const rolesPresent = Array.from(new Set(nnObjs.map((o: any) => o[NN_ROLE_PROP] as NnRole)))
