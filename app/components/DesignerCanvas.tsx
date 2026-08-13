@@ -1269,12 +1269,26 @@ export default function DesignerCanvas({
     const frontArea = pickSide('front')
     const backArea = pickSide('back')
     const pa = { front: toPct(frontArea), back: toPct(backArea) }
-    if (pa.front || pa.back) {
+
+    // Print Zones Z2b: resolve the NEW zones too (sleeves, hat_back) — the PRIMARY (lowest sort_order)
+    // area of each non-front/back side — into the extra-zone map. Front/back keep pa + their named refs.
+    // A SECONDARY front area (e.g. "Chest", a higher sort_order front row) is deliberately NOT a zone —
+    // it's a reference guide; pickSide already keeps the lowest-sort_order front as the front design box.
+    const extraSides = Array.from(new Set(forMethod.map(a => a.side))).filter(s => s !== 'front' && s !== 'back')
+    const extraPct: Record<string, PrintAreaPct | null> = {}
+    for (const side of extraSides) extraPct[side] = toPct(pickSide(side))
+    extraZonePrintAreaRef.current = extraPct
+
+    if (pa.front || pa.back || extraSides.some(s => extraPct[s])) {
       printAreaDataRef.current = pa
-      // Side-aware: apply the box for whichever side is showing. Matters when this runs LATE (template
-      // load resolves after a restore that already landed on Back) — front-preferring would leave the
-      // Back view showing the Front box until a manual flip. Ref read, so no extra effect re-runs.
-      setPrintArea(shirtViewRef.current === 'back' ? (pa.back || pa.front) : (pa.front || pa.back))
+      // Zone-aware: apply the box for whichever zone is showing. Matters when this runs LATE (template
+      // load resolves after a restore that already landed off-front) — ref read, so no extra effect re-runs.
+      const cur = shirtViewRef.current
+      setPrintArea(
+        cur === 'back' ? (pa.back || pa.front)
+        : cur !== 'front' ? (extraPct[cur] || pa.front || pa.back)
+        : (pa.front || pa.back),
+      )
       templateIdRef.current = tpl.id
       printAreaFrontIdRef.current = frontArea?.id ?? null
       printAreaBackIdRef.current = backArea?.id ?? null
