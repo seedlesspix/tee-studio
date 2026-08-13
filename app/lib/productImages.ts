@@ -14,7 +14,12 @@ const keyFor = (colorName: string) => colorName.toLowerCase().replace(/\s/g, '')
 export function buildColorImageMap(
   images: { url: string }[],
   colorNames: string[],
+  // crossFill (default true): when a color has only one side, use it for the other too — right for the
+  // designer (never a blank canvas). Pass false when you need the RAW sides (e.g. mockup auto-import, which
+  // should import a real front as front and a real back as back, never substitute one for the other).
+  opts: { crossFill?: boolean } = {},
 ): ColorImageMap {
+  const { crossFill = true } = opts
   const map: ColorImageMap = {}
   const byLongest = [...colorNames].sort((a, b) => normAlnum(b).length - normAlnum(a).length)
   images.forEach(({ url }) => {
@@ -31,10 +36,12 @@ export function buildColorImageMap(
     if (isBack) map[key].back = url
   })
   // Within a color, use whichever side we have if the other is missing.
-  Object.keys(map).forEach(key => {
-    if (!map[key].front && map[key].back) map[key].front = map[key].back
-    if (!map[key].back && map[key].front) map[key].back = map[key].front
-  })
+  if (crossFill) {
+    Object.keys(map).forEach(key => {
+      if (!map[key].front && map[key].back) map[key].front = map[key].back
+      if (!map[key].back && map[key].front) map[key].back = map[key].front
+    })
+  }
   return map
 }
 

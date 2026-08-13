@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { ZONE_LABELS } from '../../lib/mockupFilename'
+import { buildColorImageMap, getColorImages } from '../../lib/productImages'
 import type { Tables } from '@/types/database'
 
 // Print Zones Z1.1 — per-template Mockups grid. Shows what exists per color × zone (the mockups the
@@ -41,14 +42,23 @@ const storagePathFromUrl = (url: string): string | null => {
   return i < 0 ? null : url.slice(i + marker.length).split('?')[0]
 }
 
+const naturalSizeFromSrc = (src: string) =>
+  new Promise<{ w: number; h: number }>((resolve) => {
+    const img = new Image()
+    img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight })
+    img.onerror = () => resolve({ w: 0, h: 0 })
+    img.src = src
+  })
+
 const naturalSize = (file: File) =>
   new Promise<{ w: number; h: number }>((resolve) => {
     const url = URL.createObjectURL(file)
-    const img = new Image()
-    img.onload = () => { resolve({ w: img.naturalWidth, h: img.naturalHeight }); URL.revokeObjectURL(url) }
-    img.onerror = () => { resolve({ w: 0, h: 0 }); URL.revokeObjectURL(url) }
-    img.src = url
+    naturalSizeFromSrc(url).then(d => { resolve(d); URL.revokeObjectURL(url) })
   })
+
+const extFromMime = (mime: string) => (mime.split('/')[1] || 'png').toLowerCase().replace('jpeg', 'jpg').replace('+xml', '')
+
+type ProductImagesResp = ProductResp & { images?: { edges: { node: { url: string } }[] } }
 
 export default function TemplateMockupsEditor({ templateId, shopifyProductId, onMessage }: Props) {
   const [colors, setColors] = useState<string[]>([])
@@ -58,6 +68,7 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
   const [loading, setLoading] = useState(true)
   const [note, setNote] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null) // `${color}::${zone}`
+  const [importing, setImporting] = useState<{ done: number; total: number } | null>(null)
 
   useEffect(() => {
     let active = true
@@ -157,6 +168,83 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
     onMessage(`Deleted ${color} · ${zoneLabel(zone)}.`)
   }
 
+  // Auto-import the product's Shopify Front/Back photos into managed mockups (single source of truth, per
+  // the Print-Zones architecture). Re-hosts the actual Shopify image into the mockups bucket via the
+  // /api/preview proxy (server-side fetch → base64), so the mockup no longer depends on Shopify. FILLS
+  // GAPS ONLY — never clobbers a mockup Denise uploaded/replaced by hand. Only front/back (the only zones
+  // Shopify has photos for). Same front/back filename matcher the designer uses, minus cross-fill so a
+  // real front lands as front and a real back as back.
+  const importFromShopify = async () => {
+    if (importing) return
+    const numericId = shopifyProductId.split('/').pop() || ''
+    setImporting({ done: 0, total: 0 })
+    let p: ProductImagesResp | null = null
+    try {
+      const res = await fetch(`/api/product?id=${numericId}`)
+      if (res.ok) p = await res.json()
+    } catch { /* handled below */ }
+    if (!p) { setImporting(null); onMessage('Could not load the Shopify product to import from.', 'error'); return }
+
+    const shopifyColors = p.options?.find(o => o.name === 'Color')?.values ?? []
+    const imgs = (p.images?.edges ?? []).map(e => ({ url: e.node.url }))
+    const rawMap = buildColorImageMap(imgs, shopifyColors, { crossFill: false })
+
+    // Gaps to fill: (color, front|back) that has a Shopify image and no managed mockup yet.
+    const jobs: { color: string; zone: 'front' | 'back'; url: string }[] = []
+    for (const color of shopifyColors) {
+      const fb = getColorImages(color, rawMap)
+      if (!fb) continue
+      ;(['front', 'back'] as const).forEach(zone => {
+        if (fb[zone] && !mockups[color]?.[zone]) jobs.push({ color, zone, url: fb[zone] })
+      })
+    }
+    if (!jobs.length) {
+      setImporting(null)
+      onMessage('Nothing to import — Front/Back are already covered (or no matching Shopify photos).')
+      return
+    }
+
+    let ok = 0
+    for (let i = 0; i < jobs.length; i++) {
+      setImporting({ done: i, total: jobs.length })
+      const { color, zone, url } = jobs[i]
+      try {
+        const proxied = await fetch(`/api/preview?shirt=${encodeURIComponent(url)}`)
+        if (!proxied.ok) continue
+        const { shirt } = await proxied.json() as { shirt?: string }
+        if (!shirt) continue
+        const blob = await (await fetch(shirt)).blob()
+        const mime = shirt.match(/^data:([^;]+)/)?.[1] || 'image/png'
+        const ext = extFromMime(mime) || 'png'
+        const dims = await naturalSizeFromSrc(shirt)
+        const path = `mockups/${templateId}/${slug(color)}_${zone}.${ext}`
+        const { error: upErr } = await supabase.storage.from('garment-swatches').upload(path, blob, { upsert: true, contentType: mime })
+        if (upErr) continue
+        const { data: pub } = supabase.storage.from('garment-swatches').getPublicUrl(path)
+        const { data, error } = await supabase.from('product_template_mockups').upsert(
+          {
+            template_id: templateId,
+            color_name: color,
+            zone,
+            image_url: `${pub.publicUrl}?v=${blob.size}`, // deterministic cache-bust (bytes differ → url differs)
+            natural_w: dims.w || null,
+            natural_h: dims.h || null,
+          },
+          { onConflict: 'template_id,color_name,zone' },
+        ).select().single()
+        if (error || !data) continue
+        setMockups(m => ({ ...m, [color]: { ...(m[color] ?? {}), [zone]: data } }))
+        ok++
+      } catch { /* skip this one, keep going */ }
+    }
+    setImporting(null)
+    onMessage(
+      ok === jobs.length ? `Imported ${ok} Front/Back mockup${ok === 1 ? '' : 's'} from Shopify.`
+        : `Imported ${ok} of ${jobs.length} — some Shopify photos couldn’t be fetched.`,
+      ok === jobs.length ? 'success' : 'error',
+    )
+  }
+
   const haveCount = Object.values(mockups).reduce((n, byZone) => n + Object.keys(byZone).length, 0)
   // Missing combos that MATTER (a zone with no Shopify fallback) — the headline number for gaps.
   const missingReal = colors.reduce(
@@ -165,11 +253,20 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-5 mt-6">
-      <div className="flex items-baseline justify-between mb-1 gap-3 flex-wrap">
+      <div className="flex items-center justify-between mb-1 gap-3 flex-wrap">
         <h2 className="text-sm font-mono uppercase tracking-widest text-[#dd3333]">Mockups</h2>
-        <span className="text-[11px] font-mono text-gray-400">
-          {haveCount} uploaded{missingReal > 0 && <span className="text-[#dd3333]"> · {missingReal} missing</span>}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-[11px] font-mono text-gray-400">
+            {haveCount} uploaded{missingReal > 0 && <span className="text-[#dd3333]"> · {missingReal} missing</span>}
+          </span>
+          <button onClick={importFromShopify} disabled={!!importing || loading}
+            title="Pull this product’s Shopify Front &amp; Back photos in as managed mockups. Fills empty Front/Back only — your uploads are kept."
+            className={`px-3 py-1.5 rounded text-xs font-mono border transition-all whitespace-nowrap ${
+              importing ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-wait' : 'bg-white text-gray-800 border-gray-300 hover:border-[#dd3333]'
+            }`}>
+            {importing ? (importing.total ? `Importing ${importing.done + 1}/${importing.total}…` : 'Importing…') : 'Import Front/Back from Shopify'}
+          </button>
+        </div>
       </div>
       <p className="text-xs text-gray-500 font-mono mb-4">
         What exists per color × zone. Click any tile to upload or replace; ✕ deletes.
