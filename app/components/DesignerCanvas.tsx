@@ -325,7 +325,10 @@ export default function DesignerCanvas({
   const userToggledMethodRef = useRef(false)
   const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right' | 'justify'>('center')
   const [selectedSvgColor, setSelectedSvgColor] = useState<string>('#000000')
-  const [printPricing, setPrintPricing] = useState<Record<number, number>>({1: 12, 2: 20})
+  // Print Zones Z3: per-zone print surcharge keyed by zone (front/back/left_sleeve/right_sleeve/hat_back).
+  // designer_pricing now carries a `zone` on every active row (front/back backfilled), so one map covers
+  // all zones. Charge = sum of this map over the zones that actually have design content.
+  const [zonePricing, setZonePricing] = useState<Record<string, number>>({ front: 12, back: 12 })
   const [dbFonts, setDbFonts] = useState<{ label: string; value: string; category?: string | null }[]>([])
   const [dbColors, setDbColors] = useState<{ label: string; hex: string }[]>([])
   // The method dbFonts/dbColors were loaded FOR. Both methods have non-empty sets, so "is the embroidery
@@ -642,14 +645,14 @@ export default function DesignerCanvas({
       import('../lib/supabase').then(({ supabase }) => {
         supabase
           .from('designer_pricing')
-          .select('sides, price_add')
+          .select('zone, price_add')
           .eq('print_method_key', printMethod)
           .eq('is_active', true)
           .then(({ data }) => {
             if (data) {
-              const map: Record<number, number> = {}
-              data.forEach((row: any) => { map[row.sides] = parseFloat(row.price_add) })
-              setPrintPricing(map)
+              const map: Record<string, number> = {}
+              data.forEach((row: any) => { if (row.zone) map[row.zone] = parseFloat(row.price_add) })
+              setZonePricing(map)
             }
           })
       })
@@ -4271,12 +4274,12 @@ export default function DesignerCanvas({
   // view switch. So for the current view trust the live canvas (falling back to
   // its ref), and for the other view read its ref.
   const liveCount = fabricCanvasRef.current?.getObjects()?.length || 0
-  const frontHasContent = shirtView === 'front'
-    ? (liveCount > 0 || frontObjectsRef.current.length > 0)
-    : frontObjectsRef.current.length > 0
-  const backHasContent = shirtView === 'back'
-    ? (liveCount > 0 || backObjectsRef.current.length > 0)
-    : backObjectsRef.current.length > 0
+  // Per-zone content check: the ACTIVE zone's objects live on the canvas (fall back to its ref); every
+  // other zone reads its ref/slot. Generalizes the old front/back pair to any zone.
+  const zoneHasContent = (zone: string) =>
+    zone === shirtView ? (liveCount > 0 || zoneObjs(zone).length > 0) : zoneObjs(zone).length > 0
+  const frontHasContent = zoneHasContent('front')
+  const backHasContent = zoneHasContent('back')
   const sidesCount = (frontHasContent ? 1 : 0) + (backHasContent ? 1 : 0)
 
   // Blank-shirt empty state: on-garment CTAs when the CURRENT side has nothing on
@@ -4306,9 +4309,12 @@ export default function DesignerCanvas({
   // for each side that has content rather than looking up by the number of
   // sides (the old `printPricing[sidesCount]` charged a 2-sided design the
   // single Back-row price, e.g. $12 instead of $12 + $12 = $24).
-  const frontCharge = frontHasContent ? (printPricing[1] ?? 12) : 0
-  const backCharge = backHasContent ? (printPricing[2] ?? 12) : 0
-  const printCharge = frontCharge + backCharge
+  const zoneCharge = (zone: string) => zoneHasContent(zone) ? (zonePricing[zone] ?? 0) : 0
+  const frontCharge = frontHasContent ? (zonePricing['front'] ?? 12) : 0
+  const backCharge = backHasContent ? (zonePricing['back'] ?? 12) : 0
+  // Total print charge = every zone this product offers that has content (front/back today; + sleeves/hat
+  // once the selector is live). Gated zones never gain content, so this equals front+back until cutover.
+  const printCharge = zones.reduce((sum, z) => sum + zoneCharge(z), 0)
   const pricePerItem = unitPrice + printCharge
   const total = (totalQty * pricePerItem).toFixed(2)
 
@@ -4942,7 +4948,7 @@ export default function DesignerCanvas({
               className={`px-3 py-1 rounded-full text-[11px] font-mono transition-all ${
                 shirtView === z ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-400'
               }`}>
-              {zoneLabel(z)} <span className="opacity-60">+$12</span>
+              {zoneLabel(z)} <span className="opacity-60">+${zonePricing[z] ?? 12}</span>
             </button>
           ))}
         </div>
