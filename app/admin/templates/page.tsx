@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { normalizeShopifyProductId } from '../../lib/productImages'
 import { normalizeTiers, type VolumeTier } from '../../lib/volumeTiers'
@@ -49,6 +49,11 @@ export default function TemplatesAdmin() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [methods, setMethods] = useState<PrintMethod[]>([])
   const [areaCounts, setAreaCounts] = useState<Record<string, number>>({})
+  // Shopify availability per ACTIVE template — false = its product is unpublished/unavailable, so the
+  // designer would fail to load it (getProduct → null). Checked once per template via /api/product, the
+  // exact call the designer makes, so the badge mirrors the customer's reality.
+  const [availability, setAvailability] = useState<Record<string, boolean>>({})
+  const availChecked = useRef<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
 
@@ -109,6 +114,25 @@ export default function TemplatesAdmin() {
   // Mount fetch: state is only set inside the async .then (no synchronous
   // setState in the effect body).
   useEffect(() => { fetchData().then(() => setLoading(false)) }, [])
+
+  // Check each ACTIVE template's Shopify product availability (once per template) — non-blocking, so the
+  // list renders immediately and the "⚠ unavailable in Shopify" badge appears as each check resolves. Uses
+  // /api/product (the designer's own call): res.ok = loadable; 404/500 = unpublished/unavailable/broken.
+  useEffect(() => {
+    const toCheck = templates.filter(t => t.is_active && t.shopify_product_id && !availChecked.current.has(t.id))
+    if (!toCheck.length) return
+    toCheck.forEach(t => availChecked.current.add(t.id))
+    let cancelled = false
+    ;(async () => {
+      const results = await Promise.all(toCheck.map(async (t) => {
+        const numeric = (t.shopify_product_id || '').split('/').pop() || ''
+        try { const res = await fetch(`/api/product?id=${numeric}`); return [t.id, res.ok] as const }
+        catch { return [t.id, false] as const }
+      }))
+      if (!cancelled) setAvailability(prev => ({ ...prev, ...Object.fromEntries(results) }))
+    })()
+    return () => { cancelled = true }
+  }, [templates])
 
   // Method display name via the Language editor (so admin shows "Print", not the DB "Screen Print" — BETA
   // #15); falls back to the DB label / key for any unregistered method.
@@ -330,7 +354,16 @@ export default function TemplatesAdmin() {
                             className="px-1 text-xs text-gray-500 hover:text-[#dd3333] disabled:opacity-25 disabled:hover:text-gray-500">▼</button>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-black">{t.name}</td>
+                      <td className="px-4 py-3 text-black">
+                        {t.name}
+                        {t.is_active && availability[t.id] === false && (
+                          <span
+                            title="This template is Active but its Shopify product is unpublished or unavailable — a customer opening it would hit a broken designer (and cart-add would fail). Publish the product in Shopify, or turn this template Off."
+                            className="ml-2 align-middle text-[10px] font-bold px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-300 whitespace-nowrap">
+                            ⚠ unavailable in Shopify
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-gray-500 text-xs truncate max-w-[16rem]" title={t.shopify_product_id}>
                         {t.shopify_product_id}
                       </td>

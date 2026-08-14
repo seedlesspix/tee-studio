@@ -255,6 +255,9 @@ export default function DesignerCanvas({
   const [fabricCanvas, setFabricCanvas] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [product, setProduct] = useState<ShopifyProduct | null>(null)
+  // True when /api/product can't load this product (unpublished/unavailable/not found in Shopify) — the
+  // designer shows a graceful "unavailable" message instead of a blank, broken canvas.
+  const [productUnavailable, setProductUnavailable] = useState(false)
   const [selectedColor, setSelectedColor] = useState<string>('')
   const [selectedVariant, setSelectedVariant] = useState<ShopifyVariant | null>(null)
   const [shirtHex, setShirtHex] = useState('#1a1a1a')
@@ -1749,9 +1752,13 @@ export default function DesignerCanvas({
 
   useEffect(() => {
     if (!productId) return
+    setProductUnavailable(false)
     fetch(`/api/product?id=${productId}`)
       .then(res => res.json())
       .then(data => {
+        // Product unpublished/unavailable/not-found → /api/product returns { error } (or a network failure
+        // lands in .catch). Show the graceful "unavailable" screen instead of a blank, broken canvas.
+        if (!data || data.error) { setProductUnavailable(true); return }
         if (data && !data.error) {
           setProduct(data)
           const allImages = data.images?.edges?.map(
@@ -1930,7 +1937,7 @@ export default function DesignerCanvas({
           }
         }
       })
-      .catch(err => console.error('Failed to fetch product:', err))
+      .catch(err => { console.error('Failed to fetch product:', err); setProductUnavailable(true) })
   }, [productId])
 
   // D0 step 2: canvas CREATION + disposal now live in CanvasStage (it owns the
@@ -5113,6 +5120,18 @@ export default function DesignerCanvas({
   // Desktop keeps h-screen exactly (lg:h-screen/lg:overflow-hidden) — parity-safe.
   return (
     <div ref={shellRef} className="designer-mobile-shell flex flex-col lg:h-screen lg:overflow-hidden text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>
+
+      {/* Graceful fallback when the product can't be loaded (unpublished/unavailable in Shopify) — a clear
+          message instead of a blank, broken canvas. Covers the whole designer; the admin templates list
+          flags the same mismatch with an "⚠ unavailable in Shopify" badge so it's caught before a customer. */}
+      {productUnavailable && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/95 p-8 text-center">
+          <div className="max-w-md">
+            <p className="text-xl font-bold text-gray-900">{t('designer.unavailable_title', 'This product is currently unavailable')}</p>
+            <p className="mt-3 text-sm leading-relaxed text-gray-600">{t('designer.unavailable_body', 'Sorry — this item can’t be customized right now. It may be temporarily out of stock or no longer offered. Please check back soon, or pick another product.')}</p>
+          </div>
+        </div>
+      )}
 
       {/* Header — extracted to <ActionBar> (D0 restructure step 1a, move-not-
           rewrite). Phase 2: becomes the sealed "price + Save + Next" bottom bar

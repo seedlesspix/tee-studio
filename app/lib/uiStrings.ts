@@ -41,6 +41,8 @@ export const UI_STRINGS = {
 
   // ── Designer (customer) — a starter set of the most-visible labels/notes ─────
   'designer.embroidery_preview_note': { default: 'Preview — final stitching may vary.', group: 'Designer', desc: 'Honesty note shown in embroidery mode next to the design.' },
+  'designer.unavailable_title': { default: 'This product is currently unavailable', group: 'Designer', desc: 'Heading on the graceful fallback screen shown when a product can’t be loaded (unpublished/unavailable in Shopify) instead of a blank designer.' },
+  'designer.unavailable_body': { default: 'Sorry — this item can’t be customized right now. It may be temporarily out of stock or no longer offered. Please check back soon, or pick another product.', group: 'Designer', desc: 'Body text on the product-unavailable fallback screen in the designer.' },
 
   // ── Designer — Text ──
   'designer.text.your_text_label': { default: "Your Text", group: "Designer — Text", desc: "Label above the text-entry box in the designer's Text panel." },
