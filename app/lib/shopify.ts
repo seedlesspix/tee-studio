@@ -66,9 +66,16 @@ export async function getProduct(productId: string) {
 // Batched featured-image lookup for the product picker — ONE Storefront call for all products, so the
 // picker shows the real garment mockup (the product's main photo), not the little color swatches.
 // Returns a map of product GID → image URL. Missing/typed-wrong ids are simply absent from the map.
-export async function getFeaturedImages(gids: string[]): Promise<Record<string, string>> {
+// Batched picker data: for a set of product GIDs, return each one's featured image AND which GIDs actually
+// resolve to a live Product on the Storefront channel (= availability — a deleted/unpublished product
+// returns a null node, exactly like getProduct()). `available` is null when the whole call fails so the
+// caller can fail OPEN (show everything) instead of emptying its list on a transient Storefront hiccup;
+// a Set (possibly missing some ids) is authoritative — those ids are genuinely unavailable.
+export async function getFeaturedImages(
+  gids: string[]
+): Promise<{ images: Record<string, string>; available: Set<string> | null }> {
   const ids = gids.filter(Boolean)
-  if (ids.length === 0) return {}
+  if (ids.length === 0) return { images: {}, available: new Set() }
   const query = `
     query FeaturedImages($ids: [ID!]!) {
       nodes(ids: $ids) {
@@ -78,15 +85,16 @@ export async function getFeaturedImages(gids: string[]): Promise<Record<string, 
   `
   try {
     const { data, errors } = await shopifyClient.request(query, { variables: { ids } })
-    if (errors) { console.error('Shopify featured-images errors:', errors); return {} }
-    const map: Record<string, string> = {}
+    if (errors) { console.error('Shopify featured-images errors:', errors); return { images: {}, available: null } }
+    const images: Record<string, string> = {}
+    const available = new Set<string>()
     for (const n of ((data?.nodes ?? []) as Array<{ id?: string; featuredImage?: { url?: string } }>)) {
-      if (n?.id && n.featuredImage?.url) map[n.id] = n.featuredImage.url
+      if (n?.id) { available.add(n.id); if (n.featuredImage?.url) images[n.id] = n.featuredImage.url }
     }
-    return map
+    return { images, available }
   } catch (e) {
     console.error('Shopify featured-images request failed:', e)
-    return {}
+    return { images: {}, available: null }
   }
 }
 

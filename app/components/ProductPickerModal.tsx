@@ -30,12 +30,17 @@ export default function ProductPickerModal({
 }) {
   const [products, setProducts] = useState<TemplateProduct[]>([])
   const [loading, setLoading] = useState(true)
+  // Normalized GIDs that resolve to a live Shopify product (= same availability check the admin badge +
+  // designer use). null = not yet determined / call failed → don't filter (fail open). A deleted or
+  // unpublished product is excluded so a customer can't pick it and dead-end on the unavailable page.
+  const [available, setAvailable] = useState<Set<string> | null>(null)
   const t = useT()
 
   useEffect(() => {
     if (!open) return
     let alive = true
     setLoading(true)
+    setAvailable(null)
     supabase
       .from('product_templates')
       .select('id, name, shopify_product_id, category, product_template_colors(hex, sort_order)')
@@ -52,11 +57,13 @@ export default function ProductPickerModal({
         })
         setProducts(mapped)
         setLoading(false)
-        // Real garment photos: one batched Storefront call for the products' featured images (the color
-        // swatches looked like little chips, not products). Merge in when they arrive; hex square meanwhile.
-        getFeaturedImages(mapped.map(m => m.shopify_product_id)).then(imgByGid => {
+        // Real garment photos + availability: one batched Storefront call. Merge images in when they
+        // arrive (hex square meanwhile), and record which products actually resolve so unavailable ones
+        // (deleted/unpublished) drop out of the picker instead of dead-ending the customer.
+        getFeaturedImages(mapped.map(m => m.shopify_product_id)).then(({ images, available }) => {
           if (!alive) return
-          setProducts(prev => prev.map(p => ({ ...p, image: imgByGid[p.shopify_product_id] ?? p.image })))
+          setProducts(prev => prev.map(p => ({ ...p, image: images[p.shopify_product_id] ?? p.image })))
+          setAvailable(available ? new Set([...available].map(normalizeShopifyProductId).filter((g): g is string => g != null)) : null)
         })
       })
     return () => { alive = false }
@@ -74,7 +81,12 @@ export default function ProductPickerModal({
   // numeric productId while product_templates.shopify_product_id is a GID, so a raw !== never matched
   // and you could "port" onto the same product. normalizeShopifyProductId canonicalizes both to the GID.
   const exGid = excludeProductId ? normalizeShopifyProductId(excludeProductId) : null
-  const filtered = products.filter(p => !exGid || normalizeShopifyProductId(p.shopify_product_id) !== exGid)
+  const filtered = products.filter(p => {
+    const gid = normalizeShopifyProductId(p.shopify_product_id)
+    if (exGid && gid === exGid) return false                    // hide the design's origin garment
+    if (available && gid && !available.has(gid)) return false   // hide deleted/unpublished (fail open if null / unparseable id)
+    return true
+  })
   // BETA #24 — list the current garment's category first (advise), preserving the admin sort_order
   // within each group (stable sort). No preferred category → plain sort_order order.
   const prefer = preferCategory?.trim() || null
