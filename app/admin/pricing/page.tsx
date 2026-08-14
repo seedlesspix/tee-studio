@@ -3,17 +3,20 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useT } from '../../components/StringsProvider'
 import type { Tables } from '@/types/database'
+import { zoneLabel } from '../../lib/zones'
 
-// This admin manages ONLY the Front/Back rows (sides 1/2). The new sleeve/hat zone rows have sides=NULL
-// and no zone editor here yet (named follow-up before Print-Zones cutover), so they're filtered out at
-// load and this type asserts the non-null sides the screen relies on.
-type PricingRow = Omit<Tables<'designer_pricing'>, 'sides'> & { sides: number }
+// Manages EVERY designer_pricing row: Front/Back (sides 1/2) AND the Print-Zones sleeve/hat rows
+// (sides NULL, zone set). Row identity = sides for front/back, zone for the extras.
+type PricingRow = Tables<'designer_pricing'>
 type PrintMethod = Tables<'designer_print_methods'>
 
-// designer_pricing.sides is a SIDE IDENTITY, not a count: 1 = Front, 2 = Back.
-// Each row is an independent per-side surcharge (see CLAUDE.md "designer_pricing
-// operational rules"). The check constraint restricts sides to 1 or 2.
+// designer_pricing.sides is a SIDE IDENTITY, not a count: 1 = Front, 2 = Back (front/back rows only).
+// Sleeve/hat rows have sides NULL and are identified by `zone`. Each row is an independent per-zone
+// surcharge (see CLAUDE.md "designer_pricing operational rules").
 const SIDE_LABEL: Record<number, string> = { 1: 'Front', 2: 'Back' }
+// A row's human identity: the side name for front/back, the zone name for sleeves/hat.
+const rowIdentityLabel = (row: { sides: number | null; zone: string | null }) =>
+  row.sides != null ? (SIDE_LABEL[row.sides] ?? `Side ${row.sides}`) : zoneLabel(row.zone ?? '')
 
 type EditFields = { price_add: string; label: string; shopify_variant_id: string }
 type NewFields = { sides: string; price_add: string; label: string; shopify_variant_id: string }
@@ -64,10 +67,8 @@ export default function PricingAdmin() {
       supabase.from('designer_print_methods').select('*').order('sort_order'),
     ]).then(([p, m]) => {
       if (p.data) {
-        // Front/Back rows only (sides 1/2); sleeve/hat zone rows (sides NULL) aren't editable here yet.
-        const frontBack = p.data.filter(r => r.sides != null) as PricingRow[]
-        setPricing(frontBack)
-        seedEditValues(frontBack)
+        setPricing(p.data)
+        seedEditValues(p.data)
       }
       if (m.data) setMethods(m.data)
       setLoading(false)
@@ -116,7 +117,7 @@ export default function PricingAdmin() {
   }
 
   const deleteRow = async (row: PricingRow) => {
-    if (!confirm(`Delete the ${labelFor(row.print_method_key)} · ${SIDE_LABEL[row.sides] ?? row.sides} pricing row? This cannot be undone.`)) return
+    if (!confirm(`Delete the ${labelFor(row.print_method_key)} · ${rowIdentityLabel(row)} pricing row? This cannot be undone.`)) return
     const { error } = await supabase.from('designer_pricing').delete().eq('id', row.id)
     if (error) { showMessage('Error deleting: ' + error.message, 'error'); return }
     setPricing(prev => prev.filter(r => r.id !== row.id))
@@ -153,8 +154,8 @@ export default function PricingAdmin() {
     setCreating(false)
     if (error) { showMessage('Error: ' + error.message, 'error'); return }
     if (data) {
-      setPricing(prev => [...prev, data as PricingRow].sort(
-        (a, b) => a.print_method_key.localeCompare(b.print_method_key) || a.sides - b.sides
+      setPricing(prev => [...prev, data].sort(
+        (a, b) => a.print_method_key.localeCompare(b.print_method_key) || (a.sides ?? 99) - (b.sides ?? 99)
       ))
       setEditValues(prev => ({
         ...prev,
@@ -201,7 +202,7 @@ export default function PricingAdmin() {
           <h2 className="text-xs font-mono uppercase tracking-widest text-gray-600 mb-2">How it works</h2>
           <p className="text-sm text-black font-mono">
             Each row is a <span className="text-[#dd3333]">per-side</span> charge added to the blank price.
-            <span className="text-[#dd3333]"> Front</span> (side 1) and <span className="text-[#dd3333]">Back</span> (side 2) are charged independently.<br />
+            <span className="text-[#dd3333]"> Front</span> (side 1) and <span className="text-[#dd3333]">Back</span> (side 2) are charged independently; <span className="text-[#dd3333]">sleeves</span> and <span className="text-[#dd3333]">hat back</span> are their own zones.<br />
             Example: $22.00 blank + $12.00 Front + $12.00 Back = <span className="text-[#dd3333]">$46.00 per item</span> for a 2-sided design.
           </p>
           <p className="text-xs text-gray-600 font-mono mt-2">
@@ -229,9 +230,15 @@ export default function PricingAdmin() {
                   {grouped[method].map(row => (
                     <div key={row.id} className={`bg-white border rounded-lg p-4 ${row.is_active ? 'border-gray-200' : 'border-red-300 opacity-60'}`}>
                       <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-lg bg-gray-100 flex flex-col items-center justify-center shrink-0">
-                          <span className="text-xl font-black text-[#dd3333]">{row.sides}</span>
-                          <span className="text-[9px] text-gray-600 font-mono">{SIDE_LABEL[row.sides] ?? 'side'}</span>
+                        <div className="w-12 h-12 rounded-lg bg-gray-100 flex flex-col items-center justify-center shrink-0 text-center px-0.5">
+                          {row.sides != null ? (
+                            <>
+                              <span className="text-xl font-black text-[#dd3333]">{row.sides}</span>
+                              <span className="text-[9px] text-gray-600 font-mono">{SIDE_LABEL[row.sides] ?? 'side'}</span>
+                            </>
+                          ) : (
+                            <span className="text-[8px] font-black text-[#dd3333] font-mono leading-tight">{rowIdentityLabel(row)}</span>
+                          )}
                         </div>
                         <div className="flex-1 min-w-0">
                           <label className="text-[10px] text-gray-600 font-mono uppercase">Label</label>
