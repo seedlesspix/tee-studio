@@ -4975,7 +4975,7 @@ export default function DesignerCanvas({
   // a customer must never design a zone that wouldn't save. While gated, the classic Front/Back toggle
   // (below) renders unchanged; flip ZONES_ENABLED to true with Z3. Active zone uses a QUIET non-red fill
   // (locked red-vocab rule: red = action only). Sleeve buttons show the +$12 add-on (pricing wired in Z3).
-  const ZONES_ENABLED = true
+  const ZONES_ENABLED = false
   const mainZones = zones.filter(z => z === 'front' || z === 'back')
   const sleeveZones = zones.filter(isSleeveZone)
   const otherZones = zones.filter(z => z !== 'front' && z !== 'back' && !isSleeveZone(z)) // hat_back, future
