@@ -9,6 +9,7 @@ import Spinner from '@/app/components/Spinner'
 import { format } from '@/app/lib/uiStrings'
 import { supabase } from '@/app/lib/supabase'
 import { VOLUME_DISCOUNT, currentTier, nextTier, resolveTiers, type VolumeTier } from '@/app/lib/volumeTiers'
+import { orderZones, zoneLabel } from '@/app/lib/zones'
 
 type DesignOrder = Omit<Tables<'design_orders'>, 'quantities'> & {
   quantities: Record<string, number> | null
@@ -148,6 +149,14 @@ function OrderPage() {
     ?? (frontDesigned ? (bothSides ? printChargeTotal / 2 : printChargeTotal) : 0)
   const backCharge = design?.print_charge_back
     ?? (backDesigned ? (bothSides ? printChargeTotal / 2 : printChargeTotal) : 0)
+  // Print Zones: extra zones (sleeves/hat) captured on the order (front/back stay in the columns above).
+  // Each carries its own preview PNG + print_charge in the zones jsonb.
+  const zoneMap: Record<string, { canvas_png?: string | null; print_charge?: number | null }> =
+    (design?.zones && typeof design.zones === 'object' && !Array.isArray(design.zones))
+      ? (design.zones as Record<string, { canvas_png?: string | null; print_charge?: number | null }>)
+      : {}
+  const extraZones = orderZones(Object.keys(zoneMap)).filter(z => z !== 'front' && z !== 'back')
+  const hasAnyExtra = extraZones.some(z => !!zoneMap[z]?.canvas_png)
 
   // Phase 4 Day 6 (revised): one call renders the design as an ephemeral
   // Shopify product (per-size variants at the folded per-shirt price) and
@@ -275,7 +284,7 @@ function OrderPage() {
             // even if the customer left it blank — so the order makes it explicit what will
             // print (incl. "the back is blank"). Each PNG already has its own front/back shirt
             // image composited in (designer fix). (#4)
-            if (!frontDesigned && !backDesigned) {
+            if (!frontDesigned && !backDesigned && !hasAnyExtra) {
               return (
                 <div className="aspect-square flex items-center justify-center text-gray-800 font-mono border border-gray-200 rounded-xl">
                   {t('order.no_preview', 'No preview available')}
@@ -283,20 +292,22 @@ function OrderPage() {
               )
             }
             const sides = [
-              { label: 'FRONT', src: design?.canvas_png_front ?? null, blank: !frontDesigned },
-              (backDesigned || productHasBack) ? { label: 'BACK', src: design?.canvas_png_back ?? null, blank: !backDesigned } : null,
-            ].filter(Boolean) as { label: string; src: string | null; blank: boolean }[]
+              { key: 'front', display: t('order.side_front', 'FRONT'), src: design?.canvas_png_front ?? null, blank: !frontDesigned },
+              (backDesigned || productHasBack) ? { key: 'back', display: t('order.side_back', 'BACK'), src: design?.canvas_png_back ?? null, blank: !backDesigned } : null,
+              // Print Zones: a tile per extra zone that was actually designed (sleeves/hat).
+              ...extraZones.filter(z => !!zoneMap[z]?.canvas_png).map(z => ({ key: z, display: zoneLabel(z).toUpperCase(), src: zoneMap[z]?.canvas_png ?? null, blank: false })),
+            ].filter(Boolean) as { key: string; display: string; src: string | null; blank: boolean }[]
             return (
-              <div className={sides.length === 2 ? 'grid grid-cols-1 sm:grid-cols-2 gap-4' : 'max-w-sm mx-auto'}>
+              <div className={sides.length > 1 ? 'grid grid-cols-1 sm:grid-cols-2 gap-4' : 'max-w-sm mx-auto'}>
                 {sides.map(s => (
-                  <div key={s.label} className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
-                    <p className="text-xs font-mono text-gray-900 px-3 pt-3">{s.label === 'FRONT' ? t('order.side_front', 'FRONT') : t('order.side_back', 'BACK')}</p>
+                  <div key={s.key} className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
+                    <p className="text-xs font-mono text-gray-900 px-3 pt-3">{s.display}</p>
                     {s.blank ? (
                       <div className="flex aspect-square items-center justify-center px-4 text-center text-sm font-mono text-gray-500">
                         {t('order.side_blank', 'No design on this side (blank)')}
                       </div>
                     ) : (
-                      <img src={s.src!} alt={`Your design - ${s.label.toLowerCase()}`} className="w-full object-contain" />
+                      <img src={s.src!} alt={`Your design - ${s.display.toLowerCase()}`} className="w-full object-contain" />
                     )}
                   </div>
                 ))}
@@ -341,6 +352,16 @@ function OrderPage() {
                   <span className="text-gray-900">+${backCharge.toFixed(2)}</span>
                 </div>
               )}
+              {/* Print Zones: one line per extra zone (sleeves/hat) that carries a charge. */}
+              {extraZones.map(z => {
+                const c = Number(zoneMap[z]?.print_charge) || 0
+                return c > 0 ? (
+                  <div key={z} className="flex justify-between text-gray-900">
+                    <span>{format(t('order.zone_print', '{zone} Print'), { zone: zoneLabel(z) })}</span>
+                    <span className="text-gray-900">+${c.toFixed(2)}</span>
+                  </div>
+                ) : null
+              })}
               {nnActive && (
                 <div className="flex justify-between text-gray-600 text-xs italic">
                   <span>{t('order.nn_personalization', 'Personalization (names & numbers)')}</span>

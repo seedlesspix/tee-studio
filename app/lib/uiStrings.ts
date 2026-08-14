@@ -333,6 +333,7 @@ export const UI_STRINGS = {
   'order.pricing_label': { default: "Pricing", group: "Order page", desc: "Section header for the price breakdown." },
   'order.front_print': { default: "Front Print", group: "Order page", desc: "Line-item label for the front-side print charge in the price breakdown." },
   'order.back_print': { default: "Back Print", group: "Order page", desc: "Line-item label for the back-side print charge in the price breakdown." },
+  'order.zone_print': { default: "{zone} Print", group: "Order page", desc: "Line-item label for an extra print zone (sleeve/hat) charge. {zone} is the zone name, e.g. Left Sleeve." },
   'order.nn_personalization': { default: "Personalization (names & numbers)", group: "Order page", desc: "Price-breakdown label for names & numbers personalization." },
   'order.nn_included': { default: "included in print", group: "Order page", desc: "Note that personalization is already included in the print charge (no extra cost)." },
   'order.price_per_item': { default: "Price per item", group: "Order page", desc: "Label for the per-shirt price total in the price breakdown." },

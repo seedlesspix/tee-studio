@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { Tables } from '@/types/database'
 import { useT } from '../../components/StringsProvider'
+import { orderZones, zoneLabel } from '../../lib/zones'
 
 // The full Shopify address shape as captured verbatim by the webhook (both
 // billing_address and shipping_address). We surface ALL of it for the print
@@ -593,6 +594,22 @@ export default function OrdersAdmin() {
                             </div>
                           </div>
                         )}
+                        {/* Print Zones: extra-zone previews (sleeves/hat) from the zones jsonb. */}
+                        {(() => {
+                          const zm = (row.zones && typeof row.zones === 'object' && !Array.isArray(row.zones))
+                            ? (row.zones as Record<string, { canvas_png?: string | null }>) : {}
+                          return orderZones(Object.keys(zm)).filter(z => z !== 'front' && z !== 'back').map(z => {
+                            const png = zm[z]?.canvas_png
+                            return png ? (
+                              <div key={z}>
+                                <p className="text-xs font-mono text-gray-600 mb-2">{zoneLabel(z).toUpperCase()} PREVIEW</p>
+                                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                                  <img src={png} alt={zoneLabel(z)} className="w-full object-contain max-h-64" />
+                                </div>
+                              </div>
+                            ) : null
+                          })
+                        })()}
                       </div>
 
                       {/* Production bundle (Stage 3) — ONE ZIP with everything the print shop
