@@ -69,6 +69,9 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
   const [note, setNote] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null) // `${color}::${zone}`
   const [importing, setImporting] = useState<{ done: number; total: number } | null>(null)
+  // Mockup-only colors: rows whose color is no longer on the Shopify product (orphaned mockups). Badged
+  // "⚠ not in Shopify" so discontinued colors can't quietly linger — delete the cells to clean up.
+  const [staleColors, setStaleColors] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     let active = true
@@ -105,6 +108,9 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
       const colorNames = [...shopifyColors, ...extra]
 
       setColors(colorNames)
+      // Only flag stale when the Shopify fetch actually returned colors — an empty list means the fetch
+      // failed (or is mid-flight), and flagging every mockup as "not in Shopify" would be a false alarm.
+      setStaleColors(new Set(shopifyColors.length ? extra : []))
       setMockups(map)
       setAreaZones(Array.from(new Set((areas ?? []).map(a => a.side))))
       if (!colorNames.length) setNote('No colors found for this product yet (Shopify fetch returned none, and no mockups uploaded).')
@@ -304,8 +310,11 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
             <tbody>
               {colors.map(color => (
                 <tr key={color}>
-                  <td className="text-sm font-mono text-black align-middle pr-2 whitespace-nowrap max-w-[10rem] truncate" title={color}>
+                  <td className="text-sm font-mono text-black align-middle pr-2 whitespace-nowrap max-w-[12rem] truncate" title={staleColors.has(color) ? `${color} — no longer on the Shopify product; delete these mockups to clean up` : color}>
                     {color}
+                    {staleColors.has(color) && (
+                      <span className="ml-1.5 text-[10px] font-mono text-[#dd3333] align-middle">⚠ not in Shopify</span>
+                    )}
                   </td>
                   {zones.map(zone => {
                     const row = mockups[color]?.[zone]

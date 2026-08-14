@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { buildColorImageMap, getColorImages } from '../../lib/productImages'
+import { normalizeColorKey } from '../../lib/mockupFilename'
 import type { Tables } from '@/types/database'
 
 type ColorRow = Tables<'product_template_colors'>
@@ -48,6 +49,10 @@ export default function TemplateColorsEditor({ templateId, shopifyProductId, onM
   // Colors whose name matched no product mockup — the designer falls back to the
   // featured image for these, so flag them here (same spirit as "⚠ 0 areas").
   const [noImg, setNoImg] = useState<Set<string>>(new Set())
+  // Saved assignments whose color is no longer on the Shopify product (retired in Shopify, swatch row
+  // lingers). Flagged "⚠ not in Shopify" + given a Remove button so discontinued colors can't quietly
+  // linger — same "out of sync with Shopify" badge family as the unavailable-product badge.
+  const [staleColors, setStaleColors] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     let active = true
@@ -79,9 +84,15 @@ export default function TemplateColorsEditor({ templateId, shopifyProductId, onM
       const savedState: SavedState = {}
       ;(existing ?? []).forEach(r => { savedState[r.color_name] = { id: r.id, hex: r.hex, swatch_image_url: r.swatch_image_url } })
 
-      // Prefer the product's real Shopify colors; fall back to any already-saved
-      // names if the product fetch failed.
-      const colorNames = shopifyColors.length ? shopifyColors : Object.keys(existingMap)
+      // Prefer the product's real Shopify colors; fall back to any already-saved names if the product
+      // fetch failed. Any SAVED assignment whose color is no longer on the Shopify product is appended as
+      // a STALE row so it stays visible + removable instead of being silently dropped. Compared by
+      // normalized key so a spelling variant (ColumbiaBlue ≈ "Columbia Blue") isn't false-flagged.
+      const shopifyKeys = new Set(shopifyColors.map(normalizeColorKey))
+      const staleNames = shopifyColors.length
+        ? Object.keys(existingMap).filter(name => !shopifyKeys.has(normalizeColorKey(name)))
+        : []
+      const colorNames = shopifyColors.length ? [...shopifyColors, ...staleNames] : Object.keys(existingMap)
       const built: Row[] = colorNames.map(name => {
         const ex = existingMap[name]
         if (ex) return { color_name: name, id: ex.id, hex: ex.hex, swatch_image_url: ex.swatch_image_url, autofilled: false }
@@ -90,10 +101,11 @@ export default function TemplateColorsEditor({ templateId, shopifyProductId, onM
       })
       setRows(built)
       setSaved(savedState)
-      // Only flag when we actually resolved the product's images — a failed fetch
-      // would otherwise mark every color as unmatched.
+      setStaleColors(new Set(staleNames))
+      // Only flag when we actually resolved the product's images — a failed fetch would otherwise mark
+      // every color as unmatched. Stale rows are excluded so they carry only the "not in Shopify" badge.
       setNoImg(shopifyColors.length
-        ? new Set(colorNames.filter(name => !getColorImages(name, imgMap)))
+        ? new Set(colorNames.filter(name => !staleNames.includes(name) && !getColorImages(name, imgMap)))
         : new Set<string>())
       if (!colorNames.length) setNote('No colors found for this product (Shopify fetch returned none).')
       setLoading(false)
@@ -178,6 +190,22 @@ export default function TemplateColorsEditor({ templateId, shopifyProductId, onM
     onMessage('Image removed — click Save to keep the change.')
   }
 
+  // Remove a STALE color assignment (its color is gone from Shopify). Deletes the DB row + best-effort the
+  // swatch file. Only offered on stale rows — live colors are edited, never deleted.
+  const handleRemoveStale = async (r: Row) => {
+    if (!confirm(`Remove the "${r.color_name}" color assignment? It's no longer on the Shopify product, so this template assignment is orphaned. (Any per-color mockups for it are removed separately in the Mockups section.)`)) return
+    if (r.id) {
+      const { error } = await supabase.from('product_template_colors').delete().eq('id', r.id)
+      if (error) { onMessage(`Error removing "${r.color_name}": ${error.message}`, 'error'); return }
+      if (r.swatch_image_url) {
+        try { await supabase.storage.from('garment-swatches').remove([`${templateId}/${slug(r.color_name)}.png`]) } catch { /* best-effort */ }
+      }
+    }
+    setRows(prev => prev.filter(x => x.color_name !== r.color_name))
+    setStaleColors(prev => { const n = new Set(prev); n.delete(r.color_name); return n })
+    onMessage(`Removed "${r.color_name}".`)
+  }
+
   const dirtyCount = rows.filter(rowDirty).length
 
   return (
@@ -231,8 +259,16 @@ export default function TemplateColorsEditor({ templateId, shopifyProductId, onM
                   <span className="text-[10px] font-mono text-[#dd3333] whitespace-nowrap"
                     title="No product mockup filename matched this color — the designer shows the product's featured image instead. Check the image filenames in Shopify.">⚠ no image matched</span>
                 )}
+                {staleColors.has(r.color_name) && (
+                  <span className="text-[10px] font-mono text-[#dd3333] whitespace-nowrap"
+                    title="This color is no longer on the Shopify product, so the designer won't offer it — this swatch assignment is orphaned. Click Remove to clean it up, or re-add the color in Shopify.">⚠ not in Shopify</span>
+                )}
 
                 <div className="ml-auto flex items-center gap-2 shrink-0">
+                  {staleColors.has(r.color_name) && (
+                    <button onClick={() => handleRemoveStale(r)} title="Remove this orphaned color assignment"
+                      className="px-3 py-1.5 rounded text-xs font-mono bg-white text-red-600 border border-red-300 hover:bg-red-50 whitespace-nowrap">Remove</button>
+                  )}
                   {r.swatch_image_url ? (
                     <div className="flex items-center gap-1">
                       <img src={r.swatch_image_url} alt="" className="w-8 h-8 rounded border border-gray-200 object-cover" />
