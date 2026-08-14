@@ -21,7 +21,7 @@ type EditArea = {
   height_in: number
   preset_label: string | null
   sort_order: number
-  curve_degrees: number | null // hat_back auto-curve arc (signed °): −=frown, +=smile; null → designer default (−45)
+  curve_degrees: number | null // hat_back auto-curve arc (signed °): +=frown ∩, −=smile ∪; null → designer default (+45)
 }
 
 type ProductResp = { images?: { edges?: { node?: { url?: string } }[] } }

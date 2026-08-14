@@ -48,6 +48,8 @@ const domCanvas: CanvasFactory = (w, h) => {
 
 export function renderCurvedArc(rawText: string, p: CurveParams, makeCanvas: CanvasFactory = domCanvas): CurvedArcResult {
   const { curveAmount, fontSize: fSize, fontFamily: cFont, fill: cFill, bold: cBold, italic: cItalic, charSpacing = 0 } = p
+  // App convention (matches the customer Curve slider): curveAmount > 0 is 'curve-up' = a FROWN ∩ (what
+  // sits over a hat-back opening); < 0 is 'curve-down' = a smile ∪.
   const direction = curveAmount > 0 ? 'curve-up' : 'curve-down'
   const isDown = direction === 'curve-down'
   const fontStr = `${cItalic ? 'italic' : 'normal'} ${cBold ? 'bold' : 'normal'} ${fSize}px ${cFont}`

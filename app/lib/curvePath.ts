@@ -8,6 +8,11 @@
 // text length only changes how much of the path is used, auto-shrinking if it would overrun. The
 // curvature belongs to the hat, not the text.
 //
+// SIGN CONVENTION (app-wide, matches the customer Curve slider + the degrees fallback): a POSITIVE curve
+// is a FROWN ∩ (what sits over a cap opening); negative is a smile ∪. The path model itself carries NO
+// signed number — the drawn bulge direction IS the shape (bulge above the endpoints = frown ∩, below =
+// smile ∪) — but the "frown over the opening" intent is identical, so the two models never disagree.
+//
 // The path is a quadratic Bézier P0..C..P2 (C = control point). The admin draws 2 endpoints + a PEAK that
 // lies ON the curve (the visual bulge); bezierControlFromPeak() converts that to C. We sample the curve to
 // a polyline, walk it by arc length, center the run, auto-shrink to fit, and return each glyph's CENTER
