@@ -20,6 +20,7 @@ export type DesignState = {
   sidesDesigned?: number
   front?: unknown
   back?: unknown
+  zones?: Record<string, unknown> // Print Zones Z3: extra zones (sleeves/hat) only; front/back stay in front/back above
   uploadedFiles?: UploadedFile[]
   roster?: RosterEntry[] // Names & Numbers (Phase 1: auto-draft only; no DB column until Phase 2)
   // Frozen print-area geometry — the box this design was made against. Persisted so a saved design
@@ -36,7 +37,7 @@ export type DesignState = {
 
 // The columns rowToDesignState needs — keep in lockstep with it.
 export const DESIGN_STATE_COLUMNS =
-  'shopify_product_id, shopify_variant_id, product_title, selected_color, print_method, quantities, roster, uploaded_files, sides_designed, canvas_json_front, canvas_json_back, template_id, print_area_front_id, print_area_back_id, print_area_front, print_area_back'
+  'shopify_product_id, shopify_variant_id, product_title, selected_color, print_method, quantities, roster, uploaded_files, sides_designed, canvas_json_front, canvas_json_back, template_id, print_area_front_id, print_area_back_id, print_area_front, print_area_back, zones'
 
 export type DesignStateRow = {
   shopify_product_id: string | null
@@ -55,6 +56,7 @@ export type DesignStateRow = {
   print_area_back_id: string | null
   print_area_front: unknown
   print_area_back: unknown
+  zones: unknown
 }
 
 export function designStateToRow(state: DesignState) {
@@ -82,6 +84,8 @@ export function designStateToRow(state: DesignState) {
     sides_designed: state.sidesDesigned ?? null,
     canvas_json_front: state.front ? JSON.stringify(state.front) : null,
     canvas_json_back: state.back ? JSON.stringify(state.back) : null,
+    // Print Zones Z3: extra zones (sleeves/hat) as jsonb; front/back stay in the canvas_json_* columns.
+    zones: (state.zones ?? null) as never,
     ...box,
   }
 }
@@ -105,6 +109,7 @@ export function rowToDesignState(data: DesignStateRow): DesignState {
     printAreaBackId: data.print_area_back_id ?? undefined,
     printAreaFront: data.print_area_front ?? undefined,
     printAreaBack: data.print_area_back ?? undefined,
+    zones: (data.zones as Record<string, unknown> | null) ?? undefined,
   }
 }
 

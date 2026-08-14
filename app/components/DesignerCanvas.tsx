@@ -711,6 +711,7 @@ export default function DesignerCanvas({
             canvas_json_back: string | null
             print_area_front: unknown
             print_area_back: unknown
+            zones: unknown
             uploaded_files: unknown
             roster: unknown
             quantities: unknown
@@ -776,6 +777,18 @@ export default function DesignerCanvas({
               // overwrite it back to the default. (Port/refit path intentionally adopts the target
               // product's default instead.)
               if (data.print_method) { userToggledMethodRef.current = true; setPrintMethod(data.print_method) }
+            }
+            // Print Zones Z3: rehydrate extra zones (sleeves/hat) from the saved row's zones map into their
+            // slots. Edit (same product) loads them as-is; on a D2 port they pass through un-refit for now
+            // (front/back are what the port re-fits today — sleeve re-fit is a future D2 enhancement).
+            extraZoneObjectsRef.current = {}
+            const dataZones = (data.zones && typeof data.zones === 'object') ? data.zones as Record<string, any> : null
+            if (dataZones) {
+              for (const zone of Object.keys(dataZones)) {
+                if (zone === 'front' || zone === 'back') continue
+                const zObjs = dataZones[zone]?.canvas_json?.objects
+                setZoneObjs(zone, Array.isArray(zObjs) && zObjs.length ? (await util.enlivenObjects(zObjs)) as any[] : [])
+              }
             }
             if (Array.isArray(data.uploaded_files)) {
               uploadedFilesRef.current = data.uploaded_files as typeof uploadedFilesRef.current
@@ -953,6 +966,11 @@ export default function DesignerCanvas({
   // product_template_print_areas; empty until then, so extra zones simply have no image/box yet.
   const extraZoneImageRef = useRef<Record<string, string>>({})
   const extraZonePrintAreaRef = useRef<Record<string, PrintAreaPct | null>>({})
+  // The full print-area ROW + its id per extra zone — capture parity with printAreaFront/BackSnapRef/IdRef
+  // (the order save stores print_area + print_area_id per zone; cut-files / D2 read them). Populated in
+  // applyTemplateAreaForMethod alongside the % box.
+  const extraZonePrintAreaSnapRef = useRef<Record<string, any>>({})
+  const extraZonePrintAreaIdRef = useRef<Record<string, string | null>>({})
   // Per-color per-zone mockup images from product_template_mockups (Z0), keyed by normalized color →
   // zone → url. Populated at template load; a color change copies the current color's extra-zone images
   // into extraZoneImageRef so switchView can show a sleeve/hat its own mockup.
@@ -1288,8 +1306,17 @@ export default function DesignerCanvas({
     // it's a reference guide; pickSide already keeps the lowest-sort_order front as the front design box.
     const extraSides = Array.from(new Set(forMethod.map(a => a.side))).filter(s => s !== 'front' && s !== 'back')
     const extraPct: Record<string, PrintAreaPct | null> = {}
-    for (const side of extraSides) extraPct[side] = toPct(pickSide(side))
+    const extraSnap: Record<string, any> = {}
+    const extraId: Record<string, string | null> = {}
+    for (const side of extraSides) {
+      const area = pickSide(side)
+      extraPct[side] = toPct(area)
+      extraSnap[side] = area ?? null
+      extraId[side] = area?.id ?? null
+    }
     extraZonePrintAreaRef.current = extraPct
+    extraZonePrintAreaSnapRef.current = extraSnap
+    extraZonePrintAreaIdRef.current = extraId
 
     if (pa.front || pa.back || extraSides.some(s => extraPct[s])) {
       printAreaDataRef.current = pa
@@ -1526,6 +1553,17 @@ export default function DesignerCanvas({
       if (state.back?.objects?.length) backObjectsRef.current = (await util.enlivenObjects(state.back.objects)) as any[]
       else backObjectsRef.current = []
       frontObjectsRef.current = []
+      // Print Zones Z3: rehydrate extra zones (sleeves/hat) from the snapshot into their slots (reset any
+      // stale extra zones from a prior design first). Front/back are handled above.
+      extraZoneObjectsRef.current = {}
+      const stateZones = (state.zones && typeof state.zones === 'object') ? state.zones as Record<string, any> : null
+      if (stateZones) {
+        for (const zone of Object.keys(stateZones)) {
+          if (zone === 'front' || zone === 'back') continue
+          const zObjs = stateZones[zone]?.canvas_json?.objects
+          setZoneObjs(zone, Array.isArray(zObjs) && zObjs.length ? (await util.enlivenObjects(zObjs)) as any[] : [])
+        }
+      }
       canvas.discardActiveObject()
       canvas.renderAll()
       if (state.selectedColor) {
@@ -3947,8 +3985,9 @@ export default function DesignerCanvas({
       // a design created on the back view was saved into the front slot (and
       // the back slot left null) — a fulfillment data-integrity bug.
       const liveObjects = canvas.getObjects().map((o: any) => o)
-      if (shirtView === 'front') frontObjectsRef.current = liveObjects
-      else backObjectsRef.current = liveObjects
+      // Zone-safe: setZoneObjs('front'/'back') is the SAME assignment as the old literal, but an EXTRA
+      // active zone (a sleeve/hat) now lands in its OWN slot instead of corrupting the back ref.
+      setZoneObjs(shirtView, liveObjects)
 
       // Export one side from its ref: PNG + SVG + JSON, each written to that
       // side's slot. Empty side -> all nulls (no downstream line/preview).
@@ -3985,6 +4024,27 @@ export default function DesignerCanvas({
       const backShirt = sideImgs?.back || firstImageUrlRef.current || undefined
       const front = await exportSide(frontObjectsRef.current, 'front', frontShirt)
       const back = await exportSide(backObjectsRef.current, 'back', backShirt)
+
+      // Print Zones Z3: export each EXTRA zone (sleeves/hat) that has content into the zones jsonb map.
+      // Front/back stay in the legacy columns above; extras live ONLY in `zones`. exportSide is already
+      // zone-generic (name → storage basename). Each zone composites onto its own mockup image + carries
+      // its own print box. canvas_json is parsed back to an object so `zones` is jsonb-native (no double-
+      // encoding) — restore reads canvas_json.objects directly.
+      const zonesPayload: Record<string, unknown> = {}
+      for (const zone of zones.filter(z => z !== 'front' && z !== 'back')) {
+        const zObjs = zoneObjs(zone)
+        if (!zObjs.length) continue
+        const zoneShirt = extraZoneImageRef.current[zone] || firstImageUrlRef.current || undefined
+        const ex = await exportSide(zObjs, zone, zoneShirt)
+        zonesPayload[zone] = {
+          canvas_json: ex.json ? JSON.parse(ex.json) : null,
+          canvas_png: ex.png,
+          canvas_svg: ex.svg,
+          print_area: extraZonePrintAreaSnapRef.current[zone] ?? null,
+          print_area_id: extraZonePrintAreaIdRef.current[zone] ?? null,
+          print_charge: zoneCharge(zone),
+        }
+      }
 
       // Restore the live view onto the canvas.
       canvas.clear()
@@ -4100,6 +4160,9 @@ export default function DesignerCanvas({
         canvas_svg_back: svgBackUrl,
         canvas_json_front: front.json,
         canvas_json_back: back.json,
+        // Print Zones Z3: extra zones (sleeves/hat) only; front/back stay in the legacy columns above.
+        // Only sent when an extra zone has content, so a plain front/back order never touches the column.
+        ...(Object.keys(zonesPayload).length > 0 ? { zones: zonesPayload } : {}),
         uploaded_files: uploadedFileUrls,
         quantities: effQuantities,
         // Names & Numbers roster (Option 1 pricing: no separate fee). Only sent for N&N designs so a
@@ -4337,12 +4400,29 @@ export default function DesignerCanvas({
       objects: objs.map((o: any) => (o.toObject ? o.toObject(CUSTOM_PROPS) : o)),
     })
 
-    const front = shirtView === 'back' ? serializeRef(frontObjectsRef.current) : liveJson
+    // Zone-safe: the ACTIVE zone's live objects go into ITS OWN slot; every other zone serializes from its
+    // ref. The old ternary assumed shirtView was front/back and would mislabel a sleeve's live objects as
+    // front (and drop the real front's ref).
+    const front = shirtView === 'front' ? liveJson : serializeRef(frontObjectsRef.current)
     const back = shirtView === 'back' ? liveJson : serializeRef(backObjectsRef.current)
+    // Extra zones (sleeves/hat) → the zones jsonb, canonical shape { [zone]: { canvas_json, print_area,
+    // print_area_id } }. Only zones with content are included.
+    const zonesSnap: Record<string, unknown> = {}
+    for (const zone of zones.filter(z => z !== 'front' && z !== 'back')) {
+      const zj = zone === shirtView ? liveJson : serializeRef(zoneObjs(zone))
+      if ((zj.objects?.length || 0) > 0) {
+        zonesSnap[zone] = {
+          canvas_json: zj,
+          print_area: extraZonePrintAreaSnapRef.current[zone] ?? null,
+          print_area_id: extraZonePrintAreaIdRef.current[zone] ?? null,
+        }
+      }
+    }
 
     const hasFront = (front.objects?.length || 0) > 0
     const hasBack = (back.objects?.length || 0) > 0
-    if (!hasFront && !hasBack) return null
+    const hasExtra = Object.keys(zonesSnap).length > 0
+    if (!hasFront && !hasBack && !hasExtra) return null
 
     return {
       schemaVersion: 1,
@@ -4357,6 +4437,7 @@ export default function DesignerCanvas({
       sidesDesigned: sidesCount,
       front,
       back,
+      zones: hasExtra ? zonesSnap : undefined,
       uploadedFiles: uploadedFilesRef.current,
       roster, // Phase 1: carried by the auto-draft snapshot; DB column lands in Phase 2
       // Freeze the print-area box this design was made against, so a saved design carries its OWN
@@ -4461,8 +4542,9 @@ export default function DesignerCanvas({
     if (!canvas) return null
     try {
       const liveObjects = canvas.getObjects().map((o: any) => o)
-      if (shirtView === 'front') frontObjectsRef.current = liveObjects
-      else backObjectsRef.current = liveObjects
+      // Zone-safe: setZoneObjs('front'/'back') is the SAME assignment as the old literal, but an EXTRA
+      // active zone (a sleeve/hat) now lands in its OWN slot instead of corrupting the back ref.
+      setZoneObjs(shirtView, liveObjects)
 
       const useFront = frontObjectsRef.current.length > 0
       const objs = useFront ? frontObjectsRef.current : backObjectsRef.current
