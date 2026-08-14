@@ -4349,7 +4349,9 @@ export default function DesignerCanvas({
     zone === shirtView ? (liveCount > 0 || zoneObjs(zone).length > 0) : zoneObjs(zone).length > 0
   const frontHasContent = zoneHasContent('front')
   const backHasContent = zoneHasContent('back')
-  const sidesCount = (frontHasContent ? 1 : 0) + (backHasContent ? 1 : 0)
+  // Count every DESIGNED zone (front/back + sleeves/hat), so sides_designed reflects a 4-zone print, not
+  // just front/back. Was (front?1:0)+(back?1:0).
+  const sidesCount = zones.filter(z => zoneHasContent(z)).length
 
   // Blank-shirt empty state: on-garment CTAs when the CURRENT side has nothing on
   // it; the "Let's build it" greeting whenever that blank side is the FRONT. It used
