@@ -58,6 +58,7 @@ type SelectionPanelProps = {
     setTextDirection: (v: 'horizontal' | 'vertical') => void
     curveAmount: number
     setCurveAmount: Dispatch<SetStateAction<number>>
+    lockCurve?: boolean // hat-back: arc is template-locked, so the whole Curve control is hidden
     textIsMultiline: boolean
     textAlign: string
     handleTextAlign: (align: 'left' | 'center' | 'right' | 'justify') => void
@@ -117,7 +118,7 @@ export default function SelectionPanel({
     textInput, textInputRef, handleTextInputChange, selectedObjectType, startNewText,
     dbFonts, fonts, selectedFont, setSelectedFont, selectedTextPreview,
     fontSize, setFontSize, letterSpacing, setLetterSpacing, lineHeight, setLineHeight, textColor, setTextColor,
-    textDirection, setTextDirection, curveAmount, setCurveAmount, textIsMultiline,
+    textDirection, setTextDirection, curveAmount, setCurveAmount, lockCurve, textIsMultiline,
     textAlign, handleTextAlign, isBold, setIsBold, isItalic, setIsItalic,
     isUppercase, setIsUppercase,
   } = text
@@ -211,6 +212,7 @@ export default function SelectionPanel({
                       className="w-full mt-1 accent-[#dd3333]" />
                   </div>
                 )}
+                {!lockCurve && (
                 <div>
                   <div className="flex justify-between items-center">
                     <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">{t('designer.text.curve_label', 'Curve')}</label>
@@ -241,6 +243,7 @@ export default function SelectionPanel({
                     </div>
                   )}
                 </div>
+                )}
                 {/* Format — style + alignment in one tidy toolbar (Illustrator-style glyphs from the
                     shared Lucide set). Bold/Italic re-bake on curved text; UPPERCASE + Align don't apply
                     to a baked curve, so they disable there. */}
@@ -275,7 +278,7 @@ export default function SelectionPanel({
                     ))}
                   </div>
                   {/* Case / direction / align don't apply to a curved text — it's a baked image. */}
-                  {selectedIsCurved && (
+                  {selectedIsCurved && !lockCurve && (
                     <p className="text-[10px] text-gray-500 mt-2">{t('designer.text.curved_note', 'Curved text: straighten to change case, direction, or alignment.')}</p>
                   )}
                 </div>

@@ -2336,6 +2336,26 @@ export default function DesignerCanvas({
     return img
   }
 
+  // ── Hat-Back Auto-Curve (Z-hat-2) ────────────────────────────────────────────────────────────────
+  // Text in the hat_back zone is ALWAYS a curved image at the template's arc, centered + locked in the
+  // box (arc/position/fit locked, like the N&N jersey stack); font + thread color stay the customer's.
+  const HAT_BACK_DEFAULT_CURVE = -45 // gentle frown (∩) — used when the template hasn't set curve_degrees
+  const hatBackCurve = (): number => {
+    const snap = extraZonePrintAreaSnapRef.current['hat_back'] as { curve_degrees?: number | null } | undefined
+    const c = snap?.curve_degrees
+    // Never 0 — hat backs are curved-only; a null/0 config falls back to the gentle-frown default.
+    return c == null || c === 0 ? HAT_BACK_DEFAULT_CURVE : c
+  }
+  const isHatBack = () => shirtViewRef.current === 'hat_back'
+  // Center a baked curved image in its box and lock its geometry (movement/scale/rotation) — keeps a
+  // hat-back arc pinned above the snaps. Re-applied on every (re-)bake and on entering the zone.
+  const HAT_BACK_LOCK = { lockMovementX: true, lockMovementY: true, lockScalingX: true, lockScalingY: true, lockRotation: true, hasControls: false }
+  const lockHatBackText = (img: any, bounds: { left: number; top: number; right: number; bottom: number } | null) => {
+    if (bounds) img.set({ left: (bounds.left + bounds.right) / 2, top: (bounds.top + bounds.bottom) / 2 })
+    img.set({ originX: 'center', originY: 'center', ...HAT_BACK_LOCK })
+    img.setCoords?.()
+  }
+
   // D2 port follow-ups: after refitSide has re-projected a side's geometry onto the target box, run the
   // DOM-coupled refinements per object (the pure engine can't): curved text re-curves at the scaled
   // size, plain text re-wraps to the new box width from _originalText (re-applying uppercase) and
@@ -2448,7 +2468,10 @@ export default function DesignerCanvas({
     if (!canvas) return
 
     // Snapshot the values THIS bake uses (closure over this render's state).
-    const cAmount = curveAmount, cFont = selectedFont, cSize = fontSize
+    // Hat-back is curved-only: a 0 here (e.g. from a stray reflect) must never straighten it — force the
+    // template arc. Everywhere else uses the real curveAmount.
+    const cAmount = (isHatBack() && curveAmount === 0) ? hatBackCurve() : curveAmount
+    const cFont = selectedFont, cSize = fontSize
     const cFill = textColor, cBold = isBold, cItalic = isItalic
 
     const doBake = async () => {
@@ -2507,6 +2530,7 @@ export default function DesignerCanvas({
       )
       if (myToken !== curveTokenRef.current) return  // superseded while baking/decoding
       swap(img)
+      if (isHatBack()) lockHatBackText(img, getPrintAreaBounds()) // re-center + re-lock after every hat-back re-bake
     }
 
     // Coalesce to one bake per animation frame; the cleanup cancels a not-yet-fired
@@ -2967,6 +2991,19 @@ export default function DesignerCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shirtView, selectedColor, colorImageMap])
 
+  // Hat-Back Auto-Curve (Z-hat-2): Fabric doesn't serialize lock* props, so a restored hat-back curved
+  // text comes back draggable. Re-lock any curved text whenever the hat_back zone is shown (lock only — no
+  // re-center, so multiple placements keep their saved positions).
+  useEffect(() => {
+    if (shirtView !== 'hat_back') return
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    let touched = false
+    canvas.getObjects().forEach((o: any) => { if (o._isCurvedText) { o.set(HAT_BACK_LOCK); touched = true } })
+    if (touched) canvas.renderAll()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shirtView])
+
   // N&N auto-open-on-back lives in the tab-CLICK handler (handleSelectTab), NOT a [activeTab] effect —
   // an effect fires on every entry into the tab (re-yanking a deliberate flip to Front) and also on the
   // selection-driven activeTab→names that clicking a front placeholder causes. The click-handler + one-
@@ -3136,6 +3173,26 @@ export default function DesignerCanvas({
     // leave an invisible empty object that still counts as design content.
     if (!pendingTextRef.current.trim()) return
     const bounds = getPrintAreaBounds()
+    // Hat-back (Z-hat-2): text is ALWAYS a curved image at the template arc, centered + locked in the box
+    // — never a straight IText. The stamped _curveAmount makes re-select + re-word self-consistent after.
+    if (isHatBack()) {
+      const cx = bounds ? (bounds.left + bounds.right) / 2 : 280
+      const cy = bounds ? (bounds.top + bounds.bottom) / 2 : 378
+      const img = await bakeCurvedArc(
+        pendingTextRef.current.replace(/\n/g, ' '),
+        { curveAmount: hatBackCurve(), fontSize, fontFamily: selectedFont, fill: textColor, bold: isBold, italic: isItalic, charSpacing: letterSpacing * 10 },
+        cx, cy, bounds,
+      )
+      if (!img) return
+      lockHatBackText(img, bounds)
+      canvas.add(img)
+      canvas.setActiveObject(img)
+      lastActiveObjectRef.current = img
+      _activeObj = img
+      setSelectedObjectType('text')
+      void refreshEmbLookRef.current()
+      return
+    }
     const textObj = new IText('', {
       left: bounds ? (bounds.left + bounds.right) / 2 : 280,
       top: bounds ? (bounds.top + bounds.bottom) / 2 : 378,
@@ -3168,6 +3225,7 @@ export default function DesignerCanvas({
   // nothing selected the first keystroke spawns one. Either way the shirt
   // updates on every keystroke — wrapped and inside the print area.
   const handleTextInputChange = (value: string) => {
+    if (isHatBack()) value = value.replace(/\n/g, ' ') // hat-back is single-line — collapse any newline
     markDirty()
     setTextInput(value)
     setSelectedTextPreview(value.trim())
@@ -4749,7 +4807,8 @@ export default function DesignerCanvas({
   // The tool panel body — defined ONCE and rendered in exactly one place at a
   // time (desktop left aside OR mobile sheet), so its textInputRef binds to a
   // single textarea (two live copies would fight over the ref).
-  const textProps = { textInput, textInputRef, handleTextInputChange, selectedObjectType, startNewText, dbFonts, fonts, selectedFont, setSelectedFont, selectedTextPreview, fontSize, setFontSize, letterSpacing, setLetterSpacing, lineHeight, setLineHeight, textColor, setTextColor, textDirection, setTextDirection, curveAmount, setCurveAmount, textIsMultiline, textAlign, handleTextAlign, isBold, setIsBold, isItalic, setIsItalic, isUppercase, setIsUppercase }
+  // Hat-back is curved-only + the arc is template-locked, so the Curve control is hidden there.
+  const textProps = { textInput, textInputRef, handleTextInputChange, selectedObjectType, startNewText, dbFonts, fonts, selectedFont, setSelectedFont, selectedTextPreview, fontSize, setFontSize, letterSpacing, setLetterSpacing, lineHeight, setLineHeight, textColor, setTextColor, textDirection, setTextDirection, curveAmount, setCurveAmount, textIsMultiline, textAlign, handleTextAlign, isBold, setIsBold, isItalic, setIsItalic, isUppercase, setIsUppercase, lockCurve: shirtView === 'hat_back' }
   // ── Layers ──────────────────────────────────────────────────────────────────
   // A per-side list of everything on the shirt (FRONT-most first) for the Layers tool. Recomputed each
   // render from the live canvas; re-renders are driven by layersTick (reorder + selection), the

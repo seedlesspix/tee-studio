@@ -43,7 +43,7 @@ export default function MobileTextBand({
     dbFonts, fonts, selectedFont, setSelectedFont, selectedTextPreview,
     fontSize, setFontSize, letterSpacing, setLetterSpacing, lineHeight, setLineHeight,
     textColor, setTextColor, textDirection, setTextDirection,
-    curveAmount, setCurveAmount, textIsMultiline, textAlign, handleTextAlign,
+    curveAmount, setCurveAmount, lockCurve, textIsMultiline, textAlign, handleTextAlign,
     isBold, setIsBold, isItalic, setIsItalic, isUppercase, setIsUppercase,
   } = text
 
@@ -274,7 +274,8 @@ export default function MobileTextBand({
                 className={`flex-1 rounded py-1.5 text-xs font-mono transition-all disabled:opacity-40 ${isUppercase ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 border border-gray-200'}`}
               >{t('designer.text.uppercase', 'AA')}</button>
             </div>
-            {/* Curve + direction */}
+            {/* Curve — hidden on hat-back (arc is template-locked) */}
+            {!lockCurve && (<>
             <div className="flex items-center gap-2">
               <span className="font-mono text-xs uppercase tracking-widest text-gray-700">{t('designer.text.curve_label', 'Curve')}</span>
               <input
@@ -294,6 +295,7 @@ export default function MobileTextBand({
             {textIsMultiline && (
               <p className="text-[10px] text-gray-500">{t('designer.text.curve_singleline', 'Curve works on single-line text.')}</p>
             )}
+            </>)}
             <div className="flex gap-2">
               <button
                 onClick={() => setTextDirection('horizontal')}
