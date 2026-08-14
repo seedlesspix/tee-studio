@@ -474,10 +474,10 @@ export default function PrintAreaEditor({
                       <input type="number" step={1} min={-360} max={360}
                         value={selected.curve_degrees ?? ''}
                         onChange={e => { const v = e.target.value; patch(selected._key, { curve_degrees: v === '' ? null : Math.max(-360, Math.min(360, parseInt(v) || 0)) }) }}
-                        placeholder="-45"
+                        placeholder="45"
                         className="w-24 shrink-0 bg-white border border-gray-300 rounded px-2 py-1 text-sm font-mono outline-none focus:border-[#dd3333] placeholder-gray-400" />
                       <span className="text-[11px] text-gray-500 leading-snug">
-                        How far the text arcs to follow the cap opening. <strong>Negative = frown ∩</strong> (over the opening), positive = smile ∪; a bigger number = more curve. Blank uses the default <strong>−45</strong> (gentle frown).
+                        How far the text arcs to follow the cap opening. <strong>Positive = frown ∩</strong> (over the opening), negative = smile ∪; a bigger number = a deeper curve (try 80–120 for a tight follow). Blank uses the default <strong>45</strong> (gentle frown). If a deep curve shrinks the text, increase this zone&apos;s <strong>height (in)</strong> to give the arc room.
                       </span>
                     </div>
                   </div>

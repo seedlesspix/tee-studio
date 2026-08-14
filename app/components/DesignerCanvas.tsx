@@ -2339,7 +2339,8 @@ export default function DesignerCanvas({
   // ── Hat-Back Auto-Curve (Z-hat-2) ────────────────────────────────────────────────────────────────
   // Text in the hat_back zone is ALWAYS a curved image at the template's arc, centered + locked in the
   // box (arc/position/fit locked, like the N&N jersey stack); font + thread color stay the customer's.
-  const HAT_BACK_DEFAULT_CURVE = -45 // gentle frown (∩) — used when the template hasn't set curve_degrees
+  // POSITIVE = frown ∩ over the cap opening (verified on a real cap — the engine's "curve-up" is a frown).
+  const HAT_BACK_DEFAULT_CURVE = 45 // gentle frown; the template's curve_degrees overrides.
   const hatBackCurve = (): number => {
     const snap = extraZonePrintAreaSnapRef.current['hat_back'] as { curve_degrees?: number | null } | undefined
     const c = snap?.curve_degrees
@@ -2347,14 +2348,11 @@ export default function DesignerCanvas({
     return c == null || c === 0 ? HAT_BACK_DEFAULT_CURVE : c
   }
   const isHatBack = () => shirtViewRef.current === 'hat_back'
-  // Center a baked curved image in its box and lock its geometry (movement/scale/rotation) — keeps a
-  // hat-back arc pinned above the snaps. Re-applied on every (re-)bake and on entering the zone.
-  const HAT_BACK_LOCK = { lockMovementX: true, lockMovementY: true, lockScalingX: true, lockScalingY: true, lockRotation: true, hasControls: false }
-  const lockHatBackText = (img: any, bounds: { left: number; top: number; right: number; bottom: number } | null) => {
-    if (bounds) img.set({ left: (bounds.left + bounds.right) / 2, top: (bounds.top + bounds.bottom) / 2 })
-    img.set({ originX: 'center', originY: 'center', ...HAT_BACK_LOCK })
-    img.setCoords?.()
-  }
+  // Lock a hat-back curved image's SIZE + rotation (auto-fit owns those), but LEAVE MOVEMENT FREE — cap
+  // shapes + text lengths vary, so the customer nudges placement. The arc + fit + single-line stay locked.
+  // No re-centering: the initial spawn centers via bakeCurvedArc; every re-bake keeps the current position.
+  const HAT_BACK_LOCK = { lockScalingX: true, lockScalingY: true, lockRotation: true, hasControls: false }
+  const applyHatBackLock = (img: any) => { img.set(HAT_BACK_LOCK); img.setCoords?.() }
 
   // D2 port follow-ups: after refitSide has re-projected a side's geometry onto the target box, run the
   // DOM-coupled refinements per object (the pure engine can't): curved text re-curves at the scaled
@@ -2530,7 +2528,7 @@ export default function DesignerCanvas({
       )
       if (myToken !== curveTokenRef.current) return  // superseded while baking/decoding
       swap(img)
-      if (isHatBack()) lockHatBackText(img, getPrintAreaBounds()) // re-center + re-lock after every hat-back re-bake
+      if (isHatBack()) applyHatBackLock(img) // re-lock after a hat-back re-bake — position preserved (no re-center)
     }
 
     // Coalesce to one bake per animation frame; the cleanup cancels a not-yet-fired
@@ -3184,7 +3182,7 @@ export default function DesignerCanvas({
         cx, cy, bounds,
       )
       if (!img) return
-      lockHatBackText(img, bounds)
+      applyHatBackLock(img) // bakeCurvedArc already centered it at cx,cy; just lock size/rotation (movable)
       canvas.add(img)
       canvas.setActiveObject(img)
       lastActiveObjectRef.current = img
