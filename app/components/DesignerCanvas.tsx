@@ -2272,9 +2272,11 @@ export default function DesignerCanvas({
     setShirtHex(COLOR_HEX_MAP[color] || '#888')
     setQuantities((productSizes.length ? productSizes : SIZES).reduce((acc, s) => ({ ...acc, [s]: 0 }), {}))
     const imgs = getColorImages(color, colorImageMap)
-    const url = (shirtView === 'back'
-      ? (imgs?.back || imgs?.front)
-      : (imgs?.front || imgs?.back)) || firstImageUrlRef.current
+    // Zone-aware image on color change: extra zones read the NEW color's mockup directly from the map
+    // (extraZoneImageRef still holds the old color until its effect re-runs); the reactive sync backstops.
+    const url = (shirtView === 'front' ? (imgs?.front || imgs?.back)
+      : shirtView === 'back' ? (imgs?.back || imgs?.front)
+      : zoneMockupMapRef.current[normalizeColorKey(color)]?.[shirtView]) || firstImageUrlRef.current
     if (url && shirtImgRef.current) shirtImgRef.current.src = url
     if (product) {
       const match = product.variants.edges.find(({ node }) =>
@@ -2956,7 +2958,11 @@ export default function DesignerCanvas({
   // image can never disagree with the buttons regardless of how the flip was triggered.
   useEffect(() => {
     const imgs = getColorImages(selectedColor, colorImageMap)
-    const url = (shirtView === 'back' ? imgs?.back : imgs?.front) || firstImageUrlRef.current
+    // Zone-aware: front/back from the Shopify images, extra zones (sleeves/hat) from their mockup. Without
+    // the extra-zone branch this backstop clobbered a sleeve view with the FRONT image.
+    const url = (shirtView === 'front' ? imgs?.front
+      : shirtView === 'back' ? imgs?.back
+      : extraZoneImageRef.current[shirtView]) || firstImageUrlRef.current
     if (url && shirtImgRef.current) shirtImgRef.current.src = url
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shirtView, selectedColor, colorImageMap])
@@ -4676,7 +4682,9 @@ export default function DesignerCanvas({
     // Cross-side check: allow continuing if EITHER side has content, not just the
     // currently-visible canvas (a back-only design viewed from the empty front
     // should still pass).
-    if (!canvas || (!frontHasContent && !backHasContent)) {
+    // Content check across EVERY zone (front/back + sleeves/hat), not just front/back — a sleeve-only
+    // design must pass.
+    if (!canvas || !zones.some(z => zoneHasContent(z))) {
       alert(t('designer.next_empty', 'Please add a design before continuing. Add text, clipart, or upload an image.'))
       return
     }
@@ -4975,7 +4983,7 @@ export default function DesignerCanvas({
   // a customer must never design a zone that wouldn't save. While gated, the classic Front/Back toggle
   // (below) renders unchanged; flip ZONES_ENABLED to true with Z3. Active zone uses a QUIET non-red fill
   // (locked red-vocab rule: red = action only). Sleeve buttons show the +$12 add-on (pricing wired in Z3).
-  const ZONES_ENABLED = false
+  const ZONES_ENABLED = true
   const mainZones = zones.filter(z => z === 'front' || z === 'back')
   const sleeveZones = zones.filter(isSleeveZone)
   const otherZones = zones.filter(z => z !== 'front' && z !== 'back' && !isSleeveZone(z)) // hat_back, future
