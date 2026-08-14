@@ -221,7 +221,18 @@ export async function POST(
     // behavior (a duplicate line the customer can remove on the cart page).
   }
 
-  const previewUrls = [design.canvas_png_front, design.canvas_png_back].filter(
+  // Print Zones: include the extra zones' (sleeves/hat) preview PNGs so a sleeve-only design still gives
+  // the cart product an image (front/back PNG columns are null there).
+  const zonePngs: string[] = []
+  {
+    const z = design.zones
+    if (z && typeof z === 'object' && !Array.isArray(z)) {
+      for (const v of Object.values(z as Record<string, { canvas_png?: string | null }>)) {
+        if (v?.canvas_png) zonePngs.push(v.canvas_png)
+      }
+    }
+  }
+  const previewUrls = [design.canvas_png_front, design.canvas_png_back, ...zonePngs].filter(
     (u): u is string => typeof u === 'string' && u.startsWith('https://')
   )
 
