@@ -8,6 +8,7 @@ import { createClient } from '../../../lib/supabase/server'
 import { serviceClient } from '../../../lib/customer-library'
 import { generateCutSvgForSide } from '../../../lib/server/generateCutFile'
 import { orderFileStem } from '../../../lib/orderFiles'
+import { ZONE_ORDER } from '../../../lib/zones'
 
 export const runtime = 'nodejs' // trace-includes + fs don't exist on edge
 
@@ -22,16 +23,16 @@ export async function GET(req: NextRequest) {
 
   const u = new URL(req.url)
   const orderId = u.searchParams.get('order') || ''
-  const side = (u.searchParams.get('side') || 'front') as 'front' | 'back'
+  const side = u.searchParams.get('side') || 'front' // any zone id: front/back/left_sleeve/right_sleeve/hat_back
   const fontOverride = u.searchParams.get('font') // optional: force one font for testing
   const mirror = u.searchParams.get('mirror') === '1' // optional: flip for heat-transfer vinyl
   if (!/^[0-9a-f-]{36}$/i.test(orderId)) return NextResponse.json({ error: 'bad order id' }, { status: 400 })
-  if (side !== 'front' && side !== 'back') return NextResponse.json({ error: 'bad side' }, { status: 400 })
+  if (!(ZONE_ORDER as readonly string[]).includes(side)) return NextResponse.json({ error: 'bad zone' }, { status: 400 })
 
   // 2. load the order via SERVICE ROLE (admin already authed; covers completed/PII rows)
   const { data: o, error } = await serviceClient()
     .from('design_orders')
-    .select('id,canvas_json_front,canvas_json_back,print_area_front,print_area_back,shopify_order_number,customer_name,shipping_address,billing_address,roster')
+    .select('id,canvas_json_front,canvas_json_back,print_area_front,print_area_back,zones,shopify_order_number,customer_name,shipping_address,billing_address,roster')
     .eq('id', orderId).maybeSingle()
   if (error || !o) return NextResponse.json({ error: 'order not found' }, { status: 404 })
 
@@ -42,8 +43,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'This is a Names & Numbers order — download the full production bundle for the per-player cut files.' }, { status: 422 })
   }
 
-  const canvasJson = side === 'front' ? o.canvas_json_front : o.canvas_json_back
-  const snap = side === 'front' ? o.print_area_front : o.print_area_back
+  // Front/back from the legacy columns; extra zones (sleeves/hat) from the zones jsonb (canvas_json is a
+  // stored object there → stringify for the string-taking engine).
+  const zoneMapRaw = (o.zones && typeof o.zones === 'object' && !Array.isArray(o.zones)) ? (o.zones as Record<string, { canvas_json?: unknown; print_area?: unknown }>) : {}
+  const canvasJson = side === 'front' ? o.canvas_json_front
+    : side === 'back' ? o.canvas_json_back
+    : (zoneMapRaw[side]?.canvas_json != null ? JSON.stringify(zoneMapRaw[side].canvas_json) : null)
+  const snap = side === 'front' ? o.print_area_front
+    : side === 'back' ? o.print_area_back
+    : (zoneMapRaw[side]?.print_area ?? null)
 
   // 3. generate via the shared core (identical to the whole-order bundle route). Loud-fail
   //    is preserved: any un-outlinable object returns a typed failure, never a partial file.

@@ -22,6 +22,7 @@ import { generateLayoutSvgForSide } from '../../../lib/server/generateLayout'
 import { autoTraceSvg } from '../../../lib/server/autoTrace'
 import { collectNnCutPaths, nnEntryFilename } from '../../../lib/server/nnCutFiles'
 import { type RosterEntry, entryHasContent, rosterValue, rosterShirtCount } from '../../../lib/namesNumbers'
+import { orderZones, zoneLabel } from '../../../lib/zones'
 
 export const runtime = 'nodejs' // opentype.js + local-font fs read (see next.config trace-includes)
 
@@ -120,7 +121,7 @@ export async function GET(req: NextRequest) {
   const { data: o, error } = await serviceClient()
     .from('design_orders')
     .select([
-      'canvas_json_front', 'canvas_json_back', 'print_area_front', 'print_area_back',
+      'canvas_json_front', 'canvas_json_back', 'print_area_front', 'print_area_back', 'zones',
       'canvas_png_front', 'canvas_png_back', 'uploaded_files', 'shopify_order_number',
       'product_title', 'selected_color', 'selected_color_hex', 'print_method', 'sides_designed',
       'status', 'customer_name', 'customer_email', 'customer_phone', 'shipping_address',
@@ -167,55 +168,69 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  for (const side of ['front', 'back'] as const) {
-    const canvasJson = side === 'front' ? o.canvas_json_front : o.canvas_json_back
-    const snap = side === 'front' ? o.print_area_front : o.print_area_back
+  // Print Zones Z4: every DESIGNED zone — front/back from the legacy columns + extras (sleeves/hat) from
+  // the zones jsonb. canvas_json is stored in zones as a jsonb OBJECT, so stringify it for the string-
+  // taking cut/layout engines. A front/back-only order yields exactly [front, back] (byte-identical).
+  const zoneMapRaw: Record<string, { canvas_json?: unknown; print_area?: unknown; canvas_png?: string | null }> =
+    (o.zones && typeof o.zones === 'object' && !Array.isArray(o.zones)) ? (o.zones as Record<string, { canvas_json?: unknown; print_area?: unknown; canvas_png?: string | null }>) : {}
+  const bundleZones: { key: string; canvasJson: string | null; snap: unknown; png: string | null }[] = [
+    { key: 'front', canvasJson: o.canvas_json_front as string | null, snap: o.print_area_front, png: o.canvas_png_front as string | null },
+    { key: 'back', canvasJson: o.canvas_json_back as string | null, snap: o.print_area_back, png: o.canvas_png_back as string | null },
+    ...orderZones(Object.keys(zoneMapRaw)).filter(z => z !== 'front' && z !== 'back').map(z => ({
+      key: z,
+      canvasJson: zoneMapRaw[z]?.canvas_json != null ? JSON.stringify(zoneMapRaw[z].canvas_json) : null,
+      snap: zoneMapRaw[z]?.print_area ?? null,
+      png: zoneMapRaw[z]?.canvas_png ?? null,
+    })),
+  ]
 
-    // Names & Numbers: split this side into a SHARED base (logo/common art, cut once) + one file per
-    // roster entry (the substituted placeholders). Only the side(s) carrying placeholders take this
-    // path — the other side (e.g. a front logo) falls through to the normal whole-side file.
-    const nn = nnActive ? await collectNnCutPaths(canvasJson as string | null, snap, roster) : null
+  for (const z of bundleZones) {
+    const canvasJson = z.canvasJson
+    const snap = z.snap
+
+    // Names & Numbers: split this zone into a SHARED base (logo/common art, cut once) + one file per
+    // roster entry (the substituted placeholders). Only the zone(s) carrying placeholders take this
+    // path — the others (e.g. a front logo) fall through to the normal whole-zone file.
+    const nn = nnActive ? await collectNnCutPaths(canvasJson, snap, roster) : null
     if (nn) {
-      emitCut(nn.base, `${orderNo}-${side}.svg`, cutFolder, cutMirrorFolder, `${orderNo}-${side}.svg (shared base — cut once)`)
+      emitCut(nn.base, `${orderNo}-${z.key}.svg`, cutFolder, cutMirrorFolder, `${orderNo}-${z.key}.svg (shared base — cut once)`)
       const namesFolder = cutFolder.folder('Names')!
       const namesMirror = cutMirrorFolder.folder('Names')!
       for (const { entry, index, result } of nn.entries) {
-        const fn = nnEntryFilename(index, entry, side)
+        const fn = nnEntryFilename(index, entry, z.key)
         emitCut(result, fn, namesFolder, namesMirror, `Names/${fn}`)
       }
     } else {
-      const c = await collectCutPaths(canvasJson as string | null, snap)
-      emitCut(c, `${orderNo}-${side}.svg`, cutFolder, cutMirrorFolder, `${orderNo}-${side}.svg`)
+      const c = await collectCutPaths(canvasJson, snap)
+      emitCut(c, `${orderNo}-${z.key}.svg`, cutFolder, cutMirrorFolder, `${orderNo}-${z.key}.svg`)
     }
   }
 
   // ---- Layout/ (placement sheet — EVERY element at true size/position, incl. rasters) ----
   const layoutFolder = root.folder('Layout')!
   const layoutLines: string[] = []
-  for (const side of ['front', 'back'] as const) {
-    const canvasJson = side === 'front' ? o.canvas_json_front : o.canvas_json_back
-    const snap = side === 'front' ? o.print_area_front : o.print_area_back
-    const r = await generateLayoutSvgForSide(canvasJson as string | null, snap)
+  for (const z of bundleZones) {
+    const r = await generateLayoutSvgForSide(z.canvasJson, z.snap)
     if (r.ok) {
-      layoutFolder.file(`${orderNo}-${side}-layout.svg`, r.svg)
-      layoutLines.push(`  ✓ Layout/${orderNo}-${side}-layout.svg`)
-      for (const f of r.failures) layoutLines.push(`    ⚠ ${side}: ${f}`)
+      layoutFolder.file(`${orderNo}-${z.key}-layout.svg`, r.svg)
+      layoutLines.push(`  ✓ Layout/${orderNo}-${z.key}-layout.svg`)
+      for (const f of r.failures) layoutLines.push(`    ⚠ ${z.key}: ${f}`)
     } else if (r.reason === 'bad-json' || r.reason === 'empty') {
-      layoutLines.push(`  ⚠ ${side} layout: ${r.message}`)
+      layoutLines.push(`  ⚠ ${z.key} layout: ${r.message}`)
     } else {
-      layoutLines.push(`  — ${side}: ${r.message}`)
+      layoutLines.push(`  — ${z.key}: ${r.message}`)
     }
   }
 
   // ---- Previews/ (the shirt mockups the customer saw) ----
   const previewsFolder = root.folder('Previews')!
   const previewLines: string[] = []
-  for (const side of ['front', 'back'] as const) {
-    const url = (side === 'front' ? o.canvas_png_front : o.canvas_png_back) as string | null
+  for (const z of bundleZones) {
+    const url = z.png
     if (!url) continue
     const bytes = await fetchBytes(url)
-    if (bytes) { previewsFolder.file(`${orderNo}-${side}-preview.png`, bytes); previewLines.push(`  ✓ Previews/${orderNo}-${side}-preview.png`) }
-    else previewLines.push(`  ⚠ Previews/${orderNo}-${side}-preview.png — could not fetch`)
+    if (bytes) { previewsFolder.file(`${orderNo}-${z.key}-preview.png`, bytes); previewLines.push(`  ✓ Previews/${orderNo}-${z.key}-preview.png`) }
+    else previewLines.push(`  ⚠ Previews/${orderNo}-${z.key}-preview.png — could not fetch`)
   }
   if (!previewLines.length) previewLines.push('  (none)')
 
@@ -330,8 +345,19 @@ export async function GET(req: NextRequest) {
     `  Total: ${qty.total}`,
     ``,
     `DESIGN SUMMARY`,
-    `  Front: ${summarizeSide(o.canvas_json_front as string | null)}`,
-    `  Back:  ${summarizeSide(o.canvas_json_back as string | null)}`,
+    // Label padding computed across the zones actually shown: Front/Back-only orders keep max label
+    // "Front" -> padEnd(7), byte-identical to the old hardcoded lines; sleeve/hat lines (longer labels)
+    // then align and keep a separator space.
+    ...(() => {
+      const rows = [
+        { label: 'Front', json: o.canvas_json_front as string | null },
+        { label: 'Back', json: o.canvas_json_back as string | null },
+        // Print Zones Z4: extra zones (sleeves/hat) that were designed.
+        ...bundleZones.filter(z => z.key !== 'front' && z.key !== 'back' && z.canvasJson).map(z => ({ label: zoneLabel(z.key), json: z.canvasJson })),
+      ]
+      const w = Math.max(...rows.map(r => r.label.length))
+      return rows.map(r => `  ${(r.label + ':').padEnd(w + 2)}${summarizeSide(r.json)}`)
+    })(),
     ``,
     ...(decalsUsed.length ? [
       `DESIGNS USED  (decal / design numbers)`,
