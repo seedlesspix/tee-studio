@@ -5,6 +5,18 @@ import type { Tables } from '@/types/database'
 import { useT } from '../../components/StringsProvider'
 import { orderZones, zoneLabel } from '../../lib/zones'
 
+// First zone (sleeve/hat) preview PNG on an order, or null — so the admin thumbnail + the Design-Files /
+// bundle gate count sleeve-only orders, whose front/back PNG columns are null.
+const zoneArtifactPng = (row: { zones?: unknown }): string | null => {
+  const z = row.zones
+  if (z && typeof z === 'object' && !Array.isArray(z)) {
+    for (const v of Object.values(z as Record<string, { canvas_png?: string | null }>)) {
+      if (v?.canvas_png) return v.canvas_png
+    }
+  }
+  return null
+}
+
 // The full Shopify address shape as captured verbatim by the webhook (both
 // billing_address and shipping_address). We surface ALL of it for the print
 // shop — data we already hold costs nothing to show.
@@ -346,11 +358,14 @@ export default function OrdersAdmin() {
                       className={`absolute w-12 h-12 rounded-lg overflow-hidden bg-gray-100 border border-gray-200 ${
                         i === 0 ? 'top-0 left-0 z-10' : 'bottom-0 right-0'
                       }`}>
-                      {(r.canvas_png_front || r.canvas_png_back) ? (
-                        <img src={r.canvas_png_front || r.canvas_png_back!} alt="Design" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-gray-400 text-[8px] font-mono">No preview</div>
-                      )}
+                      {(() => {
+                        const prev = r.canvas_png_front || r.canvas_png_back || zoneArtifactPng(r)
+                        return prev ? (
+                          <img src={prev} alt="Design" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-400 text-[8px] font-mono">No preview</div>
+                        )
+                      })()}
                     </div>
                   ))}
                   {group.rows.length > 2 && (
@@ -619,7 +634,7 @@ export default function OrdersAdmin() {
                           stored, always reproducible). Cookie-authed GET → plain link, no JS.
                           Red = primary action (get everything); the per-side links below are
                           the secondary "one piece at a time" option. */}
-                      {(row.canvas_png_front || row.canvas_png_back || (row.uploaded_files && row.uploaded_files.length > 0)) && (
+                      {(row.canvas_png_front || row.canvas_png_back || (row.uploaded_files && row.uploaded_files.length > 0) || zoneArtifactPng(row)) && (
                         <div className="mt-4 pt-3 border-t border-gray-200">
                           <p className="text-xs font-mono text-gray-600 mb-2">PRODUCTION BUNDLE</p>
                           <a href={`/api/admin/production-bundle?order=${row.id}`}
