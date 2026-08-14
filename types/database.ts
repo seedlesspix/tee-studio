@@ -683,6 +683,7 @@ export type Database = {
       }
       product_template_print_areas: {
         Row: {
+          curve_degrees: number | null
           height_in: number
           height_px: number
           id: string
@@ -700,6 +701,7 @@ export type Database = {
           y_px: number
         }
         Insert: {
+          curve_degrees?: number | null
           height_in: number
           height_px: number
           id?: string
@@ -717,6 +719,7 @@ export type Database = {
           y_px: number
         }
         Update: {
+          curve_degrees?: number | null
           height_in?: number
           height_px?: number
           id?: string

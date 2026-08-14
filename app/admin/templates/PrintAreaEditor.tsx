@@ -21,6 +21,7 @@ type EditArea = {
   height_in: number
   preset_label: string | null
   sort_order: number
+  curve_degrees: number | null // hat_back auto-curve arc (signed °): −=frown, +=smile; null → designer default (−45)
 }
 
 type ProductResp = { images?: { edges?: { node?: { url?: string } }[] } }
@@ -207,6 +208,7 @@ export default function PrintAreaEditor({
       height_in: Math.round((12 * h / w) * 100) / 100,
       preset_label: null,
       sort_order: areas.length,
+      curve_degrees: null,
     }
     setAreas(prev => [...prev, area])
     setSelectedKey(area._key)
@@ -246,6 +248,7 @@ export default function PrintAreaEditor({
           width_in: a.width_in, height_in: a.height_in,
           preset_label: a.preset_label?.trim() || null,
           sort_order: a.sort_order,
+          curve_degrees: a.curve_degrees ?? null,
           // Record the natural pixel size of the mockup these coordinates were drawn against, so the
           // designer re-projects the box against the SAME reference frame (px→% below) instead of
           // guessing from whichever product image loads first. All areas are shown over the currently-
@@ -462,6 +465,23 @@ export default function PrintAreaEditor({
                     placeholder="e.g. Men's Print Area 12x16"
                     className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm font-mono mt-1 outline-none focus:border-[#dd3333] placeholder-gray-400" />
                 </div>
+
+                {/* Hat-Back Auto-Curve (Z-hat-1): only hat_back zones curve their text. */}
+                {selected.side === 'hat_back' && (
+                  <div className="col-span-2 rounded border border-gray-200 bg-gray-50 p-2">
+                    <label className="text-[10px] text-gray-600 font-mono uppercase">Hat-back curve (°)</label>
+                    <div className="flex items-start gap-2 mt-1">
+                      <input type="number" step={1} min={-360} max={360}
+                        value={selected.curve_degrees ?? ''}
+                        onChange={e => { const v = e.target.value; patch(selected._key, { curve_degrees: v === '' ? null : Math.max(-360, Math.min(360, parseInt(v) || 0)) }) }}
+                        placeholder="-45"
+                        className="w-24 shrink-0 bg-white border border-gray-300 rounded px-2 py-1 text-sm font-mono outline-none focus:border-[#dd3333] placeholder-gray-400" />
+                      <span className="text-[11px] text-gray-500 leading-snug">
+                        How far the text arcs to follow the cap opening. <strong>Negative = frown ∩</strong> (over the opening), positive = smile ∪; a bigger number = more curve. Blank uses the default <strong>−45</strong> (gentle frown).
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-between mt-3">
