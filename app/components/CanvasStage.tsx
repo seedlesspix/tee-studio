@@ -33,12 +33,16 @@ export default function CanvasStage({
   shirtImgRef,
   printArea,
   arcGuide = null,
+  referenceGuides = [],
   onReady,
   emptyState = null,
 }: {
   canvasRef: RefObject<HTMLCanvasElement | null>
   shirtImgRef: RefObject<HTMLImageElement | null>
   printArea: PrintAreaPct | null
+  // Chest reference guide: secondary print areas shown as dashed labelled outlines (placement/size
+  // references, e.g. "Left Chest") — not design zones, never priced.
+  referenceGuides?: { pct: PrintAreaPct; label: string }[]
   // Type-on-path (Z-hp #2): the drawn arc the customer's hat-back text follows, in 680×850 canvas-px, shown
   // as a subtle dotted guide so they see the line before + while typing. Null off the hat_back zone.
   arcGuide?: { p0: { x: number; y: number }; control: { x: number; y: number }; p2: { x: number; y: number } } | null
@@ -120,6 +124,31 @@ export default function CanvasStage({
 
         </div>
       )}
+
+      {/* Chest reference guide(s): dashed labelled outlines showing where/what-size a secondary print (e.g.
+          Left Chest) goes. Reference only — no interaction, not part of the design box. Lighter than the
+          main box so it reads as a guide, with a small label chip + white halo for light/dark garments. */}
+      {referenceGuides.map((g, i) => (
+        <div key={i} style={{
+          position: 'absolute',
+          left: `${g.pct.xPct}%`, top: `${g.pct.yPct}%`,
+          width: `${g.pct.widthPct}%`, height: `${g.pct.heightPct}%`,
+          border: '1px dashed rgba(0,0,0,0.45)',
+          borderRadius: '2px',
+          pointerEvents: 'none',
+          zIndex: 2,
+          boxShadow: '0 0 0 1px rgba(255,255,255,0.6)',
+        }}>
+          {g.label && (
+            <span style={{
+              position: 'absolute', top: -15, left: 0,
+              fontSize: 10, lineHeight: '14px', padding: '0 4px', borderRadius: 3,
+              background: 'rgba(255,255,255,0.9)', color: 'rgba(0,0,0,0.7)',
+              border: '1px solid rgba(0,0,0,0.12)', whiteSpace: 'nowrap',
+            }}>{g.label}</span>
+          )}
+        </div>
+      ))}
 
       {/* Blank-shirt empty state — greeting + on-garment CTAs, centered on the
           print area. A separate element from [data-print-area] so it never

@@ -976,6 +976,10 @@ export default function DesignerCanvas({
   // applyTemplateAreaForMethod alongside the % box.
   const extraZonePrintAreaSnapRef = useRef<Record<string, any>>({})
   const extraZonePrintAreaIdRef = useRef<Record<string, string | null>>({})
+  // Reference guides (chest guide): SECONDARY print areas of a side (beyond its primary design box — e.g. a
+  // "Left Chest" front area) are shown as dashed labelled outlines. Placement/size references only — NOT
+  // design zones, never priced. Keyed by side. Populated in applyTemplateAreaForMethod.
+  const referenceGuidesRef = useRef<Record<string, { pct: PrintAreaPct; label: string }[]>>({})
   // Per-color per-zone mockup images from product_template_mockups (Z0), keyed by normalized color →
   // zone → url. Populated at template load; a color change copies the current color's extra-zone images
   // into extraZoneImageRef so switchView can show a sleeve/hat its own mockup.
@@ -1322,6 +1326,18 @@ export default function DesignerCanvas({
     extraZonePrintAreaRef.current = extraPct
     extraZonePrintAreaSnapRef.current = extraSnap
     extraZonePrintAreaIdRef.current = extraId
+
+    // Reference guides: every SECONDARY area of a side (beyond its primary design box) → a dashed labelled
+    // outline. Primarily the front "chest" guide; generic so any side can carry one. Reference-only.
+    const refGuides: Record<string, { pct: PrintAreaPct; label: string }[]> = {}
+    for (const side of Array.from(new Set(forMethod.map(a => a.side)))) {
+      const sideAreas = forMethod.filter(a => a.side === side).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+      const guides = sideAreas.slice(1) // skip the primary (design box); the rest are references
+        .map(a => ({ pct: toPct(a), label: String(a.name || '') }))
+        .filter((g): g is { pct: PrintAreaPct; label: string } => !!g.pct)
+      if (guides.length) refGuides[side] = guides
+    }
+    referenceGuidesRef.current = refGuides
 
     if (pa.front || pa.back || extraSides.some(s => extraPct[s])) {
       printAreaDataRef.current = pa
@@ -5407,7 +5423,7 @@ export default function DesignerCanvas({
             willChange: view.zoom !== 1 ? 'transform' : undefined,
           }}>
             <div style={{ width: 680, height: 850, transformOrigin: 'top left', transform: stageScale !== 1 ? `scale(${stageScale})` : undefined }}>
-              <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} arcGuide={shirtView === 'hat_back' ? hatBackPath() : null} onReady={handleCanvasReady} emptyState={emptyState} />
+              <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} arcGuide={shirtView === 'hat_back' ? hatBackPath() : null} referenceGuides={referenceGuidesRef.current[shirtView] || []} onReady={handleCanvasReady} emptyState={emptyState} />
             </div>
             {/* "Thinking" overlay for async ops (Remove Background API round-trip, edits + their
                 re-upload, converted-file uploads). Silence reads as broken; the spinner reads as
