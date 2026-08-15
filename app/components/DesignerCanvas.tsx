@@ -2668,6 +2668,11 @@ export default function DesignerCanvas({
   // which correctly lowers the DPI).
   const lowResMessageFor = (obj: any): string | null => {
     if (!obj || obj.type !== 'image') return null
+    // Uploads ONLY (N2). The low-res warning judges CUSTOMER-supplied art; library art — clipart AND
+    // decals, whether SVG or RASTER — is curated and print-ready, so it must never trip it. Requiring
+    // `_uploadSrc` (an inclusion guard) is airtight: raster clipart is `type:image`, `_isSvg:false`, no
+    // `_uploadSrc`, and the old exclusion-only guard let it through.
+    if (!obj._uploadSrc) return null
     if (obj._isSvg || obj._isVectorUpload || obj._isCurvedText || obj[NN_ROLE_PROP]) return null
     const srcW = Number(obj.width) || 0, srcH = Number(obj.height) || 0
     // Placed inches from the live print box (px) + its physical inches. If the box/inches aren't
