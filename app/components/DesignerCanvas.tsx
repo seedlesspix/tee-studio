@@ -19,7 +19,7 @@ import { maxScaleForRotation } from '../lib/rotationFit'
 import NamesNumbersPanel from './NamesNumbersPanel'
 import { type RosterEntry, type NnRole, NN_ROLE_PROP, entryHasContent, condensedScaleX, rosterShirtCount, rosterSizeQuantities, rosterValue, jerseyStackLayout } from '../lib/namesNumbers'
 import { renderCurvedArc } from '../lib/curvedArc'
-import type { Pt } from '../lib/curvePath'
+import { bezierControlFromPeak, type Pt } from '../lib/curvePath'
 import { applyEmbroideryLook, removeEmbroideryLook } from '../lib/embroideryLook'
 import { drawDeleteIcon, drawRotateIcon, drawResizeIcon, makeHandleRender } from '../lib/selectionHandles'
 import { useT } from './StringsProvider'
@@ -44,7 +44,7 @@ const NN_LOCK_PROPS = {
 // of the box (and risk the print area). Ascent 0.83 covers ~any font; bottom stays hugged. NAME also
 // sits with head room from the print-area top (STACK_Y_FRAC) so no font's caps can exceed the zone.
 const NN_TEXT_METRICS = { _fontSizeMult: 0.88, _fontSizeFraction: 0.06 } as const
-import { toPctContain, CANVAS_W, CANVAS_H, type PrintAreaPct } from '../lib/printAreaGeometry'
+import { toPctContain, mockupPxToCanvas, CANVAS_W, CANVAS_H, type PrintAreaPct } from '../lib/printAreaGeometry'
 import ActionBar from './ActionBar'
 import Stepper from './Stepper'
 import Rail from './Rail'
@@ -2370,6 +2370,35 @@ export default function DesignerCanvas({
     return c == null || c === 0 ? HAT_BACK_DEFAULT_CURVE : c
   }
   const isHatBack = () => shirtViewRef.current === 'hat_back'
+  // Type-on-path (Z-hp-5): the hat_back zone's ADMIN-DRAWN arc, converted from mockup natural-px into the
+  // 680×850 canvas via the SAME objectFit:contain transform the print box uses (mockupPxToCanvas), returned
+  // as {p0,control,p2}. Null when no arc was drawn → the caller falls back to the hatBackCurve() degrees model.
+  const hatBackPath = (): { p0: Pt; control: Pt; p2: Pt } | null => {
+    const snap = extraZonePrintAreaSnapRef.current['hat_back'] as
+      { curve_path?: { p0?: Pt; peak?: Pt; p2?: Pt } | null; mockup_natural_w?: number | null; mockup_natural_h?: number | null } | undefined
+    const cp = snap?.curve_path
+    const ok = (p: unknown): p is Pt => !!p && typeof (p as Pt).x === 'number' && typeof (p as Pt).y === 'number'
+    if (!cp || !ok(cp.p0) || !ok(cp.peak) || !ok(cp.p2)) return null
+    const nat = mockupNaturalRef.current
+    const nw = snap?.mockup_natural_w || nat?.w || 0
+    const nh = snap?.mockup_natural_h || nat?.h || 0
+    if (!nw || !nh) return null
+    const p0 = mockupPxToCanvas(cp.p0, nw, nh)
+    const p2 = mockupPxToCanvas(cp.p2, nw, nh)
+    const peak = mockupPxToCanvas(cp.peak, nw, nh)
+    return { p0, control: bezierControlFromPeak(p0, peak, p2), p2 }
+  }
+  // Drop point for a baked path-text: the drawn arc's bbox center in canvas-px (glyphs sit centered on the
+  // path, so this lands the text where the admin drew it). Sampled from the quadratic.
+  const arcPlacementCenter = (path: { p0: Pt; control: Pt; p2: Pt }): { x: number; y: number } => {
+    const at = (t: number): Pt => {
+      const u = 1 - t
+      return { x: u * u * path.p0.x + 2 * u * t * path.control.x + t * t * path.p2.x, y: u * u * path.p0.y + 2 * u * t * path.control.y + t * t * path.p2.y }
+    }
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (let i = 0; i <= 24; i++) { const p = at(i / 24); if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y }
+    return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 }
+  }
   // Lock a hat-back curved image's SIZE + rotation (auto-fit owns those), but LEAVE MOVEMENT FREE — cap
   // shapes + text lengths vary, so the customer nudges placement. The arc + fit + single-line stay locked.
   // No re-centering: the initial spawn centers via bakeCurvedArc; every re-bake keeps the current position.
@@ -3200,11 +3229,16 @@ export default function DesignerCanvas({
     // Hat-back (Z-hat-2): text is ALWAYS a curved image at the template arc, centered + locked in the box
     // — never a straight IText. The stamped _curveAmount makes re-select + re-word self-consistent after.
     if (isHatBack()) {
-      const cx = bounds ? (bounds.left + bounds.right) / 2 : 280
-      const cy = bounds ? (bounds.top + bounds.bottom) / 2 : 378
+      // Z-hp-5: if the template has a DRAWN arc, the text follows it (placed at the arc's center); else the
+      // degrees model at the box center. hatBackCurve() is the fallback; a path supersedes it (curveAmount
+      // is ignored by the renderer when a path is present).
+      const arc = hatBackPath()
+      const center = arc ? arcPlacementCenter(arc) : null
+      const cx = center ? center.x : (bounds ? (bounds.left + bounds.right) / 2 : 280)
+      const cy = center ? center.y : (bounds ? (bounds.top + bounds.bottom) / 2 : 378)
       const img = await bakeCurvedArc(
         pendingTextRef.current.replace(/\n/g, ' '),
-        { curveAmount: hatBackCurve(), fontSize, fontFamily: selectedFont, fill: textColor, bold: isBold, italic: isItalic, charSpacing: letterSpacing * 10 },
+        { curveAmount: arc ? 0 : hatBackCurve(), fontSize, fontFamily: selectedFont, fill: textColor, bold: isBold, italic: isItalic, charSpacing: letterSpacing * 10, path: arc ?? undefined },
         cx, cy, bounds,
       )
       if (!img) return

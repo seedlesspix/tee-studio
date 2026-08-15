@@ -49,6 +49,26 @@ export function toPctContain(
   return { xPct: xFrac * 100, yPct: yFrac * 100, widthPct: wFrac * 100, heightPct: hFrac * 100 }
 }
 
+// Map ONE point in the mockup's NATURAL pixels into the 680×850 canvas using the SAME objectFit:contain
+// transform as toPctContain — so a drawn arc (Z-hp curve_path) lands exactly where the print box does.
+// Returns canvas pixels. (Same square-only letterbox-top/bottom scope as toPctContain.)
+export function mockupPxToCanvas(
+  pt: { x: number; y: number },
+  naturalW: number,
+  naturalH: number,
+  containerW: number = CANVAS_W,
+  containerH: number = CANVAS_H,
+): { x: number; y: number } {
+  const containerAspect = containerW / containerH
+  const imageAspect = naturalW / naturalH
+  const rhFrac = Math.min(1, containerAspect / imageAspect)
+  const offY = (1 - rhFrac) / 2
+  return {
+    x: (pt.x / naturalW) * containerW,
+    y: (offY + (pt.y / naturalH) * rhFrac) * containerH,
+  }
+}
+
 // The letterbox offset for a given mockup — how far this mockup's aspect is from
 // the container's (0 = same ratio, no boxing). Square-only scope (KISS,
 // 2026-07-30): letterbox top/bottom always; the pillarbox case was dropped.
