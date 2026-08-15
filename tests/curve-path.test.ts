@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { bezierControlFromPeak, pathTextLayout } from '../app/lib/curvePath'
 
+// pathTextLayout FILLS the path: the text spans (most of) the arc — short words grow, long words shrink —
+// so it always spans the opening the way the drawn arc implies. PATH_FILL=0.9 (a small end margin).
+
 describe('bezierControlFromPeak', () => {
   it('derives the control so the peak lies ON the curve at t=0.5', () => {
     const p0 = { x: 0, y: 0 }, p2 = { x: 100, y: 0 }, peak = { x: 50, y: 20 }
@@ -17,19 +20,19 @@ describe('pathTextLayout — straight path (control at midpoint)', () => {
   const p0 = { x: 0, y: 0 }, p2 = { x: 100, y: 0 }
   const control = bezierControlFromPeak(p0, { x: 50, y: 0 }, p2) // straight line
 
-  it('lays glyphs on a horizontal line, centered, tangent ~0', () => {
+  it('scales short text UP to fill the path, centered, tangent ~0', () => {
     const r = pathTextLayout(p0, control, p2, [10, 10, 10], 0)
-    expect(r.scale).toBe(1)
+    // totalEff 30 grows to fill 0.9*100 = 90 -> scale 3; run centered (start 5), centers at 20/50/80
+    expect(r.scale).toBeCloseTo(3, 5)
     expect(r.pathLength).toBeCloseTo(100, 0)
-    // widths 10,10,10 spacing 0 -> totalEff 30, centered on 100 -> starts at 35, centers at 40/50/60
-    expect(r.glyphs.map(g => Math.round(g.x))).toEqual([40, 50, 60])
+    expect(r.glyphs.map(g => Math.round(g.x))).toEqual([20, 50, 80])
     r.glyphs.forEach(g => { expect(g.y).toBeCloseTo(0, 5); expect(Math.abs(g.angle)).toBeLessThan(1e-6) })
   })
 
   it('honors spacing between glyphs (spacing after each glyph)', () => {
-    const r = pathTextLayout(p0, control, p2, [10, 10], 10) // totalEff = 20 + 10*2 = 40, centered -> start 30
-    // centers: 30+5=35, then advance 10+10 -> 55+5=... center2 = 30 + (10+10) + 5 = 55
-    expect(r.glyphs.map(g => Math.round(g.x))).toEqual([35, 55])
+    const r = pathTextLayout(p0, control, p2, [10, 10], 10) // totalEff 40 -> scale 2.25, fills to 90
+    expect(r.glyphs.map(g => Math.round(g.x))).toEqual([16, 61])
+    expect(r.glyphs[1].x).toBeGreaterThan(r.glyphs[0].x) // spaced apart
   })
 })
 
@@ -49,27 +52,29 @@ describe('pathTextLayout — symmetric arc', () => {
     const minY = Math.min(...g.map(p => p.y))
     expect(g[2].y).toBeCloseTo(minY, 1)
     expect(g[2].x).toBeCloseTo(50, 0)
-    // the arc is longer than the 100px chord, so the text (40px) still fits with no shrink
+    // short text (40px) GROWS to fill the >100px arc
     expect(r.pathLength).toBeGreaterThan(100)
-    expect(r.scale).toBe(1)
+    expect(r.scale).toBeGreaterThan(1)
   })
 })
 
-describe('pathTextLayout — auto-shrink', () => {
+describe('pathTextLayout — fill scaling', () => {
   const p0 = { x: 0, y: 0 }, p2 = { x: 100, y: 0 }
   const control = bezierControlFromPeak(p0, { x: 50, y: 0 }, p2) // straight, length 100
 
   it('shrinks to fit when the text overruns the path', () => {
-    const r = pathTextLayout(p0, control, p2, [50, 50, 50, 50], 0) // totalEff 200 > 100
-    expect(r.scale).toBeCloseTo(0.5, 5)
-    // after shrink the run fills the whole path (0..100), centers at 25/75... 4 glyphs of eff-width 25
-    expect(r.glyphs[0].x).toBeCloseTo(12.5, 1)
-    expect(r.glyphs[3].x).toBeCloseTo(87.5, 1)
+    const r = pathTextLayout(p0, control, p2, [50, 50, 50, 50], 0) // totalEff 200 -> scale 0.45
+    expect(r.scale).toBeCloseTo(0.45, 5)
+    // fills 0.9*100 = 90 (start 5): 4 glyphs of eff-width 22.5, centers 16.25 .. 83.75
+    expect(r.glyphs[0].x).toBeCloseTo(16.25, 1)
+    expect(r.glyphs[3].x).toBeCloseTo(83.75, 1)
   })
 
-  it('does not shrink when the text fits', () => {
-    const r = pathTextLayout(p0, control, p2, [10, 10], 0)
-    expect(r.scale).toBe(1)
+  it('GROWS short text to fill the path (the key type-on-path behavior)', () => {
+    const r = pathTextLayout(p0, control, p2, [10, 10], 0) // totalEff 20 -> scale 4.5
+    expect(r.scale).toBeCloseTo(4.5, 5)
+    expect(r.glyphs[0].x).toBeCloseTo(27.5, 1) // spans ~5..95, not a tiny word at the midpoint
+    expect(r.glyphs[1].x).toBeCloseTo(72.5, 1)
   })
 })
 

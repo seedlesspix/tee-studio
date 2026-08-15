@@ -5,8 +5,8 @@
 //
 // KEY DIFFERENCE from the degrees model: there, radius = textLength / fixedAngle, so curvature changes
 // with text length (short text curls sharply). HERE the PATH is fixed (drawn per template on the mockup);
-// text length only changes how much of the path is used, auto-shrinking if it would overrun. The
-// curvature belongs to the hat, not the text.
+// the text FILLS the path — short words GROW to span it, long words shrink to fit — so it always spans the
+// opening the way the drawn arc implies. The curvature belongs to the hat, not the text.
 //
 // SIGN CONVENTION (app-wide, matches the customer Curve slider + the degrees fallback): a POSITIVE curve
 // is a FROWN ∩ (what sits over a cap opening); negative is a smile ∪. The path model itself carries NO
@@ -36,6 +36,7 @@ export function bezierControlFromPeak(p0: Pt, peak: Pt, p2: Pt): Pt {
 }
 
 const SAMPLES = 256 // polyline resolution — fine enough that arc-length + tangent are smooth at print scale
+const PATH_FILL = 0.9 // fraction of the arc the text spans (short words grow to this; long words shrink to fit)
 
 function quadAt(p0: Pt, c: Pt, p2: Pt, t: number): Pt {
   const u = 1 - t
@@ -84,11 +85,13 @@ export function pathTextLayout(p0: Pt, control: Pt, p2: Pt, glyphWidths: number[
 
   const totalWidth = glyphWidths.reduce((a, b) => a + b, 0)
   const totalEff = totalWidth + spacingPx * glyphWidths.length
-  // Auto-shrink only when the text would overrun the path; short text keeps its size and uses part of it.
-  const scale = totalEff > pathLength ? pathLength / totalEff : 1
+  // FILL the path: scale the text so it spans (most of) the arc — short words GROW to fill it, long words
+  // shrink to fit. Type-on-path's whole look is the text spanning the opening, not a small word floating at
+  // the midpoint. PATH_FILL (<1) leaves a small margin so the ends sit just inside the drawn endpoints.
+  const scale = totalEff > 0 ? (pathLength * PATH_FILL) / totalEff : 1
   const w = glyphWidths.map(g => g * scale)
   const sp = spacingPx * scale
-  const effTotal = totalEff * scale // = min(totalEff, pathLength)
+  const effTotal = totalEff * scale // ≈ pathLength * PATH_FILL
 
   let s = (pathLength - effTotal) / 2 // center the run on the path
   const glyphs: GlyphPlacement[] = []
