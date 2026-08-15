@@ -4,6 +4,7 @@
 // <text>, no stroke, no transform; coordinates baked absolute in a 300-units/in space.
 import * as opentype from 'opentype.js'
 import { curveArcGeometry } from '../curveGeometry'
+import { pathTextLayout, type Pt } from '../curvePath'
 import type { CanvasBox } from './cutFileGeometry'
 
 export type PhysBox = { width_in: number; height_in: number }
@@ -147,6 +148,10 @@ export type CurveParams = {
   bold: boolean
   italic: boolean
   charSpacing?: number  // _curveCharSpacing (Fabric 1/1000 em; letter spacing) — default 0
+  // Type-on-path (Z-hp): when present, glyphs follow this admin-drawn quadratic (P0..control..P2, canvas-px)
+  // via the SAME pathTextLayout the on-screen raster uses — so the cut can't drift from the preview.
+  // curveAmount is then ignored for geometry (kept as the stored fallback).
+  path?: { p0: Pt; control: Pt; p2: Pt }
 }
 export type ImagePlacement = {
   left: number; top: number      // baked-image CENTER in 680×850 (originX/originY=center)
@@ -191,26 +196,45 @@ export function curvedTextToCutPath(
   const S = curve.fontSizePx
   const scale = S / font.unitsPerEm
 
-  const A = curve.curveAmount, up = A > 0
   const spacingPx = ((curve.charSpacing ?? 0) / 1000) * S   // Fabric 1/1000 em → px (matches the preview)
   const glyphs = glyphsForLine(font, line)
   const widths = glyphs.map(g => (g.advanceWidth ?? 0) * scale)
   const seq = glyphs.map((g, i) => ({ g, w: widths[i] }))
-  const ordered = up ? seq : [...seq].reverse()
-  const orderedWidths = ordered.map(s => s.w)
-  // SHARED degrees-model geometry (curveGeometry.ts) — identical to the on-screen preview, incl. spacing.
-  const { radius, angles } = curveArcGeometry(orderedWidths, spacingPx, A)
-  const midPx = ((font.ascender + font.descender) / 2) * scale
 
+  // Place each glyph OUTLINE (center = advance-middle × em-middle) at its arc/path point, rotated by its
+  // tangent. glyphArcAffine is shared by both models; only the per-glyph point + angle + font scale differ.
   const arcCmds: Cmd[][] = []
-  ordered.forEach(({ g, w }, i) => {
-    const ca = angles[i]
-    const Px = up ? radius * Math.sin(ca) : -radius * Math.sin(ca)
-    const Py = up ? -radius * Math.cos(ca) : radius * Math.cos(ca)
-    let cmds = (g.getPath(0, 0, S).commands as unknown) as Cmd[]
-    if (curve.italic) cmds = transformCmds(cmds, shearItalic(0))
-    arcCmds.push(transformCmds(cmds, glyphArcAffine(ca, w, midPx, Px, Py)))
-  })
+  if (curve.path) {
+    // PATH model — the SAME pathTextLayout the raster uses (natural order, auto-shrink to fit), so the cut
+    // matches the on-screen preview EXACTLY. Font (and advance + em-middle) shrink by the fit scale.
+    const { p0, control, p2 } = curve.path
+    const { glyphs: place, scale: fit } = pathTextLayout(p0, control, p2, seq.map(s => s.w), spacingPx)
+    const effS = S * fit
+    const midPx = ((font.ascender + font.descender) / 2) * scale * fit
+    seq.forEach(({ g, w }, i) => {
+      const pl = place[i]
+      if (!pl) return
+      let cmds = (g.getPath(0, 0, effS).commands as unknown) as Cmd[]
+      if (curve.italic) cmds = transformCmds(cmds, shearItalic(0))
+      arcCmds.push(transformCmds(cmds, glyphArcAffine(pl.angle, w * fit, midPx, pl.x, pl.y)))
+    })
+  } else {
+    // DEGREES model (unchanged) — magnitude = subtended degrees, sign = up/down (curve-down reverses order).
+    const A = curve.curveAmount, up = A > 0
+    const ordered = up ? seq : [...seq].reverse()
+    const orderedWidths = ordered.map(s => s.w)
+    // SHARED degrees-model geometry (curveGeometry.ts) — identical to the on-screen preview, incl. spacing.
+    const { radius, angles } = curveArcGeometry(orderedWidths, spacingPx, A)
+    const midPx = ((font.ascender + font.descender) / 2) * scale
+    ordered.forEach(({ g, w }, i) => {
+      const ca = angles[i]
+      const Px = up ? radius * Math.sin(ca) : -radius * Math.sin(ca)
+      const Py = up ? -radius * Math.cos(ca) : radius * Math.cos(ca)
+      let cmds = (g.getPath(0, 0, S).commands as unknown) as Cmd[]
+      if (curve.italic) cmds = transformCmds(cmds, shearItalic(0))
+      arcCmds.push(transformCmds(cmds, glyphArcAffine(ca, w, midPx, Px, Py)))
+    })
+  }
 
   // content-bbox center in arc-space (matches the raster's tight centered crop)
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
