@@ -4,7 +4,7 @@ import FontProvider from "./components/FontProvider";
 import StringsProvider from "./components/StringsProvider";
 
 export const metadata: Metadata = {
-  title: "PrepStation",
+  title: "Prep Station",
   description: "Custom T-Shirt Designer",
 };
 

@@ -1,13 +1,16 @@
 'use client'
 import { useT } from './StringsProvider'
 
-// The two-tone brand wordmark, language-driven (rename N3/N4). part1 renders in the surrounding text
-// color (currentColor), part2 in brand red — the "read-once identity" red the locked red-vocabulary rule
-// allows. Both parts are editable in the Language admin (app.name.part1 / app.name.part2), so the brand
-// name is owned in ONE place and updates every surface (designer, order, admin, login) at once — fixing
-// the hardcoded marks that ignored the app.name edit. Renders a Fragment so it drops into any existing
-// wrapper (font size / weight / tracking / color) with no visual change beyond the words themselves.
+// Two-tone brand wordmark, driven by the SINGLE Language string `app.name` (N3 fix). Denise edits ONE
+// "name" field in the Language editor — the first word renders in the surrounding text color, the rest in
+// brand red, so "PREP STATION" shows PREP + red STATION exactly as typed. One field owns the name on every
+// surface (designer, order, admin, login). Renders a Fragment so it drops into any existing wrapper (font
+// size / weight / tracking / color) unchanged. A single-word name (no space) simply renders in one color.
 export default function BrandMark() {
   const t = useT()
-  return <>{t('app.name.part1', 'Prep')}<span className="text-[#dd3333]">{t('app.name.part2', 'Station')}</span></>
+  const name = t('app.name', 'Prep Station')
+  const sp = name.indexOf(' ')
+  const first = sp === -1 ? name : name.slice(0, sp)
+  const rest = sp === -1 ? '' : name.slice(sp + 1)
+  return <>{first}{rest ? <>{' '}<span className="text-[#dd3333]">{rest}</span></> : null}</>
 }
