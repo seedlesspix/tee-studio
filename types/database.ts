@@ -687,6 +687,7 @@ export type Database = {
       product_template_print_areas: {
         Row: {
           curve_degrees: number | null
+          curve_path: Json | null
           height_in: number
           height_px: number
           id: string
@@ -705,6 +706,7 @@ export type Database = {
         }
         Insert: {
           curve_degrees?: number | null
+          curve_path?: Json | null
           height_in: number
           height_px: number
           id?: string
@@ -723,6 +725,7 @@ export type Database = {
         }
         Update: {
           curve_degrees?: number | null
+          curve_path?: Json | null
           height_in?: number
           height_px?: number
           id?: string

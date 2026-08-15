@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { Tables } from '@/types/database'
 import { ZONE_LABELS } from '../../lib/mockupFilename'
+import { bezierControlFromPeak } from '../../lib/curvePath'
 
 type AreaRow = Tables<'product_template_print_areas'>
 
@@ -22,6 +23,7 @@ type EditArea = {
   preset_label: string | null
   sort_order: number
   curve_degrees: number | null // hat_back auto-curve arc (signed °): +=frown ∩, −=smile ∪; null → designer default (+45)
+  curve_path?: CurvePathPts | null // Z-hp type-on-path: drawn {p0,peak,p2} in natural-px; supersedes curve_degrees
   mockup_natural_w?: number | null // natural px of the mockup this box was drawn on — for the drift check
   mockup_natural_h?: number | null // vs the mockup now shown (designer + customer see the managed mockup)
 }
@@ -49,6 +51,18 @@ const SHOPIFY_FALLBACK_SIDES = new Set<string>(['front', 'back']) // only these 
 const sideLabel = (s: string) => ZONE_LABELS[s] ?? s
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
+
+// Type-on-path arc (Z-hp): two endpoints + the on-curve bulge the admin drags, in mockup natural-px.
+type Pt2 = { x: number; y: number }
+type CurvePathPts = { p0: Pt2; peak: Pt2; p2: Pt2 }
+// Validate a jsonb curve_path into the shape (or null) — never trust raw DB json.
+const asCurvePath = (v: unknown): CurvePathPts | null => {
+  const o = v as { p0?: unknown; peak?: unknown; p2?: unknown } | null
+  const ok = (p: unknown): p is Pt2 => !!p && typeof (p as Pt2).x === 'number' && typeof (p as Pt2).y === 'number'
+  return o && ok(o.p0) && ok(o.peak) && ok(o.p2)
+    ? { p0: { x: o.p0.x, y: o.p0.y }, peak: { x: o.peak.x, y: o.peak.y }, p2: { x: o.p2.x, y: o.p2.y } }
+    : null
+}
 let keyCounter = 0
 const nextKey = () => `new-${keyCounter++}`
 
@@ -89,8 +103,9 @@ export default function PrintAreaEditor({
   const naturalRef = useRef<{ w: number; h: number } | null>(null)
   const scaleRef = useRef(1)
   const drag = useRef<null | {
-    key: string; mode: 'move' | 'resize'
+    key: string; mode: 'move' | 'resize' | 'arc-p0' | 'arc-peak' | 'arc-p2'
     startX: number; startY: number; ox: number; oy: number; ow: number; oh: number
+    px?: number; py?: number // arc-point drag origin (natural-px)
   }>(null)
 
   const displayW = natural ? Math.min(DISPLAY_W, natural.w) : DISPLAY_W
@@ -115,7 +130,7 @@ export default function PrintAreaEditor({
       .eq('template_id', templateId)
       .order('sort_order')
       .then(({ data }) => {
-        if (data) setAreas(data.map((r: AreaRow) => ({ ...r, _key: r.id })))
+        if (data) setAreas(data.map((r: AreaRow) => ({ ...r, _key: r.id, curve_path: asCurvePath(r.curve_path) })))
       })
   }, [templateId])
 
@@ -184,6 +199,18 @@ export default function PrintAreaEditor({
       if (!d || !nat) return
       const dxN = (e.clientX - d.startX) / s
       const dyN = (e.clientY - d.startY) / s
+      // Type-on-path arc-point drag: move one of {p0,peak,p2} in natural-px, clamped to the mockup.
+      if (d.mode === 'arc-p0' || d.mode === 'arc-peak' || d.mode === 'arc-p2') {
+        const ptKey = d.mode.slice(4) as 'p0' | 'peak' | 'p2'
+        setAreas(prev => prev.map(a => {
+          if (a._key !== d.key || !a.curve_path) return a
+          return { ...a, curve_path: { ...a.curve_path, [ptKey]: {
+            x: clamp(Math.round((d.px ?? 0) + dxN), 0, nat.w),
+            y: clamp(Math.round((d.py ?? 0) + dyN), 0, nat.h),
+          } } }
+        }))
+        return
+      }
       setAreas(prev => prev.map(a => {
         if (a._key !== d.key) return a
         if (d.mode === 'move') {
@@ -215,6 +242,14 @@ export default function PrintAreaEditor({
     drag.current = { key: a._key, mode, startX: e.clientX, startY: e.clientY, ox: a.x_px, oy: a.y_px, ow: a.width_px, oh: a.height_px }
   }
 
+  const startArcDrag = (key: string, pt: 'p0' | 'peak' | 'p2', e: React.PointerEvent) => {
+    e.preventDefault(); e.stopPropagation()
+    setSelectedKey(key)
+    const cp = areas.find(x => x._key === key)?.curve_path
+    if (!cp) return
+    drag.current = { key, mode: `arc-${pt}`, startX: e.clientX, startY: e.clientY, ox: 0, oy: 0, ow: 0, oh: 0, px: cp[pt].x, py: cp[pt].y }
+  }
+
   const patch = (key: string, fields: Partial<EditArea>) =>
     setAreas(prev => prev.map(a => a._key === key ? { ...a, ...fields } : a))
 
@@ -236,6 +271,7 @@ export default function PrintAreaEditor({
       preset_label: null,
       sort_order: areas.length,
       curve_degrees: null,
+      curve_path: null,
     }
     setAreas(prev => [...prev, area])
     setSelectedKey(area._key)
@@ -276,6 +312,7 @@ export default function PrintAreaEditor({
           preset_label: a.preset_label?.trim() || null,
           sort_order: a.sort_order,
           curve_degrees: a.curve_degrees ?? null,
+          curve_path: a.curve_path ?? null, // Z-hp type-on-path arc (natural-px) — supersedes curve_degrees where set
           // Record the natural pixel size of the mockup these coordinates were drawn against, so the
           // designer re-projects the box against the SAME reference frame (px→% below) instead of
           // guessing from whichever product image loads first. All areas are shown over the currently-
@@ -307,6 +344,23 @@ export default function PrintAreaEditor({
   }
 
   const selected = areas.find(a => a._key === selectedKey) ?? null
+  // Drop a default frown arc across the selected box (endpoints low, bulge high → ∩ over the cap opening),
+  // then the admin drags the three dots on the mockup to shape it.
+  const addArc = () => {
+    const a = selected
+    if (!a) return
+    patch(a._key, { curve_path: {
+      p0:   { x: Math.round(a.x_px + a.width_px * 0.10), y: Math.round(a.y_px + a.height_px * 0.70) },
+      peak: { x: Math.round(a.x_px + a.width_px * 0.50), y: Math.round(a.y_px + a.height_px * 0.15) },
+      p2:   { x: Math.round(a.x_px + a.width_px * 0.90), y: Math.round(a.y_px + a.height_px * 0.70) },
+    } })
+  }
+  const clearArc = () => { if (selected) patch(selected._key, { curve_path: null }) }
+  const selectedArc = selected?.curve_path ?? null // captured const so TS narrows it inside the render callbacks
+  // Quadratic control point (from the on-curve peak) for the live SVG preview.
+  const selectedArcControl = selectedArc
+    ? bezierControlFromPeak(selectedArc.p0, selectedArc.peak, selectedArc.p2)
+    : null
   const visibleAreas = areas.filter(a => a.side === side)
   // Safety flag: a box in THIS zone was drawn on a differently-shaped image than the managed mockup now
   // shown (and rendered to customers), so its px→% projection uses the OLD frame and can drift. Only when a
@@ -412,6 +466,28 @@ export default function PrintAreaEditor({
                   </div>
                 )
               })}
+              {/* Type-on-path (Z-hp): the selected area's drawn arc — preview curve + draggable ends/bulge */}
+              {natural && selected && selectedArc && selectedArcControl && (
+                <>
+                  <svg width={displayW} height={natural.h * scale}
+                    style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none' }}>
+                    <path
+                      d={`M ${selectedArc.p0.x * scale} ${selectedArc.p0.y * scale} Q ${selectedArcControl.x * scale} ${selectedArcControl.y * scale} ${selectedArc.p2.x * scale} ${selectedArc.p2.y * scale}`}
+                      fill="none" stroke="#dd3333" strokeWidth={2} strokeDasharray="6 4" />
+                  </svg>
+                  {(['p0', 'peak', 'p2'] as const).map(k => {
+                    const pt = selectedArc[k]
+                    const isPeak = k === 'peak'
+                    return (
+                      <div key={k}
+                        onPointerDown={e => startArcDrag(selected._key, k, e)}
+                        title={isPeak ? 'Bulge — drag up for a deeper frown ∩, down for a smile ∪' : 'Arc end — drag to move where the text starts/ends'}
+                        style={{ position: 'absolute', left: pt.x * scale - 7, top: pt.y * scale - 7, width: 14, height: 14, cursor: 'grab', borderRadius: '50%', touchAction: 'none' }}
+                        className={isPeak ? 'bg-amber-400 border-2 border-white shadow' : 'bg-[#dd3333] border-2 border-white shadow'} />
+                    )
+                  })}
+                </>
+              )}
             </div>
             </>
           ) : (
@@ -517,10 +593,29 @@ export default function PrintAreaEditor({
                     className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm font-mono mt-1 outline-none focus:border-[#dd3333] placeholder-gray-400" />
                 </div>
 
-                {/* Hat-Back Auto-Curve (Z-hat-1): only hat_back zones curve their text. */}
+                {/* Type-on-path arc (Z-hp): DRAW the curve on the mockup — supersedes the degrees value below. */}
                 {selected.side === 'hat_back' && (
                   <div className="col-span-2 rounded border border-gray-200 bg-gray-50 p-2">
-                    <label className="text-[10px] text-gray-600 font-mono uppercase">Hat-back curve (°)</label>
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-[10px] text-gray-600 font-mono uppercase">
+                        Curve arc {selected.curve_path && <span className="text-[#dd3333]">· active</span>}
+                      </label>
+                      {selected.curve_path
+                        ? <button type="button" onClick={clearArc} className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[11px] font-mono text-red-600 hover:bg-red-50">Clear arc</button>
+                        : <button type="button" onClick={addArc} className="rounded border border-[#dd3333] bg-white px-2 py-0.5 text-[11px] font-mono text-[#dd3333] hover:bg-red-50">+ Draw arc</button>}
+                    </div>
+                    <p className="text-[11px] text-gray-500 leading-snug mt-1">
+                      {selected.curve_path
+                        ? <>Drag the two <span className="text-[#dd3333] font-semibold">red ends</span> and the <span className="text-amber-600 font-semibold">amber bulge</span> on the mockup to shape the arc the text follows. This <strong>overrides</strong> the degrees value below.</>
+                        : <>Draw the exact path the text follows on the mockup — best for real-photo caps. Drop a default frown, then drag its ends + bulge. (Overrides the degrees setting below.)</>}
+                    </p>
+                  </div>
+                )}
+
+                {/* Hat-Back Auto-Curve (Z-hat-1) — degrees FALLBACK when no arc is drawn. */}
+                {selected.side === 'hat_back' && (
+                  <div className="col-span-2 rounded border border-gray-200 bg-gray-50 p-2">
+                    <label className="text-[10px] text-gray-600 font-mono uppercase">Hat-back curve (°) — fallback</label>
                     <div className="flex items-start gap-2 mt-1">
                       <input type="number" step={1} min={-360} max={360}
                         value={selected.curve_degrees ?? ''}
