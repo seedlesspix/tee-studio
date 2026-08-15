@@ -2363,6 +2363,10 @@ export default function DesignerCanvas({
   // box (arc/position/fit locked, like the N&N jersey stack); font + thread color stay the customer's.
   // POSITIVE = frown ∩ over the cap opening (verified on a real cap — the engine's "curve-up" is a frown).
   const HAT_BACK_DEFAULT_CURVE = 45 // gentle frown; the template's curve_degrees overrides.
+  // Type-on-path text renders at ONE fixed height (the arc controls placement/curvature, not size), so it
+  // reads consistently regardless of the size slider (which is locked for hat_back). Long text shrinks to
+  // fit the path; short text sits centered at this size. Tunable; per-zone override is a small follow-up.
+  const HAT_ARC_FONT_PX = 40
   const hatBackCurve = (): number => {
     const snap = extraZonePrintAreaSnapRef.current['hat_back'] as { curve_degrees?: number | null } | undefined
     const c = snap?.curve_degrees
@@ -2576,7 +2580,7 @@ export default function DesignerCanvas({
       // inside bakeCurvedArc is the exact pixel code that used to live here).
       const img = await bakeCurvedArc(
         rawText,
-        { curveAmount: cAmount, fontSize: cSize, fontFamily: cFont, fill: cFill, bold: cBold, italic: cItalic, charSpacing: letterSpacing * 10, path: (active as any)._curvePath },
+        { curveAmount: cAmount, fontSize: (active as any)._curvePath ? HAT_ARC_FONT_PX : cSize, fontFamily: cFont, fill: cFill, bold: cBold, italic: cItalic, charSpacing: letterSpacing * 10, path: (active as any)._curvePath },
         spawnX, spawnY, getPrintAreaBounds(),
       )
       if (myToken !== curveTokenRef.current) return  // superseded while baking/decoding
@@ -3238,7 +3242,7 @@ export default function DesignerCanvas({
       const cy = center ? center.y : (bounds ? (bounds.top + bounds.bottom) / 2 : 378)
       const img = await bakeCurvedArc(
         pendingTextRef.current.replace(/\n/g, ' '),
-        { curveAmount: arc ? 0 : hatBackCurve(), fontSize, fontFamily: selectedFont, fill: textColor, bold: isBold, italic: isItalic, charSpacing: letterSpacing * 10, path: arc ?? undefined },
+        { curveAmount: arc ? 0 : hatBackCurve(), fontSize: arc ? HAT_ARC_FONT_PX : fontSize, fontFamily: selectedFont, fill: textColor, bold: isBold, italic: isItalic, charSpacing: letterSpacing * 10, path: arc ?? undefined },
         cx, cy, bounds,
       )
       if (!img) return
