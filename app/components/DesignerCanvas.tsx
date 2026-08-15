@@ -12,7 +12,7 @@ import CanvasStage from './CanvasStage'
 import { getProduct } from '../lib/shopify'
 import { buildColorImageMap, getColorImages } from '../lib/productImages'
 import { normalizeColorKey } from '../lib/mockupFilename'
-import { deriveProductZones, zoneLabel, isSleeveZone } from '../lib/zones'
+import { deriveProductZones, zoneLabel, customerZoneLabel, isSleeveZone } from '../lib/zones'
 import { AUTODRAFT_KEY, buildEnvelope, parseEnvelope, shouldRestore } from '../lib/autodraft'
 import { placedInches, lowResTier } from '../lib/lowRes'
 import { maxScaleForRotation } from '../lib/rotationFit'
@@ -3170,6 +3170,7 @@ export default function DesignerCanvas({
     // (silently turning it into an N&N order + a phantom print charge). (broken #2)
     frontObjectsRef.current = []
     backObjectsRef.current = []
+    extraZoneObjectsRef.current = {} // N7: also wipe sleeve/hat zones — Clear All clears EVERY zone, not just the visible side
     autoShownBackForNamesRef.current = false // a fresh design may re-auto-open on Back for N&N
     setRoster([])
     setNnFields({ name: false, number: false, title: false })
@@ -5071,7 +5072,7 @@ export default function DesignerCanvas({
       className={`px-4 py-1.5 rounded-full text-xs font-mono tracking-widest transition-all ${
         shirtView === z ? 'bg-gray-900 text-white' : 'bg-white text-gray-700 border border-gray-200 hover:border-gray-400'
       }`}>
-      {zoneLabel(z).toUpperCase()}
+      {customerZoneLabel(z).toUpperCase()}
     </button>
   )
   const zoneSelectorBar = (

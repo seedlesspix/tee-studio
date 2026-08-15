@@ -27,12 +27,13 @@ export const UI_STRINGS = {
   // Desired-by date (BETA #30) — optional; turnaround copy is method-aware.
   'order.desired_by_label': { default: 'Desired by', group: 'Order page', desc: 'Label for the optional "desired by" date picker on the order page (BETA #30).' },
   'order.ack_label': { default: "I've double-checked my design — spelling, image quality, and placement. What I see on screen is exactly what T-Shirt Deli will be cooking up, and they can't fix errors in my artwork or text after I order. For the sharpest print, I'm using high-resolution images.", group: 'Order page', desc: 'BETA #32(b): pre-cart design acknowledgment. Must be actively checked (not pre-ticked) — Add to Cart is blocked until then, and the checked state is saved onto the order as proof.' },
+  'order.missing_ack': { default: 'Please tick the confirmation checkbox before adding to cart.', group: 'Order page', desc: 'Shown when a customer tries to Add to Cart without checking the design-acknowledgment box (N8 — the disabled button now explains what is missing).' },
   'order.desired_by_help_print': { default: 'Typical turnaround: print 24–72 hours.', group: 'Order page', desc: 'Turnaround expectation shown beside the Desired-by date for PRINT orders (BETA #30).' },
   'order.desired_by_help_embroidery': { default: 'Typical turnaround: embroidery about a week.', group: 'Order page', desc: 'Turnaround expectation shown beside the Desired-by date for EMBROIDERY orders (BETA #30).' },
   'order.desired_by_nudge': { default: "That's sooner than our usual turnaround — we'll do our best, but please call us to confirm.", group: 'Order page', desc: 'Soft nudge (never blocks) shown when the chosen desired-by date is sooner than turnaround (BETA #30).' },
 
   // ── Notifications / confirms ─────────────────────────────────────────────────
-  'notify.clear_all_confirm': { default: 'Clear all design elements?', group: 'Notifications', desc: 'Confirmation shown before clearing the whole design (BETA #19, wording).' },
+  'notify.clear_all_confirm': { default: 'Clear the entire design — every side and print zone (front, back, sleeves, hat)? This can’t be undone.', group: 'Notifications', desc: 'Confirmation before clearing the whole design across ALL sides and zones (BETA #19 / N7 — names the full scope).' },
 
   // ── Admin — Art library ──────────────────────────────────────────────────────
   'admin.design_number': { default: 'Design #', group: 'Admin — Art', desc: 'Label for an art item’s design number in the Art admin (was "Decal #" — BETA #22).' },
@@ -43,6 +44,7 @@ export const UI_STRINGS = {
 
   // ── Designer (customer) — a starter set of the most-visible labels/notes ─────
   'designer.embroidery_preview_note': { default: 'Preview — final stitching may vary.', group: 'Designer', desc: 'Honesty note shown in embroidery mode next to the design.' },
+  'designer.color.pms_note': { default: 'We cannot do PMS color matching.', group: 'Designer', desc: 'Small-print note shown under both the Text Color and Clipart Color headings (N6).' },
   'designer.unavailable_title': { default: 'This product is currently unavailable', group: 'Designer', desc: 'Heading on the graceful fallback screen shown when a product can’t be loaded (unpublished/unavailable in Shopify) instead of a blank designer.' },
   'designer.unavailable_body': { default: 'Sorry — this item can’t be customized right now. It may be temporarily out of stock or no longer offered. Please check back soon, or pick another product.', group: 'Designer', desc: 'Body text on the product-unavailable fallback screen in the designer.' },
 

@@ -10,7 +10,7 @@ import Spinner from '@/app/components/Spinner'
 import { format } from '@/app/lib/uiStrings'
 import { supabase } from '@/app/lib/supabase'
 import { VOLUME_DISCOUNT, currentTier, nextTier, resolveTiers, type VolumeTier } from '@/app/lib/volumeTiers'
-import { orderZones, zoneLabel } from '@/app/lib/zones'
+import { orderZones, customerZoneLabel } from '@/app/lib/zones'
 
 type DesignOrder = Omit<Tables<'design_orders'>, 'quantities'> & {
   quantities: Record<string, number> | null
@@ -170,6 +170,7 @@ function OrderPage() {
   const handleAddToCart = async (force = false) => {
     if (!design || totalQty === 0) { setError(t('order.error_select_size', 'Please select at least one size and quantity.')); return }
     if (nnActive && badRosterSizes.length) { setError(format(t('order.nn_bad_sizes', "Some roster rows use a size this product doesn't offer ({sizes}). Go back to Edit Design to fix those sizes before checkout."), { sizes: badRosterSizes.join(', ') })); return }
+    if (!acknowledged) { setError(t('order.missing_ack', 'Please tick the confirmation checkbox before adding to cart.')); return }
     setAdding(true)
     setError('')
 
@@ -296,7 +297,7 @@ function OrderPage() {
               { key: 'front', display: t('order.side_front', 'FRONT'), src: design?.canvas_png_front ?? null, blank: !frontDesigned },
               (backDesigned || productHasBack) ? { key: 'back', display: t('order.side_back', 'BACK'), src: design?.canvas_png_back ?? null, blank: !backDesigned } : null,
               // Print Zones: a tile per extra zone that was actually designed (sleeves/hat).
-              ...extraZones.filter(z => !!zoneMap[z]?.canvas_png).map(z => ({ key: z, display: zoneLabel(z).toUpperCase(), src: zoneMap[z]?.canvas_png ?? null, blank: false })),
+              ...extraZones.filter(z => !!zoneMap[z]?.canvas_png).map(z => ({ key: z, display: customerZoneLabel(z).toUpperCase(), src: zoneMap[z]?.canvas_png ?? null, blank: false })),
             ].filter(Boolean) as { key: string; display: string; src: string | null; blank: boolean }[]
             return (
               <div className={sides.length > 1 ? 'grid grid-cols-1 sm:grid-cols-2 gap-4' : 'max-w-sm mx-auto'}>
@@ -358,7 +359,7 @@ function OrderPage() {
                 const c = Number(zoneMap[z]?.print_charge) || 0
                 return c > 0 ? (
                   <div key={z} className="flex justify-between text-gray-900">
-                    <span>{format(t('order.zone_print', '{zone} Print'), { zone: zoneLabel(z) })}</span>
+                    <span>{format(t('order.zone_print', '{zone} Print'), { zone: customerZoneLabel(z) })}</span>
                     <span className="text-gray-900">+${c.toFixed(2)}</span>
                   </div>
                 ) : null
@@ -561,8 +562,16 @@ function OrderPage() {
 
           {/* Add to Cart — lands in the customer's real storefront cart,
               alongside other designs and off-the-shelf products */}
-          <button onClick={() => handleAddToCart()} disabled={adding || totalQty === 0 || !acknowledged || (nnActive && badRosterSizes.length > 0)}
-            className="w-full py-4 rounded-xl bg-[#dd3333] text-white font-black text-lg tracking-wide hover:bg-red-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+          {/* N8: the button stays CLICKABLE when requirements aren't met (disabled only while submitting),
+              so a click runs handleAddToCart's validation and shows EXACTLY what's missing — size/quantity,
+              roster sizes, or the acknowledgment — instead of a silent gray button. Muted styling signals
+              "not ready yet" without hiding the affordance. */}
+          <button onClick={() => handleAddToCart()} disabled={adding}
+            className={`w-full py-4 rounded-xl font-black text-lg tracking-wide transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+              (totalQty > 0 && acknowledged && !(nnActive && badRosterSizes.length > 0))
+                ? 'bg-[#dd3333] text-white hover:bg-red-600'
+                : 'bg-gray-300 text-gray-700 hover:bg-gray-400'
+            }`}>
             {adding
               ? <span className="inline-flex items-center justify-center gap-2"><Spinner size={16} />{t('order.adding_to_cart', 'Adding to Cart...')}</span>
               : `${t('order.add_to_cart', 'Add to Cart →')} ${totalQty > 0 ? `(${totalQty} item${totalQty > 1 ? 's' : ''})` : ''}`}

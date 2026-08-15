@@ -298,6 +298,7 @@ export default function SelectionPanel({
                 {/* Text Color — LAST of the text controls (Denise: all text options sit ABOVE color). */}
                 <div>
                   <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">{t('designer.text.color_label', 'Text Color')}</label>
+                  <p className="text-[10px] leading-snug text-gray-500 font-mono mt-0.5">{t('designer.color.pms_note', 'We cannot do PMS color matching.')}</p>
                   <div className="flex gap-2 mt-2 flex-wrap items-center">
                     {(dbColors.length > 0 ? dbColors : [
                       { label: 'White', hex: '#ffffff' },
@@ -458,6 +459,7 @@ export default function SelectionPanel({
                 {selectedObjectType === 'svg' && (
                   <div className="mt-2">
                     <label className="text-xs text-gray-800 uppercase tracking-widest font-mono">{t('designer.art.color_label', 'Clipart Color')}</label>
+                    <p className="text-[10px] leading-snug text-gray-500 font-mono mt-0.5">{t('designer.color.pms_note', 'We cannot do PMS color matching.')}</p>
                     <div className="flex gap-2 mt-2 flex-wrap items-center">
                       {(dbColors.length > 0 ? dbColors : [
                         { label: 'Black', hex: '#000000' },

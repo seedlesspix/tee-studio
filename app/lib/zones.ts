@@ -20,6 +20,12 @@ export const FALLBACK_ZONES = new Set<string>(['front', 'back'])
 export const SLEEVE_ZONES = new Set<string>(['left_sleeve', 'right_sleeve'])
 
 export const zoneLabel = (zone: string) => ZONE_LABELS[zone] ?? zone
+
+// Customer-facing zone label (N5). A shopper sees a hat's printable back as simply "Back"; admin keeps
+// "Hat Back" (zoneLabel) to distinguish it from a shirt's back. The internal key (hat_back) is unchanged.
+// Admin surfaces use zoneLabel(); customer surfaces (designer zone bar, order page) use this.
+const CUSTOMER_ZONE_LABELS: Record<string, string> = { hat_back: 'Back' }
+export const customerZoneLabel = (zone: string) => CUSTOMER_ZONE_LABELS[zone] ?? zoneLabel(zone)
 export const isSleeveZone = (zone: string) => SLEEVE_ZONES.has(zone)
 export const isFallbackZone = (zone: string) => FALLBACK_ZONES.has(zone)
 
