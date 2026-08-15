@@ -19,6 +19,7 @@ import { maxScaleForRotation } from '../lib/rotationFit'
 import NamesNumbersPanel from './NamesNumbersPanel'
 import { type RosterEntry, type NnRole, NN_ROLE_PROP, entryHasContent, condensedScaleX, rosterShirtCount, rosterSizeQuantities, rosterValue, jerseyStackLayout } from '../lib/namesNumbers'
 import { renderCurvedArc } from '../lib/curvedArc'
+import type { Pt } from '../lib/curvePath'
 import { applyEmbroideryLook, removeEmbroideryLook } from '../lib/embroideryLook'
 import { drawDeleteIcon, drawRotateIcon, drawResizeIcon, makeHandleRender } from '../lib/selectionHandles'
 import { useT } from './StringsProvider'
@@ -189,6 +190,7 @@ const CANVAS_CUSTOM_PROPS = ['_isSvg', '_originalText', '_currentColor', '_isCur
   // Bake params for a curved-text image, so selecting it reflects the curve
   // slider + font/size/color and adjusting the curve re-bakes from its OWN values.
   '_curveAmount', '_curveFontFamily', '_curveFontSize', '_curveFill', '_curveBold', '_curveItalic', '_curveCharSpacing',
+  '_curvePath', // Z-hp type-on-path: the admin-drawn quadratic a curved text follows (persist so re-open + the cut match)
   '_isVectorUpload', // an uploaded SVG (vector) — excluded from the low-res warning (client + bench)
   '_nnRole', // Names & Numbers placeholder role ('name'|'number') — the substitution + cut-file split key
   // A placed DESIGN (decal): the admin-assigned number + its name, frozen onto the object so the order
@@ -1433,7 +1435,7 @@ export default function DesignerCanvas({
     const recurveWithFont = (o: any, bounds: { left: number; top: number; right: number; bottom: number } | null) =>
       bakeCurvedArc(
         String(o._originalText || ''),
-        { curveAmount: Number(o._curveAmount) || 0, fontSize: Number(o._curveFontSize) || 36, fontFamily: fallback, fill: String(o._curveFill || '#000000'), bold: !!o._curveBold, italic: !!o._curveItalic, charSpacing: Number(o._curveCharSpacing) || 0 },
+        { curveAmount: Number(o._curveAmount) || 0, fontSize: Number(o._curveFontSize) || 36, fontFamily: fallback, fill: String(o._curveFill || '#000000'), bold: !!o._curveBold, italic: !!o._curveItalic, charSpacing: Number(o._curveCharSpacing) || 0, path: o._curvePath },
         o.left, o.top, bounds, Number(o.angle) || 0,
       )
     const recurveInvalidFonts = async () => {
@@ -2320,12 +2322,12 @@ export default function DesignerCanvas({
   // D2 re-fit path calls it per _isCurvedText object to re-curve onto the target garment.
   const bakeCurvedArc = async (
     rawText: string,
-    p: { curveAmount: number; fontSize: number; fontFamily: string; fill: string; bold: boolean; italic: boolean; charSpacing?: number },
+    p: { curveAmount: number; fontSize: number; fontFamily: string; fill: string; bold: boolean; italic: boolean; charSpacing?: number; path?: { p0: Pt; control: Pt; p2: Pt } },
     left: number, top: number,
     bounds: { left: number; top: number; right: number; bottom: number } | null,
     angle: number = 0, // carry the source object's rotation through the re-bake (E2 / D2 re-fit) — else a rotated curved text snaps back to horizontal
   ): Promise<any> => {
-    const { dataUrl } = renderCurvedArc(rawText, p)
+    const { dataUrl } = renderCurvedArc(rawText, p) // p.path (Z-hp) → glyphs follow the drawn path; else the degrees arc
     const { FabricImage } = await import('fabric')
     const img: any = await FabricImage.fromURL(dataUrl)
     img.set({ left, top, originX: 'center', originY: 'center' })
@@ -2341,6 +2343,9 @@ export default function DesignerCanvas({
     img._curveBold = p.bold
     img._curveItalic = p.italic
     img._curveCharSpacing = p.charSpacing ?? 0
+    // Stamp the drawn path (Z-hp) so re-bakes AND the cut file follow the SAME curve. Absent for the
+    // degrees model — left unset so nothing changes for today's hat-back / degrees curved text.
+    if (p.path) img._curvePath = p.path
     // Keep the baked curved text inside the print area (Issue-2).
     if (bounds) {
       const maxScale = Math.min(
@@ -2386,7 +2391,7 @@ export default function DesignerCanvas({
         const p = rebakeCurveParams(Number(obj._curveFontSize) || 36, Number(obj._curveAmount) || 0, scale)
         const rebaked = await bakeCurvedArc(
           String(obj._originalText || ''),
-          { curveAmount: p.curveAmount, fontSize: p.curveFontSize, fontFamily: String(obj._curveFontFamily || 'Impact'), fill: String(obj._curveFill || '#000000'), bold: !!obj._curveBold, italic: !!obj._curveItalic, charSpacing: Number(obj._curveCharSpacing) || 0 },
+          { curveAmount: p.curveAmount, fontSize: p.curveFontSize, fontFamily: String(obj._curveFontFamily || 'Impact'), fill: String(obj._curveFill || '#000000'), bold: !!obj._curveBold, italic: !!obj._curveItalic, charSpacing: Number(obj._curveCharSpacing) || 0, path: obj._curvePath },
           obj.left, obj.top, targetLTRB, Number(obj.angle) || 0,
         )
         canvas.remove(obj); canvas.add(rebaked)
@@ -2418,7 +2423,7 @@ export default function DesignerCanvas({
         const p = rebakeCurveParams(Number(obj._curveFontSize) || 36, Number(obj._curveAmount) || 0, scale)
         const rebaked = await bakeCurvedArc(
           String(obj._originalText || ''),
-          { curveAmount: p.curveAmount, fontSize: p.curveFontSize, fontFamily: String(obj._curveFontFamily || 'Impact'), fill: String(obj._curveFill || '#000000'), bold: !!obj._curveBold, italic: !!obj._curveItalic, charSpacing: Number(obj._curveCharSpacing) || 0 },
+          { curveAmount: p.curveAmount, fontSize: p.curveFontSize, fontFamily: String(obj._curveFontFamily || 'Impact'), fill: String(obj._curveFill || '#000000'), bold: !!obj._curveBold, italic: !!obj._curveItalic, charSpacing: Number(obj._curveCharSpacing) || 0, path: obj._curvePath },
           obj.left, obj.top, backLTRB, Number(obj.angle) || 0,
         )
         out.push(rebaked)
@@ -2453,7 +2458,7 @@ export default function DesignerCanvas({
     const myToken = ++curveTokenRef.current
     const rebaked = await bakeCurvedArc(
       String(obj._originalText || ''),
-      { curveAmount: p.curveAmount, fontSize: p.curveFontSize, fontFamily: String(obj._curveFontFamily || 'Impact'), fill: String(obj._curveFill || '#000000'), bold: !!obj._curveBold, italic: !!obj._curveItalic, charSpacing: Number(obj._curveCharSpacing) || 0 },
+      { curveAmount: p.curveAmount, fontSize: p.curveFontSize, fontFamily: String(obj._curveFontFamily || 'Impact'), fill: String(obj._curveFill || '#000000'), bold: !!obj._curveBold, italic: !!obj._curveItalic, charSpacing: Number(obj._curveCharSpacing) || 0, path: obj._curvePath },
       obj.left, obj.top, getPrintAreaBounds(),
     )
     if (myToken !== curveTokenRef.current) return // superseded by a newer bake (rapid resize/slider)
@@ -2517,8 +2522,10 @@ export default function DesignerCanvas({
         void refreshEmbLookRef.current() // re-apply the embroidery look to the swapped-in curved image / IText
       }
 
-      // curve === 0 → back to an editable IText
-      if (cAmount === 0) {
+      // curve === 0 → back to an editable IText. A type-on-path text (Z-hp) is NOT straightened by the
+      // degrees slider — its curvature is the drawn path, so it stays curved and re-bakes along that path
+      // below. (Dormant today: no object carries _curvePath until the designer read layer lands.)
+      if (cAmount === 0 && !(active as any)._curvePath) {
         if (!(active as any)._isCurvedText) return  // already plain — nothing to do
         const { IText } = await import('fabric')
         if (myToken !== curveTokenRef.current) return  // superseded by a newer bake
@@ -2540,7 +2547,7 @@ export default function DesignerCanvas({
       // inside bakeCurvedArc is the exact pixel code that used to live here).
       const img = await bakeCurvedArc(
         rawText,
-        { curveAmount: cAmount, fontSize: cSize, fontFamily: cFont, fill: cFill, bold: cBold, italic: cItalic, charSpacing: letterSpacing * 10 },
+        { curveAmount: cAmount, fontSize: cSize, fontFamily: cFont, fill: cFill, bold: cBold, italic: cItalic, charSpacing: letterSpacing * 10, path: (active as any)._curvePath },
         spawnX, spawnY, getPrintAreaBounds(),
       )
       if (myToken !== curveTokenRef.current) return  // superseded while baking/decoding

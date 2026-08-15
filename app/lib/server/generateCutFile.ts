@@ -107,9 +107,14 @@ export async function outlineVectorObject(
     }
 
     if (curved) {
+      // Z-hp: if this curved text carries an admin-drawn path, the cut follows it (the SAME pathTextLayout
+      // the preview uses); an absent/malformed path falls back to the degrees arc. Validate before trusting.
+      const cp = (t as { _curvePath?: { p0?: { x: number; y: number }; control?: { x: number; y: number }; p2?: { x: number; y: number } } })._curvePath
+      const curvePath = cp && [cp.p0, cp.control, cp.p2].every(pt => typeof pt?.x === 'number' && typeof pt?.y === 'number')
+        ? { p0: cp.p0!, control: cp.control!, p2: cp.p2! } : undefined
       const d = curvedTextToCutPath(
         font, String(t._originalText ?? ''),
-        { curveAmount: Number(t._curveAmount ?? 0), fontSizePx: Number(t._curveFontSize ?? 36), bold: !!t._curveBold, italic: !!t._curveItalic, charSpacing: Number(t._curveCharSpacing ?? 0) },
+        { curveAmount: Number(t._curveAmount ?? 0), fontSizePx: Number(t._curveFontSize ?? 36), bold: !!t._curveBold, italic: !!t._curveItalic, charSpacing: Number(t._curveCharSpacing ?? 0), path: curvePath },
         { left: Number(t.left), top: Number(t.top), scaleX: Number(t.scaleX ?? 1), scaleY: Number(t.scaleY ?? 1), angle: Number(t.angle ?? 0) },
         canvasBox, phys,
       )
