@@ -221,21 +221,23 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
     }
 
     let ok = 0
+    const failures: string[] = []
     for (let i = 0; i < jobs.length; i++) {
       setImporting({ done: i, total: jobs.length })
       const { color, zone, url } = jobs[i]
+      const where = `${color} ${zone}`
       try {
         const proxied = await fetch(`/api/preview?shirt=${encodeURIComponent(url)}`)
-        if (!proxied.ok) continue
+        if (!proxied.ok) { failures.push(`${where}: fetch failed (${proxied.status})`); continue }
         const { shirt } = await proxied.json() as { shirt?: string }
-        if (!shirt) continue
+        if (!shirt) { failures.push(`${where}: proxy returned no image`); continue }
         const blob = await (await fetch(shirt)).blob()
         const mime = shirt.match(/^data:([^;]+)/)?.[1] || 'image/png'
         const ext = extFromMime(mime) || 'png'
         const dims = await naturalSizeFromSrc(shirt)
         const path = `mockups/${templateId}/${slug(color)}_${zone}.${ext}`
         const { error: upErr } = await supabase.storage.from('garment-swatches').upload(path, blob, { upsert: true, contentType: mime })
-        if (upErr) continue
+        if (upErr) { failures.push(`${where}: upload rejected (${upErr.message})`); continue }
         const { data: pub } = supabase.storage.from('garment-swatches').getPublicUrl(path)
         const { data, error } = await supabase.from('product_template_mockups').upsert(
           {
@@ -248,17 +250,19 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
           },
           { onConflict: 'template_id,color_name,zone' },
         ).select().single()
-        if (error || !data) continue
+        if (error || !data) { failures.push(`${where}: save failed (${error?.message ?? 'no row returned'})`); continue }
         setMockups(m => ({ ...m, [color]: { ...(m[color] ?? {}), [zone]: data } }))
         ok++
-      } catch { /* skip this one, keep going */ }
+      } catch (e) { failures.push(`${where}: ${e instanceof Error ? e.message : 'unexpected error'}`) }
     }
     setImporting(null)
-    onMessage(
-      ok === jobs.length ? `Imported ${ok} Front/Back mockup${ok === 1 ? '' : 's'} from Shopify.`
-        : `Imported ${ok} of ${jobs.length} — some Shopify photos couldn’t be fetched.`,
-      ok === jobs.length ? 'success' : 'error',
-    )
+    if (ok === jobs.length) {
+      onMessage(`Imported ${ok} Front/Back mockup${ok === 1 ? '' : 's'} from Shopify.`)
+    } else {
+      // Surface the ACTUAL first failure (upload rejection, save error, etc.) instead of a generic
+      // "couldn't be fetched" — that wording sent an earlier debug down a wrong path.
+      onMessage(`Imported ${ok} of ${jobs.length}. First problem — ${failures[0] ?? 'unknown'}`, 'error')
+    }
   }
 
   const haveCount = Object.values(mockups).reduce((n, byZone) => n + Object.keys(byZone).length, 0)
