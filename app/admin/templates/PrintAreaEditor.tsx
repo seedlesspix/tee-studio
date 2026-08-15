@@ -22,6 +22,8 @@ type EditArea = {
   preset_label: string | null
   sort_order: number
   curve_degrees: number | null // hat_back auto-curve arc (signed °): +=frown ∩, −=smile ∪; null → designer default (+45)
+  mockup_natural_w?: number | null // natural px of the mockup this box was drawn on — for the drift check
+  mockup_natural_h?: number | null // vs the mockup now shown (designer + customer see the managed mockup)
 }
 
 type ProductResp = { images?: { edges?: { node?: { url?: string } }[] } }
@@ -256,14 +258,17 @@ export default function PrintAreaEditor({
           mockup_natural_w: natural?.w ?? null,
           mockup_natural_h: natural?.h ?? null,
         }
+        // Carry the just-saved reference frame onto the in-memory row so the drift banner clears
+        // immediately after a re-draw (no reload needed).
+        const savedFrame = { mockup_natural_w: natural?.w ?? null, mockup_natural_h: natural?.h ?? null }
         if (a.id) {
           const { error } = await supabase.from('product_template_print_areas').update(row).eq('id', a.id)
           if (error) throw new Error(error.message)
-          saved.push(a)
+          saved.push({ ...a, ...savedFrame })
         } else {
           const { data, error } = await supabase.from('product_template_print_areas').insert(row).select().single()
           if (error) throw new Error(error.message)
-          saved.push({ ...a, id: data.id, _key: data.id })
+          saved.push({ ...a, id: data.id, _key: data.id, ...savedFrame })
         }
       }
       setAreas(saved)
@@ -278,6 +283,14 @@ export default function PrintAreaEditor({
 
   const selected = areas.find(a => a._key === selectedKey) ?? null
   const visibleAreas = areas.filter(a => a.side === side)
+  // Safety flag: a box in THIS zone was drawn on a differently-shaped image than the managed mockup now
+  // shown (and rendered to customers), so its px→% projection uses the OLD frame and can drift. Only when a
+  // managed mockup IS the drawing frame (natural = its size); re-drawing the box here re-stamps the frame.
+  const shownAspect = natural ? natural.w / natural.h : 0
+  const boxFrameMismatch = !!zoneMockup && shownAspect > 0 && visibleAreas.some(a =>
+    !!a.mockup_natural_w && !!a.mockup_natural_h &&
+    Math.abs(a.mockup_natural_w / a.mockup_natural_h - shownAspect) / shownAspect > 0.02
+  )
   const dpi = (px: number, inch: number) => (inch > 0 ? Math.round(px / inch) : 0)
 
   return (
@@ -324,6 +337,11 @@ export default function PrintAreaEditor({
                 <p className="text-[10px] font-mono text-gray-400 mb-1">
                   Drawing on the <span className="text-gray-600">{zoneMockup.color}</span> mockup — the box applies to every color of this zone.
                 </p>
+              )}
+              {boxFrameMismatch && (
+                <div className="mb-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-[11px] leading-snug text-red-700">
+                  ⚠ A print box in this zone was drawn on a differently-shaped image. Re-draw it on this mockup (drag the box, then <span className="font-semibold">Save print areas</span>) so it lands where customers see it.
+                </div>
               )}
               <div className="relative select-none touch-none" style={{ width: displayW }}>
               <img

@@ -1572,8 +1572,7 @@ export default function DesignerCanvas({
       if (state.selectedColor) {
         setSelectedColor(state.selectedColor)
         setShirtHex(COLOR_HEX_MAP[state.selectedColor] || '#888')
-        const imgs = getColorImages(state.selectedColor, colorImageMap)
-        const restoreSrc = imgs?.front || firstImageUrlRef.current
+        const restoreSrc = zoneGarmentUrl('front', state.selectedColor, colorImageMap)
         if (restoreSrc && shirtImgRef.current) shirtImgRef.current.src = restoreSrc
         const match = product?.variants.edges.find(({ node }) =>
           node.selectedOptions.some((o: any) => o.name === 'Color' && o.value === state.selectedColor),
@@ -1912,8 +1911,7 @@ export default function DesignerCanvas({
             const resolvedColor = matchedColor || carriedColor || firstColor
             setSelectedColor(resolvedColor)
             setShirtHex(COLOR_HEX_MAP[resolvedColor] || '#888')
-            const imgs = getColorImages(resolvedColor, imgMap)
-            const loadSrc = imgs?.front || firstImageUrlRef.current
+            const loadSrc = zoneGarmentUrl('front', resolvedColor, imgMap)
             if (loadSrc && shirtImgRef.current) shirtImgRef.current.src = loadSrc
 
             // Pre-select the matched size with the quantity carried from the
@@ -2273,17 +2271,29 @@ export default function DesignerCanvas({
     canvas.renderAll()
   }
 
+  // Garment image shown for a given zone + color. The managed mockup (product_template_mockups) wins for
+  // EVERY zone — front/back included — so the customer sees the managed image AND the print box, which was
+  // drawn on that same mockup, lands exactly on it (display frame == the frame the box was drawn on). Front/
+  // back fall back to the Shopify product photo (then the other side, then the featured image); extra zones
+  // (sleeves/hat) are managed-only. Mirrors PrintAreaEditor's managed-first rule. NOTE: drives only the
+  // background <img> + the preview composite — never the cut file (vector artwork), so it can't move a print.
+  const zoneGarmentUrl = (zone: string, color: string, colorMap: Record<string, { front: string; back: string }>): string => {
+    const managed = zoneMockupMapRef.current[normalizeColorKey(color)]?.[zone]
+    if (managed) return managed
+    const imgs = getColorImages(color, colorMap)
+    if (zone === 'front') return imgs?.front || imgs?.back || firstImageUrlRef.current || ''
+    if (zone === 'back') return imgs?.back || imgs?.front || firstImageUrlRef.current || ''
+    return firstImageUrlRef.current || ''
+  }
+
   const handleColorSelect = useCallback((color: string) => {
     markDirty()
     setSelectedColor(color)
     setShirtHex(COLOR_HEX_MAP[color] || '#888')
     setQuantities((productSizes.length ? productSizes : SIZES).reduce((acc, s) => ({ ...acc, [s]: 0 }), {}))
-    const imgs = getColorImages(color, colorImageMap)
-    // Zone-aware image on color change: extra zones read the NEW color's mockup directly from the map
-    // (extraZoneImageRef still holds the old color until its effect re-runs); the reactive sync backstops.
-    const url = (shirtView === 'front' ? (imgs?.front || imgs?.back)
-      : shirtView === 'back' ? (imgs?.back || imgs?.front)
-      : zoneMockupMapRef.current[normalizeColorKey(color)]?.[shirtView]) || firstImageUrlRef.current
+    // Managed mockup wins for every zone (front/back too), reading the NEW color directly from the map;
+    // the reactive sync backstops if the mockup map is still mid-load. See zoneGarmentUrl.
+    const url = zoneGarmentUrl(shirtView, color, colorImageMap)
     if (url && shirtImgRef.current) shirtImgRef.current.src = url
     if (product) {
       const match = product.variants.edges.find(({ node }) =>
@@ -2945,8 +2955,7 @@ export default function DesignerCanvas({
       canvas.renderAll()
     }
     setShirtView(target)
-    const imgs = getColorImages(selectedColor, colorImageMap)
-    const src = (target === 'front' ? imgs?.front : target === 'back' ? imgs?.back : extraZoneImageRef.current[target]) || firstImageUrlRef.current
+    const src = zoneGarmentUrl(target, selectedColor, colorImageMap)
     if (src && shirtImgRef.current) shirtImgRef.current.src = src
     const pa = target === 'front' ? printAreaDataRef.current?.front
       : target === 'back' ? printAreaDataRef.current?.back
@@ -2986,12 +2995,9 @@ export default function DesignerCanvas({
   // backstop: whenever side/color/map settle, the image is re-derived from the CURRENT values, so the
   // image can never disagree with the buttons regardless of how the flip was triggered.
   useEffect(() => {
-    const imgs = getColorImages(selectedColor, colorImageMap)
-    // Zone-aware: front/back from the Shopify images, extra zones (sleeves/hat) from their mockup. Without
-    // the extra-zone branch this backstop clobbered a sleeve view with the FRONT image.
-    const url = (shirtView === 'front' ? imgs?.front
-      : shirtView === 'back' ? imgs?.back
-      : extraZoneImageRef.current[shirtView]) || firstImageUrlRef.current
+    // Zone-aware + managed-first: managed mockup wins for every zone, front/back fall back to the Shopify
+    // image. Without a zone-aware source this backstop clobbered a sleeve view with the FRONT image.
+    const url = zoneGarmentUrl(shirtView, selectedColor, colorImageMap)
     if (url && shirtImgRef.current) shirtImgRef.current.src = url
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shirtView, selectedColor, colorImageMap])
@@ -4088,9 +4094,10 @@ export default function DesignerCanvas({
       // Each side composites onto ITS OWN shirt image (front vs back mockup for
       // the selected color) — previously both used the live view's shirt, so a
       // back-designed order showed both previews on the back-of-shirt image.
-      const sideImgs = getColorImages(selectedColor, colorImageMap)
-      const frontShirt = sideImgs?.front || firstImageUrlRef.current || undefined
-      const backShirt = sideImgs?.back || firstImageUrlRef.current || undefined
+      // Each side composites onto ITS managed mockup (front/back too) when present, Shopify photo otherwise
+      // — so the stored preview matches what the customer saw and stays aligned with the print box.
+      const frontShirt = zoneGarmentUrl('front', selectedColor, colorImageMap) || undefined
+      const backShirt = zoneGarmentUrl('back', selectedColor, colorImageMap) || undefined
       const front = await exportSide(frontObjectsRef.current, 'front', frontShirt)
       const back = await exportSide(backObjectsRef.current, 'back', backShirt)
 
