@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { CustomerAuthButton } from './CustomerAuthButton'
 import SaveDesignControl from './SaveDesignControl'
+import BrandMark from './BrandMark'
 import { useT } from './StringsProvider'
 
 // ActionBar — the designer's top action bar.
@@ -67,7 +68,7 @@ export default function ActionBar({
       {/* Desktop wordmark + centered title (hidden on mobile). Equal-width flex-1
           sides keep the title centered on desktop, exactly as before. */}
       <div className="hidden lg:block flex-1 min-w-0 font-black text-xl tracking-widest">
-        TEE<span className="text-[#dd3333]">STUDIO</span>
+        <BrandMark />
       </div>
       <div className="hidden lg:block text-sm text-gray-800 truncate max-w-xs text-center px-4">{productTitle}</div>
 

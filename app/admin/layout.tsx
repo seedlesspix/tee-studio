@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '../lib/supabase/server'
 import SignOutButton from './SignOutButton'
 import AdminTabs from './AdminTabs'
+import BrandMark from '../components/BrandMark'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -27,7 +28,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <header className="bg-white border-b border-gray-200 px-6 h-14 flex items-center justify-between">
         <div className="flex items-center gap-6">
           <span className="font-black text-lg tracking-widest text-black">
-            TEE<span className="text-[#dd3333]">STUDIO</span>
+            <BrandMark />
             <span className="text-gray-500 font-mono text-xs ml-2">/ ADMIN</span>
           </span>
           <AdminTabs isOwner={!!isOwner} />

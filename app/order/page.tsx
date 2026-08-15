@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation'
 import type { Tables } from '@/types/database'
 import { type RosterEntry, rosterShirtCount } from '@/app/lib/namesNumbers'
 import Stepper from '@/app/components/Stepper'
+import BrandMark from '@/app/components/BrandMark'
 import { useT } from '@/app/components/StringsProvider'
 import Spinner from '@/app/components/Spinner'
 import { format } from '@/app/lib/uiStrings'
@@ -264,7 +265,7 @@ function OrderPage() {
       {/* Header */}
       <header className="flex items-center justify-between px-6 h-14 bg-white border-b border-gray-200">
         <div className="font-black text-xl tracking-widest text-gray-900">
-          {t('app.name', 'TEE STUDIO')}
+          <BrandMark />
         </div>
         <div className="w-32" />
       </header>

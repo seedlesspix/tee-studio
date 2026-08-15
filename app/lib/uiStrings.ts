@@ -13,7 +13,9 @@ export const UI_STRINGS = {
   // ── Brand ──────────────────────────────────────────────────────────────────
   // The app / design-tool name. A single editable string so an eventual rename is one edit
   // (the tool is slated to be renamed, name TBD).
-  'app.name': { default: 'TEE STUDIO', group: 'Brand', desc: 'The design tool / app name shown in headers (e.g. the order page).' },
+  'app.name': { default: 'PrepStation', group: 'Brand', desc: 'The full app / tool name in plain text (page title, prose). The visible two-tone wordmark is built from app.name.part1 + app.name.part2 below.' },
+  'app.name.part1': { default: 'Prep', group: 'Brand', desc: 'First part of the two-tone brand wordmark (normal text color). Shown on the designer, order, admin, and login headers.' },
+  'app.name.part2': { default: 'Station', group: 'Brand', desc: 'Second part of the two-tone brand wordmark (brand red). Shown on the designer, order, admin, and login headers.' },
   // ── Methods ────────────────────────────────────────────────────────────────
   // The internal DB keys (screen_print / embroidery) NEVER change; this is DISPLAY only. "Print" is the
   // default so "Screen Print" / "silk screen" can't come back (BETA #15).

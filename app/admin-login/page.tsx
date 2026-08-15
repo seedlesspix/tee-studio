@@ -2,6 +2,7 @@
 import { useState, Suspense, type FormEventHandler } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '../lib/supabase/browser'
+import BrandMark from '../components/BrandMark'
 
 function LoginForm() {
   const [email, setEmail] = useState('')
@@ -59,7 +60,7 @@ function LoginForm() {
       <div className="bg-white border border-gray-200 rounded-xl p-8 w-full max-w-sm shadow-sm">
         <div className="mb-6">
           <span className="font-black text-lg tracking-widest text-black">
-            TEE<span className="text-[#dd3333]">STUDIO</span>
+            <BrandMark />
             <span className="text-gray-500 font-mono text-xs ml-2">/ ADMIN</span>
           </span>
         </div>
