@@ -3269,6 +3269,9 @@ export default function DesignerCanvas({
       )
       if (!img) return
       applyHatBackLock(img) // bakeCurvedArc already centered it at cx,cy; just lock size/rotation (movable)
+      // Hat-back is SINGLE-TEXT (v1): clear any existing text in this zone so a fresh spawn REPLACES it
+      // instead of stacking a second curved image.
+      canvas.getObjects().filter((o: any) => o !== img && (o._isCurvedText || o.type === 'i-text' || o.type === 'textbox')).forEach((o: any) => canvas.remove(o))
       canvas.add(img)
       canvas.setActiveObject(img)
       lastActiveObjectRef.current = img

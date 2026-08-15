@@ -56,6 +56,7 @@ export const UI_STRINGS = {
   'designer.text.font_label': { default: "Font", group: "Designer — Text", desc: "Label above the font picker in the Text panel." },
   'designer.text.preview_placeholder': { default: "Preview Text", group: "Designer — Text", desc: "Sample text shown in the font-picker preview when the customer hasn't typed anything yet." },
   'designer.text.size_label': { default: "Size", group: "Designer — Text", desc: "Label for the text font-size control." },
+  'designer.text.size_locked_arc': { default: "Set by the hat arc — text is sized to fit the curve.", group: "Designer — Text", desc: "Shown in place of the size slider for hat-back text (size is fixed by the arc, so the slider is intentionally hidden)." },
   'designer.text.letter_spacing_label': { default: "Letter Spacing", group: "Designer — Text", desc: "Label for the letter-spacing (tracking) slider." },
   'designer.text.line_spacing_label': { default: "Line Spacing", group: "Designer — Text", desc: "Label for the line-spacing slider (multi-line text only)." },
   'designer.text.curve_label': { default: "Curve", group: "Designer — Text", desc: "Label for the text-curve (arc) control." },
