@@ -86,6 +86,7 @@ export default function MockupBatchUpload({
           image_url: `${data.publicUrl}?v=${Date.now()}`, // cache-bust an overwrite
           natural_w: dims.w || null,
           natural_h: dims.h || null,
+          source: 'manual', // hand-uploaded batch — protected from Shopify re-import
         },
         { onConflict: 'template_id,color_name,zone' },
       )

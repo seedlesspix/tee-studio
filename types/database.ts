@@ -646,6 +646,7 @@ export type Database = {
           natural_h: number | null
           natural_w: number | null
           sort_order: number
+          source: string
           template_id: string
           zone: string
         }
@@ -657,6 +658,7 @@ export type Database = {
           natural_h?: number | null
           natural_w?: number | null
           sort_order?: number
+          source?: string
           template_id: string
           zone: string
         }
@@ -668,6 +670,7 @@ export type Database = {
           natural_h?: number | null
           natural_w?: number | null
           sort_order?: number
+          source?: string
           template_id?: string
           zone?: string
         }

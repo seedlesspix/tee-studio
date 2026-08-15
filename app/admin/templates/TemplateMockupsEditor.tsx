@@ -149,6 +149,7 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
         image_url: `${pub.publicUrl}?v=${file.lastModified}`, // cache-bust the overwrite (file's own mtime)
         natural_w: dims.w || null,
         natural_h: dims.h || null,
+        source: 'manual', // hand-upload — protected from Shopify re-import (even when replacing a shopify cell)
       },
       { onConflict: 'template_id,color_name,zone' },
     ).select().single()
@@ -190,41 +191,37 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
   // GAPS ONLY — never clobbers a mockup Denise uploaded/replaced by hand. Only front/back (the only zones
   // Shopify has photos for). Same front/back filename matcher the designer uses, minus cross-fill so a
   // real front lands as front and a real back as back.
-  const importFromShopify = async () => {
-    if (importing) return
+  // Load the Shopify product + resolve its Front/Back photos per color (crossFill off so a real front
+  // lands as front and a real back as back). Shared setup for both Import (fill gaps) and Re-import.
+  const loadShopifyFrontBack = async (): Promise<{ color: string; zone: 'front' | 'back'; url: string }[] | null> => {
     const numericId = shopifyProductId.split('/').pop() || ''
-    setImporting({ done: 0, total: 0 })
     let p: ProductImagesResp | null = null
-    try {
-      const res = await fetch(`/api/product?id=${numericId}`)
-      if (res.ok) p = await res.json()
-    } catch { /* handled below */ }
-    if (!p) { setImporting(null); onMessage('Could not load the Shopify product to import from.', 'error'); return }
-
+    try { const res = await fetch(`/api/product?id=${numericId}`); if (res.ok) p = await res.json() } catch { /* handled below */ }
+    if (!p) { onMessage('Could not load the Shopify product to import from.', 'error'); return null }
     const shopifyColors = p.options?.find(o => o.name === 'Color')?.values ?? []
     const imgs = (p.images?.edges ?? []).map(e => ({ url: e.node.url }))
     const rawMap = buildColorImageMap(imgs, shopifyColors, { crossFill: false })
-
-    // Gaps to fill: (color, front|back) that has a Shopify image and no managed mockup yet.
-    const jobs: { color: string; zone: 'front' | 'back'; url: string }[] = []
+    const all: { color: string; zone: 'front' | 'back'; url: string }[] = []
     for (const color of shopifyColors) {
       const fb = getColorImages(color, rawMap)
       if (!fb) continue
-      ;(['front', 'back'] as const).forEach(zone => {
-        if (fb[zone] && !mockups[color]?.[zone]) jobs.push({ color, zone, url: fb[zone] })
-      })
+      ;(['front', 'back'] as const).forEach(zone => { if (fb[zone]) all.push({ color, zone, url: fb[zone] }) })
     }
-    if (!jobs.length) {
-      setImporting(null)
-      onMessage('Nothing to import — Front/Back are already covered (or no matching Shopify photos).')
-      return
-    }
+    return all
+  }
 
+  // Shared per-photo pipeline for Import + Re-import: proxy-fetch → re-host to storage → upsert the row
+  // stamped source='shopify' (so re-import can later tell its own cells from hand-uploaded ones). Drives
+  // the progress label; returns how many succeeded + the real failures (upload rejection, save error, …).
+  const runImportJobs = async (jobs: { color: string; zone: string; url: string }[]): Promise<{ ok: number; failures: string[] }> => {
     let ok = 0
     const failures: string[] = []
     for (let i = 0; i < jobs.length; i++) {
       setImporting({ done: i, total: jobs.length })
       const { color, zone, url } = jobs[i]
+      // Reuse an existing row's stored spelling so a re-import of a legacy-differently-spelled cell
+      // UPDATEs in place (onConflict match) instead of inserting a duplicate. New cells use the color as-is.
+      const storeColor = mockups[color]?.[zone]?.color_name ?? color
       const where = `${color} ${zone}`
       try {
         const proxied = await fetch(`/api/preview?shirt=${encodeURIComponent(url)}`)
@@ -235,18 +232,19 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
         const mime = shirt.match(/^data:([^;]+)/)?.[1] || 'image/png'
         const ext = extFromMime(mime) || 'png'
         const dims = await naturalSizeFromSrc(shirt)
-        const path = `mockups/${templateId}/${slug(color)}_${zone}.${ext}`
+        const path = `mockups/${templateId}/${slug(storeColor)}_${zone}.${ext}`
         const { error: upErr } = await supabase.storage.from('garment-swatches').upload(path, blob, { upsert: true, contentType: mime })
         if (upErr) { failures.push(`${where}: upload rejected (${upErr.message})`); continue }
         const { data: pub } = supabase.storage.from('garment-swatches').getPublicUrl(path)
         const { data, error } = await supabase.from('product_template_mockups').upsert(
           {
             template_id: templateId,
-            color_name: color,
+            color_name: storeColor,
             zone,
             image_url: `${pub.publicUrl}?v=${blob.size}`, // deterministic cache-bust (bytes differ → url differs)
             natural_w: dims.w || null,
             natural_h: dims.h || null,
+            source: 'shopify',
           },
           { onConflict: 'template_id,color_name,zone' },
         ).select().single()
@@ -255,14 +253,47 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
         ok++
       } catch (e) { failures.push(`${where}: ${e instanceof Error ? e.message : 'unexpected error'}`) }
     }
+    return { ok, failures }
+  }
+
+  // Import = FILL GAPS ONLY. Only (color, front|back) with a Shopify photo and no mockup yet; never
+  // overwrites, never touches sleeve/hat.
+  const importFromShopify = async () => {
+    if (importing) return
+    setImporting({ done: 0, total: 0 })
+    const all = await loadShopifyFrontBack()
+    if (!all) { setImporting(null); return }
+    const jobs = all.filter(j => !mockups[j.color]?.[j.zone])
+    if (!jobs.length) { setImporting(null); onMessage('Nothing to import — Front/Back are already covered (or no matching Shopify photos).'); return }
+    const { ok, failures } = await runImportJobs(jobs)
     setImporting(null)
-    if (ok === jobs.length) {
-      onMessage(`Imported ${ok} Front/Back mockup${ok === 1 ? '' : 's'} from Shopify.`)
-    } else {
-      // Surface the ACTUAL first failure (upload rejection, save error, etc.) instead of a generic
-      // "couldn't be fetched" — that wording sent an earlier debug down a wrong path.
-      onMessage(`Imported ${ok} of ${jobs.length}. First problem — ${failures[0] ?? 'unknown'}`, 'error')
+    if (ok === jobs.length) onMessage(`Imported ${ok} Front/Back mockup${ok === 1 ? '' : 's'} from Shopify.`)
+    else onMessage(`Imported ${ok} of ${jobs.length}. First problem — ${failures[0] ?? 'unknown'}`, 'error')
+  }
+
+  // Re-import = OVERWRITE Front/Back with fresh Shopify photos (after changing them in Shopify). Refreshes
+  // cells that came from Shopify (or are missing) silently; WARNS before replacing any hand-uploaded cell;
+  // sleeve/hat are never in scope (front/back only), so manual sleeve/hat mockups can't be clobbered.
+  const reImportFromShopify = async () => {
+    if (importing) return
+    setImporting({ done: 0, total: 0 })
+    const all = await loadShopifyFrontBack()
+    setImporting(null)
+    if (!all) return
+    if (!all.length) { onMessage('This Shopify product has no Front/Back photos to import.'); return }
+    const shopifyJobs = all.filter(j => { const ex = mockups[j.color]?.[j.zone]; return !ex || ex.source !== 'manual' })
+    const manualJobs = all.filter(j => mockups[j.color]?.[j.zone]?.source === 'manual')
+    if (!window.confirm(`Re-import Front & Back from Shopify?\n\nThis replaces ${shopifyJobs.length} mockup${shopifyJobs.length === 1 ? '' : 's'} with fresh Shopify photos. Your sleeve/hat mockups are never touched.`)) return
+    let jobs = shopifyJobs
+    if (manualJobs.length) {
+      const alsoManual = window.confirm(`${manualJobs.length} Front/Back mockup${manualJobs.length === 1 ? ' was' : 's were'} uploaded by hand.\n\nReplace ${manualJobs.length === 1 ? 'it' : 'them'} with Shopify photos too?\n\nOK = replace them too.   Cancel = keep my hand-uploaded ${manualJobs.length === 1 ? 'one' : 'ones'}.`)
+      if (alsoManual) jobs = [...shopifyJobs, ...manualJobs]
     }
+    if (!jobs.length) { onMessage('Nothing to re-import.'); return }
+    const { ok, failures } = await runImportJobs(jobs)
+    setImporting(null)
+    if (ok === jobs.length) onMessage(`Re-imported ${ok} Front/Back mockup${ok === 1 ? '' : 's'} from Shopify.`)
+    else onMessage(`Re-imported ${ok} of ${jobs.length}. First problem — ${failures[0] ?? 'unknown'}`, 'error')
   }
 
   const haveCount = Object.values(mockups).reduce((n, byZone) => n + Object.keys(byZone).length, 0)
@@ -285,6 +316,13 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
               importing ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-wait' : 'bg-white text-gray-800 border-gray-300 hover:border-[#dd3333]'
             }`}>
             {importing ? (importing.total ? `Importing ${importing.done + 1}/${importing.total}…` : 'Importing…') : 'Import Front/Back from Shopify'}
+          </button>
+          <button onClick={reImportFromShopify} disabled={!!importing || loading}
+            title="Overwrite Front/Back mockups with fresh Shopify photos (after you change them in Shopify). Warns before touching any you uploaded by hand; never touches sleeve/hat."
+            className={`px-3 py-1.5 rounded text-xs font-mono border transition-all whitespace-nowrap ${
+              importing ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-wait' : 'bg-white text-gray-800 border-gray-300 hover:border-[#dd3333]'
+            }`}>
+            Re-import (overwrite)
           </button>
         </div>
       </div>
