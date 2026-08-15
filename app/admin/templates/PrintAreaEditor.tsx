@@ -71,6 +71,11 @@ export default function PrintAreaEditor({
   const [imgIdx, setImgIdx] = useState(0)
   const [imgError, setImgError] = useState<string | null>(null)
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
+  // Aspect of the Shopify product photo — the frame a LEGACY (null mockup_natural) front/back box was
+  // drawn on, since that's all that existed before managed mockups. The designer anchors such a box to
+  // this aspect (toPct's `|| natural.w` fallback), so the drift badge compares it against the managed
+  // mockup now shown. Measured the same way the designer does (first Shopify image that loads).
+  const [shopifyAspect, setShopifyAspect] = useState<number>(0)
   const [side, setSide] = useState<string>('front')
   // Z1 — one representative uploaded mockup per zone (the box is the same across colors, so any color's
   // mockup is a fine drawing reference). Front/back prefer their mockup over the Shopify photo (single source).
@@ -151,6 +156,26 @@ export default function PrintAreaEditor({
       .catch((e: Error) => { if (active) setImgError(e.message) })
     return () => { active = false }
   }, [shopifyProductId])
+
+  // Measure the Shopify photo's aspect (first image that loads — matches the designer's mockupNaturalRef
+  // derivation) so the drift badge can evaluate legacy null-framed rows.
+  useEffect(() => {
+    let active = true
+    setShopifyAspect(0)
+    ;(async () => {
+      for (const url of images) {
+        const dim = await new Promise<{ w: number; h: number } | null>(res => {
+          const im = new window.Image()
+          im.onload = () => res({ w: im.naturalWidth, h: im.naturalHeight })
+          im.onerror = () => res(null)
+          im.src = url
+        })
+        if (!active) return
+        if (dim && dim.h > 0) { setShopifyAspect(dim.w / dim.h); break }
+      }
+    })()
+    return () => { active = false }
+  }, [images])
 
   // Window-level drag handlers (subscribed once).
   useEffect(() => {
@@ -286,11 +311,19 @@ export default function PrintAreaEditor({
   // Safety flag: a box in THIS zone was drawn on a differently-shaped image than the managed mockup now
   // shown (and rendered to customers), so its px→% projection uses the OLD frame and can drift. Only when a
   // managed mockup IS the drawing frame (natural = its size); re-drawing the box here re-stamps the frame.
+  // A box's drawn-frame aspect = its stored mockup_natural, OR — for a LEGACY null-framed front/back row —
+  // the Shopify photo aspect (what the designer anchors it to). So the badge now covers legacy rows too,
+  // which are precisely the "drawn before managed mockups existed" ones; auto-imported mockups share the
+  // Shopify aspect, so they still don't fire.
   const shownAspect = natural ? natural.w / natural.h : 0
-  const boxFrameMismatch = !!zoneMockup && shownAspect > 0 && visibleAreas.some(a =>
-    !!a.mockup_natural_w && !!a.mockup_natural_h &&
-    Math.abs(a.mockup_natural_w / a.mockup_natural_h - shownAspect) / shownAspect > 0.02
-  )
+  const drawnAspectOf = (a: EditArea): number =>
+    a.mockup_natural_w && a.mockup_natural_h ? a.mockup_natural_w / a.mockup_natural_h
+      : SHOPIFY_FALLBACK_SIDES.has(a.side) ? shopifyAspect
+      : 0 // non-Shopify zone with no stored frame — can't determine; don't flag
+  const boxFrameMismatch = !!zoneMockup && shownAspect > 0 && visibleAreas.some(a => {
+    const drawn = drawnAspectOf(a)
+    return drawn > 0 && Math.abs(drawn - shownAspect) / shownAspect > 0.02
+  })
   const dpi = (px: number, inch: number) => (inch > 0 ? Math.round(px / inch) : 0)
 
   return (

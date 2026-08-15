@@ -4628,8 +4628,9 @@ export default function DesignerCanvas({
       const objs = useFront ? frontObjectsRef.current : backObjectsRef.current
       if (!objs.length) return null
 
-      const imgs = getColorImages(selectedColor, colorImageMap)
-      const shirtSrc = (useFront ? imgs?.front : imgs?.back) || firstImageUrlRef.current || undefined
+      // My Designs tile composites on the managed mockup too (front/back), for consistency with the live
+      // designer + the order-preview composite — never the cut file. See zoneGarmentUrl.
+      const shirtSrc = zoneGarmentUrl(useFront ? 'front' : 'back', selectedColor, colorImageMap) || undefined
 
       canvas.clear()
       objs.forEach((o: any) => canvas.add(o))
