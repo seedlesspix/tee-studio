@@ -32,12 +32,16 @@ export default function CanvasStage({
   canvasRef,
   shirtImgRef,
   printArea,
+  arcGuide = null,
   onReady,
   emptyState = null,
 }: {
   canvasRef: RefObject<HTMLCanvasElement | null>
   shirtImgRef: RefObject<HTMLImageElement | null>
   printArea: PrintAreaPct | null
+  // Type-on-path (Z-hp #2): the drawn arc the customer's hat-back text follows, in 680×850 canvas-px, shown
+  // as a subtle dotted guide so they see the line before + while typing. Null off the hat_back zone.
+  arcGuide?: { p0: { x: number; y: number }; control: { x: number; y: number }; p2: { x: number; y: number } } | null
   onReady: (canvas: any) => void
   emptyState?: EmptyState | null
 }) {
@@ -84,6 +88,22 @@ export default function CanvasStage({
         ref={canvasRef}
         style={{ position: 'absolute', top: 0, left: 0 }}
       />
+      {/* Type-on-path arc guide (Z-hp #2): the dotted line the hat-back text follows. A white halo under a
+          dark dash so it reads on both light and dark caps, matching the print box's halo treatment. */}
+      {arcGuide && (
+        <svg width={680} height={850} viewBox="0 0 680 850"
+          style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', zIndex: 2 }}>
+          {(() => {
+            const d = `M ${arcGuide.p0.x} ${arcGuide.p0.y} Q ${arcGuide.control.x} ${arcGuide.control.y} ${arcGuide.p2.x} ${arcGuide.p2.y}`
+            return (
+              <>
+                <path d={d} fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth={4} strokeLinecap="round" />
+                <path d={d} fill="none" stroke="rgba(0,0,0,0.55)" strokeWidth={1.75} strokeDasharray="5 6" strokeLinecap="round" />
+              </>
+            )
+          })()}
+        </svg>
+      )}
       {printArea && (
         <div data-print-area="true" style={{
           position: 'absolute',

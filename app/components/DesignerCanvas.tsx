@@ -2406,7 +2406,13 @@ export default function DesignerCanvas({
   // Lock a hat-back curved image's SIZE + rotation (auto-fit owns those), but LEAVE MOVEMENT FREE — cap
   // shapes + text lengths vary, so the customer nudges placement. The arc + fit + single-line stay locked.
   // No re-centering: the initial spawn centers via bakeCurvedArc; every re-bake keeps the current position.
-  const HAT_BACK_LOCK = { lockScalingX: true, lockScalingY: true, lockRotation: true, hasControls: false }
+  // #3: the text is LOCKED to the arc (no resize/rotate), so the bold default selection box misreads as
+  // "free-transform." Minimize it — no handles, and a faint dashed border — so the dotted arc guide + the
+  // text itself are the visual story. Movement is still allowed (customers nudge placement).
+  const HAT_BACK_LOCK = {
+    lockScalingX: true, lockScalingY: true, lockRotation: true, hasControls: false,
+    borderColor: 'rgba(0,0,0,0.35)', borderDashArray: [3, 3], borderScaleFactor: 1,
+  }
   const applyHatBackLock = (img: any) => { img.set(HAT_BACK_LOCK); img.setCoords?.() }
 
   // D2 port follow-ups: after refitSide has re-projected a side's geometry onto the target box, run the
@@ -5401,7 +5407,7 @@ export default function DesignerCanvas({
             willChange: view.zoom !== 1 ? 'transform' : undefined,
           }}>
             <div style={{ width: 680, height: 850, transformOrigin: 'top left', transform: stageScale !== 1 ? `scale(${stageScale})` : undefined }}>
-              <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} onReady={handleCanvasReady} emptyState={emptyState} />
+              <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} arcGuide={shirtView === 'hat_back' ? hatBackPath() : null} onReady={handleCanvasReady} emptyState={emptyState} />
             </div>
             {/* "Thinking" overlay for async ops (Remove Background API round-trip, edits + their
                 re-upload, converted-file uploads). Silence reads as broken; the spinner reads as
