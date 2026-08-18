@@ -75,18 +75,34 @@ async function isCuttable(bytes: Uint8Array): Promise<boolean> {
   return colors.size < 24
 }
 
-// Returns an outlined SVG for cuttable one-color art, or null (photo/multi-color/unreadable/vector).
-export async function autoTraceSvg(bytes: Uint8Array): Promise<string | null> {
+// WHY a trace succeeded or failed. 'cuttable' → svg present. The failure reasons are DISTINGUISHABLE so
+// the customer-facing cut preview can say WHICH problem the art has (colors vs fuzzy/complex edges):
+//   'multicolor'  — too many distinct colors to cut as one silhouette (photo or many-ink art)
+//   'too_complex' — passed the color gate but the boundary is too fuzzy/detailed (rough/bg-removed edges,
+//                   or a photo that slipped the color gate) — the anchor cap is the backstop
+//   'unreadable'  — the bytes couldn't be decoded/traced at all
+export type TraceReason = 'cuttable' | 'multicolor' | 'too_complex' | 'unreadable'
+
+// Trace one-color art → { svg (or null), reason }. Single source of truth for BOTH the production bundle
+// (via autoTraceSvg, which just takes .svg) and the customer cut preview (which uses .reason). The svg
+// result for every branch is IDENTICAL to the pre-refactor autoTraceSvg, so bench output is unchanged.
+export async function traceForCut(bytes: Uint8Array): Promise<{ svg: string | null; reason: TraceReason }> {
   try {
-    if (!(await isCuttable(bytes))) return null
+    if (!(await isCuttable(bytes))) return { svg: null, reason: 'multicolor' }
     // Photo/noise detector on the RAW (unblurred) high-res trace: a photo traces to a huge mesh, a
     // logo to a modest path. Detect on RAW because the mask-clean blur smooths a photo into a small
     // blob that would otherwise slip the cap. (A noisy LOGO's raw trace is still only a few thousand
     // — bounded edge length — so logos never false-reject; only full-frame photo noise hits the cap.)
     const rawSvg = await potraceTrace(await toMask(bytes, false))
-    if (pathCommandCount(rawSvg) > MAX_TRACE_COMMANDS) return null
+    if (pathCommandCount(rawSvg) > MAX_TRACE_COMMANDS) return { svg: null, reason: 'too_complex' }
     // Output the CLEANED trace: blur kills edge jitter so corners are crisp without jagged facets.
     const cleanSvg = await potraceTrace(await toMask(bytes, true))
-    return pathCommandCount(cleanSvg) > MAX_TRACE_COMMANDS ? null : cleanSvg
-  } catch { return null }
+    if (pathCommandCount(cleanSvg) > MAX_TRACE_COMMANDS) return { svg: null, reason: 'too_complex' }
+    return { svg: cleanSvg, reason: 'cuttable' }
+  } catch { return { svg: null, reason: 'unreadable' } }
+}
+
+// Returns an outlined SVG for cuttable one-color art, or null (photo/multi-color/unreadable/vector).
+export async function autoTraceSvg(bytes: Uint8Array): Promise<string | null> {
+  return (await traceForCut(bytes)).svg
 }

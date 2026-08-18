@@ -129,11 +129,14 @@ reassess → then Z-hp-2 fresh.
   preview modal, a **"Show cut lines"** toggle overlays the production trace (same `autoTraceSvg` the bench
   gets) as a magenta outline — so cut/transfer jobs show the exact edges that would cut. Gate = cuttability
   (the trace), garment color a hint (dark garments lead the overlay ON). Test: open the preview on a
-  one-color logo → "Show cut lines" appears and outlines it; open it on a photo → "too detailed to cut —
-  would be printed, not cut"; on a dark garment the outline leads on. AI/PSD/PDF uploads deliberately show
-  NO cut toggle (the bench cuts their raw vector, not the preview PNG). Review found + fixed: SSRF/DoS on the
-  new endpoint, a false "printed not cut" on fetch failures, the AI/PDF parity gap, and an undo-desync of the
-  parity flag — all closed before push.
+  one-color logo → "Show cut lines" appears and outlines it; on a dark garment the outline leads on.
+  **A failed trace now splits by garment (shop truth):** on a DARK garment it's a clean-up warning that
+  NAMES the problem — "edges too fuzzy to cut cleanly" vs "too many colors" (on darks a failed trace means
+  the bench cleans up then cuts, NOT that we print instead); on a LIGHT garment it's the simple "printed,
+  not cut". AI/PSD/PDF uploads deliberately show NO cut toggle (the bench cuts their raw vector, not the
+  preview PNG). Review found + fixed: SSRF/DoS on the new endpoint, a false "printed not cut" on fetch
+  failures, the AI/PDF parity gap, and an undo-desync of the parity flag — all closed before push.
+  Wording is language-editable (dark message = shop-truth warning, amber; Denise to tune phrasing).
 
 ## Recently DONE (verified, for morale)
 

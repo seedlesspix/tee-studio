@@ -12,7 +12,7 @@
 // which an attacker can register), redirects DISABLED (a redirect can't bounce an allowed host to an
 // internal/metadata address), and a STREAMED size cap (content-length lies; never buffer the whole body).
 import { NextRequest, NextResponse } from 'next/server'
-import { autoTraceSvg } from '../../lib/server/autoTrace'
+import { traceForCut } from '../../lib/server/autoTrace'
 import { rateLimit, clientIp, originAllowed } from '../../lib/server/rateLimit'
 
 export const runtime = 'nodejs' // sharp + potrace
@@ -107,6 +107,8 @@ export async function POST(req: NextRequest) {
   const bytes = await readBytes(url)
   // checked:false — we never read/traced the file, so the client must NOT claim "printed, not cut".
   if (!bytes) return NextResponse.json({ svg: null, checked: false })
-  const svg = await autoTraceSvg(bytes)
-  return NextResponse.json({ svg: svg ?? null, checked: true })
+  // reason lets the preview say WHICH problem the art has (colors vs fuzzy edges) and — crucially — split
+  // the "not cuttable" message by garment (on darks a failed trace means clean-up-then-cut, not print).
+  const { svg, reason } = await traceForCut(bytes)
+  return NextResponse.json({ svg: svg ?? null, checked: true, reason })
 }

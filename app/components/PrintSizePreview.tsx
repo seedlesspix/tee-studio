@@ -23,11 +23,14 @@ export type PrintPreviewData = {
   cutEligible?: boolean // Lens 2 gate: false when the bench cuts a DIFFERENT source than this preview (AI/PSD/PDF convert)
 }
 
+// WHY the trace failed (mirrors the server's TraceReason) — drives the garment-split message.
+type CutReason = 'cuttable' | 'multicolor' | 'too_complex' | 'unreadable'
 // Cut-edge trace cache (Lens 2), keyed by upload URL. The trace is deterministic per file, and crop /
 // bg-removal produce a NEW url, so a fresh key = automatic invalidation (no manual busting needed).
-// null = traced-but-not-cuttable (photo/multi-color); a {viewBox, inner} = the cut outline to overlay.
+// trace null = not cuttable; `reason` says why (colors vs fuzzy edges) so the message can be specific.
 type CutTrace = { viewBox: string; inner: string }
-const traceCache = new Map<string, CutTrace | null>()
+type CutResult = { trace: CutTrace | null; reason: CutReason }
+const traceCache = new Map<string, CutResult>()
 
 // Pull the viewBox + inner markup out of potrace's <svg> so we can re-style the outline (fill→none,
 // stroke) and stretch it to the displayed art. potrace emits numeric <g>/<path> only (no scripts).
@@ -63,6 +66,7 @@ export default function PrintSizePreview({
   // 'error'. `showCut` toggles the overlay; it leads ON for dark garments (likely transfers).
   const [traceState, setTraceState] = useState<'idle' | 'loading' | 'ready' | 'none' | 'error'>('idle')
   const [trace, setTrace] = useState<CutTrace | null>(null)
+  const [cutReason, setCutReason] = useState<CutReason | null>(null) // why a 'none' result happened
   const [showCut, setShowCut] = useState(false)
 
   // Measure the viewport (drives Fit + pan clamping); re-measure on resize.
@@ -79,7 +83,7 @@ export default function PrintSizePreview({
 
   // Fresh open: reset to life-size, centered, not-yet-loaded, cut overlay off.
   useEffect(() => {
-    if (open) { setMode('actual'); setLoaded(false); setShowCut(false); setTrace(null); setTraceState('idle') }
+    if (open) { setMode('actual'); setLoaded(false); setShowCut(false); setTrace(null); setCutReason(null); setTraceState('idle') }
   }, [open, data?.src])
 
   // Fetch the cut-edge trace (Lens 2) for the open art. Skipped when the art isn't cut-eligible (a
@@ -91,21 +95,25 @@ export default function PrintSizePreview({
     if (data.cutEligible === false) { setTraceState('idle'); return } // no cut preview for this upload
     const src = data.src
     const dark = !!data.garmentDark
-    const apply = (c: CutTrace | null) => {
-      if (c) { setTrace(c); setTraceState('ready'); setShowCut(dark) }
-      else { setTrace(null); setTraceState('none') }
+    // 'unreadable' → we couldn't process the file, so claim nothing (neutral, like a fetch failure).
+    // 'cuttable' → show the outline. Otherwise 'none' with the reason (drives the garment-split message).
+    const apply = (res: CutResult) => {
+      if (res.reason === 'unreadable') { setTraceState('error'); return }
+      if (res.trace) { setTrace(res.trace); setTraceState('ready'); setShowCut(dark) }
+      else { setTrace(null); setCutReason(res.reason); setTraceState('none') }
     }
     if (traceCache.has(src)) { apply(traceCache.get(src)!); return }
     let alive = true
     setTraceState('loading')
     fetch('/api/trace-preview', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url: src }) })
       .then(r => (r.ok ? r.json() : Promise.reject(new Error('trace failed'))))
-      .then((j: { svg?: string | null; checked?: boolean }) => {
+      .then((j: { svg?: string | null; checked?: boolean; reason?: CutReason }) => {
         if (!alive) return
         if (j.checked === false) { setTraceState('error'); return } // couldn't read the file — claim nothing (don't cache)
         const parsed = j.svg ? parseTrace(j.svg) : null
-        traceCache.set(src, parsed)
-        apply(parsed)
+        const res: CutResult = { trace: parsed, reason: j.reason || (parsed ? 'cuttable' : 'too_complex') }
+        traceCache.set(src, res)
+        apply(res)
       })
       .catch(() => { if (alive) setTraceState('error') })
     return () => { alive = false }
@@ -178,6 +186,21 @@ export default function PrintSizePreview({
       ? t('designer.preview.verdict_sharp', 'About {dpi} DPI at this size — this should print sharp.').replace('{dpi}', String(dpiRounded))
       : ''
     verdictTone = 'text-emerald-700'
+  }
+
+  // "Not cuttable" message SPLITS BY GARMENT (Denise, shop truth): on DARK garments a design is cut by its
+  // edges (transfer), so a failed trace is a CLEAN-UP warning — NOT "we'll print it instead" — and it names
+  // the actual problem (fuzzy edges vs too many colors). On LIGHT garments, failing the cut just means it
+  // gets printed. Wording is language-editable.
+  let cutNoneMsg = ''
+  let cutNoneTone = 'text-gray-500'
+  if (data.garmentDark) {
+    cutNoneMsg = cutReason === 'multicolor'
+      ? t('designer.preview.cut_none_dark_colors', 'On dark garments this design is cut by its edges — and as-is it has too many colors to cut cleanly as one piece. Send us a version with solid colors and crisp edges, or we may need to clean it up first (this can add time).')
+      : t('designer.preview.cut_none_dark_fuzzy', 'On dark garments this design is cut by its edges — and as-is, the edges are too fuzzy to cut cleanly. We may need to clean it up (this can add time), or send us a version with solid colors and crisp edges.')
+    cutNoneTone = 'text-amber-700'
+  } else {
+    cutNoneMsg = t('designer.preview.cut_none_light', 'This design would be printed, not cut.')
   }
 
   const canPan = dispW > vp.w || dispH > vp.h
@@ -286,7 +309,7 @@ export default function PrintSizePreview({
             </label>
           )}
           {traceState === 'none' && (
-            <p className="text-[11px] leading-snug text-gray-500">{t('designer.preview.cut_none', 'Too detailed to cut cleanly — this design would be printed, not cut.')}</p>
+            <p className={`text-[11px] leading-snug ${cutNoneTone}`}>{cutNoneMsg}</p>
           )}
 
           <div className="flex flex-col gap-1 rounded-lg bg-gray-50 px-3 py-2.5">
