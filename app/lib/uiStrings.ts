@@ -253,6 +253,19 @@ export const UI_STRINGS = {
   'designer.removebg_wait': { default: "Please wait a moment for the upload to finish (or re-upload the image), then try Remove Background again.", group: "Designer — Upload", desc: "Alert shown when Remove Background is used before the image finished uploading." },
   'designer.removebg_no_image': { default: "Background removal returned no image.", group: "Designer — Upload", desc: "Alert shown when the Remove Background service returns no resulting image." },
   'designer.removebg_unexpected': { default: "Background removal returned an unexpected response.", group: "Designer — Upload", desc: "Alert prefix shown when the Remove Background service returns an unexpected (non-image) response." },
+  'designer.upload.preview_print_size': { default: "Preview at print size", group: "Designer — Upload", desc: "Button on a selected uploaded image that opens the print-size preview (shows how sharp/soft the art will actually print)." },
+
+  // ── Designer — Print-size Preview ──
+  'designer.preview.title': { default: "Preview at print size", group: "Designer — Print Preview", desc: "Title of the modal that shows an uploaded image rendered at true print scale." },
+  'designer.preview.loading': { default: "Loading…", group: "Designer — Print Preview", desc: "Shown in the preview modal while the image is loading." },
+  'designer.preview.zoom_fit': { default: "Fit", group: "Designer — Print Preview", desc: "Zoom button that fits the whole artwork inside the preview window." },
+  'designer.preview.zoom_actual': { default: "Actual size", group: "Designer — Print Preview", desc: "Zoom button that shows the artwork at its true printed size on screen." },
+  'designer.preview.pan_hint': { default: "Drag to move around", group: "Designer — Print Preview", desc: "Hint shown when the zoomed artwork is larger than the preview window and can be dragged." },
+  'designer.preview.prints_about': { default: "Prints about {w} × {h} in on the shirt.", group: "Designer — Print Preview", desc: "Caption stating the artwork's printed size in inches. {w} and {h} are filled in with numbers — keep them." },
+  'designer.preview.verdict_small': { default: "This file is small ({w}×{h} px) — it may look blocky at any size. A larger file prints sharpest.", group: "Designer — Print Preview", desc: "Warning shown when the uploaded file itself is very small. {w} and {h} are the pixel dimensions — keep them." },
+  'designer.preview.verdict_soft': { default: "About {dpi} DPI at this size — it may look soft in print. 300 DPI looks sharpest: try making it smaller on the shirt, or email us your original.", group: "Designer — Print Preview", desc: "Warning shown when the art is enlarged past the sharp-print threshold. {dpi} is filled in with a number — keep it." },
+  'designer.preview.verdict_sharp': { default: "About {dpi} DPI at this size — this should print sharp.", group: "Designer — Print Preview", desc: "Reassurance shown when the art has enough resolution at its placed size. {dpi} is filled in with a number — keep it." },
+  'designer.preview.screen_note': { default: "“Actual size” is your screen's best estimate of real print size — it can vary a little by screen. Zoom in to inspect fine detail up close.", group: "Designer — Print Preview", desc: "Small print under the preview explaining the on-screen size is approximate and the zoom is for inspecting detail." },
 
   // ── Designer — Art ──
   'designer.art.color_label': { default: "Clipart Color", group: "Designer — Art", desc: "Label above the recolor swatches for a selected SVG clipart." },

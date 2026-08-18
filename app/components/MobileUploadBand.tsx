@@ -1,4 +1,5 @@
 'use client'
+import { ZoomIn } from 'lucide-react'
 import MyUploadsPanel, { type UploadItem } from './MyUploadsPanel'
 import MobileAlignRow from './MobileAlignRow'
 import { useT } from './StringsProvider'
@@ -37,6 +38,8 @@ export default function MobileUploadBand({
   applyCrop,
   cancelCrop,
   lowResWarning,
+  printSizeAvailable,
+  onPreviewPrintSize,
 }: {
   handleImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
   uploadGuidance: string
@@ -64,6 +67,8 @@ export default function MobileUploadBand({
   applyCrop: () => void
   cancelCrop: () => void
   lowResWarning?: string | null
+  printSizeAvailable?: boolean
+  onPreviewPrintSize?: () => void
 }) {
   const t = useT()
   if (selectedObjectType === 'image') {
@@ -95,6 +100,12 @@ export default function MobileUploadBand({
           </div>
         ) : (
           <>
+            {printSizeAvailable && onPreviewPrintSize && (
+              <button onClick={onPreviewPrintSize}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-gray-300 py-2 text-sm text-gray-700">
+                <ZoomIn size={15} strokeWidth={1.75} /> {t('designer.upload.preview_print_size', 'Preview at print size')}
+              </button>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <button onClick={removeBackground} disabled={imageEditBusy}
                 className="rounded-lg border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50">{t('designer.upload.remove_background', 'Remove Background')}</button>

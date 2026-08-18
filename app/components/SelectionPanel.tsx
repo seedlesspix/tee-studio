@@ -1,6 +1,6 @@
 'use client'
 import { type Dispatch, type SetStateAction, type RefObject, type ChangeEventHandler, type DragEventHandler } from 'react'
-import { AlignLeft, AlignCenter, AlignRight, AlignJustify, MoveHorizontal, MoveVertical, Upload } from 'lucide-react'
+import { AlignLeft, AlignCenter, AlignRight, AlignJustify, MoveHorizontal, MoveVertical, Upload, ZoomIn } from 'lucide-react'
 import ClipartPanel, { type ArtMeta } from './ClipartPanel'
 import MyUploadsPanel, { type UploadItem } from './MyUploadsPanel'
 import FontPicker from './FontPicker'
@@ -95,6 +95,9 @@ type SelectionPanelProps = {
     cancelCrop: () => void
     // Low-res nudge for the selected raster upload (null = fine). Never blocks. See LOWRES_* in DesignerCanvas.
     lowResWarning?: string | null
+    // "Preview at print size" (Lens 1): shown only for a raster upload with a known physical placement.
+    printSizeAvailable?: boolean
+    onPreviewPrintSize?: () => void
   }
   clipart: {
     printMethod: string
@@ -124,7 +127,8 @@ export default function SelectionPanel({
   } = text
   const { handleImageUpload, handleImageDrop, uploadGuidance, uploadRightsOk, setUploadRightsOk, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload,
     removeWhite, removeBackground, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy,
-    colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop, lowResWarning } = upload
+    colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop, lowResWarning,
+    printSizeAvailable, onPreviewPrintSize } = upload
   const { printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor } = clipart
   // A selected CURVED text is a baked image: only font/size/color/bold/italic
   // re-bake (they're the curve effect's deps). Letter-spacing, uppercase (AA),
@@ -414,6 +418,12 @@ export default function SelectionPanel({
                       </div>
                     ) : (
                       <>
+                        {printSizeAvailable && onPreviewPrintSize && (
+                          <button onClick={onPreviewPrintSize}
+                            className="flex w-full items-center justify-center gap-1.5 border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-gray-500 transition-colors">
+                            <ZoomIn size={15} strokeWidth={1.75} /> {t('designer.upload.preview_print_size', 'Preview at print size')}
+                          </button>
+                        )}
                         <button onClick={removeBackground} disabled={imageEditBusy}
                           className="w-full border border-gray-300 text-gray-800 py-2 rounded text-sm hover:border-[#dd3333] hover:text-[#dd3333] transition-colors disabled:opacity-50">
                           {t('designer.upload.remove_background', 'Remove Background')}

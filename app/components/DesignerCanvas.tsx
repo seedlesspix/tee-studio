@@ -14,7 +14,7 @@ import { buildColorImageMap, getColorImages } from '../lib/productImages'
 import { normalizeColorKey } from '../lib/mockupFilename'
 import { deriveProductZones, zoneLabel, customerZoneLabel, isSleeveZone } from '../lib/zones'
 import { AUTODRAFT_KEY, buildEnvelope, parseEnvelope, shouldRestore } from '../lib/autodraft'
-import { placedInches, lowResTier } from '../lib/lowRes'
+import { placedInches, lowResTier, effectiveDpi } from '../lib/lowRes'
 import { maxScaleForRotation } from '../lib/rotationFit'
 import NamesNumbersPanel from './NamesNumbersPanel'
 import { type RosterEntry, type NnRole, NN_ROLE_PROP, entryHasContent, condensedScaleX, rosterShirtCount, rosterSizeQuantities, rosterValue, jerseyStackLayout } from '../lib/namesNumbers'
@@ -62,6 +62,7 @@ import {
 } from 'lucide-react'
 import MyDesignsDrawer, { type SavedDesign } from './MyDesignsDrawer'
 import ProductPickerModal, { type TemplateProduct } from './ProductPickerModal'
+import PrintSizePreview, { type PrintPreviewData } from './PrintSizePreview'
 import { useCustomerSession } from '../hooks/useCustomerSession'
 import { knockoutColorGlobal, knockoutWhiteFromEdges, elementToImageData, imageDataToPngDataUrl, sampleColorAt, cropToDataUrl } from '../lib/imageEdit'
 
@@ -367,6 +368,11 @@ export default function DesignerCanvas({
   // select + live while scaling — a bigger placement lowers effective DPI. Never blocks. See the
   // LOWRES_* constants + lowResMessageFor.
   const [lowResWarning, setLowResWarning] = useState<string | null>(null)
+  // "Preview at print size" (Lens 1): whether the selected object is a raster upload with a known
+  // physical placement (so we can render it at true print scale), and the payload for the open modal.
+  // Availability is set alongside the low-res warning in refreshLowRes; the modal recomputes fresh on click.
+  const [printPreviewAvailable, setPrintPreviewAvailable] = useState(false)
+  const [printPreview, setPrintPreview] = useState<PrintPreviewData | null>(null)
   // Upload-image editing (Phase 5): eyedropper mode for Remove-a-Color, its tolerance, a busy
   // flag so the tool buttons disable while a pixel op + re-upload runs, a LIVE-PREVIEW state
   // (pick a color -> preview while dragging tolerance -> Apply/Cancel), and a tick to re-evaluate
@@ -2100,13 +2106,13 @@ export default function DesignerCanvas({
           setTextInput('')
         } else {
           setSelectedTextPreview('')
-          setSelectedObjectType(null); setLowResWarning(null)
+          setSelectedObjectType(null); refreshLowRes(null)
           setTextInput('')
         }
       })
       canvas.on('selection:cleared', () => {
         setSelectedTextPreview('')
-        setSelectedObjectType(null); setLowResWarning(null)
+        setSelectedObjectType(null); refreshLowRes(null)
         setSelectedNnRole(null)
         setTextInput('')
         // Tapping empty shirt space (deselect) = "I'm done with tools" → collapse the
@@ -2748,7 +2754,39 @@ export default function DesignerCanvas({
     const tier = lowResTier(srcW, srcH, placedInW, placedInH)
     return tier === 'small' ? t('upload.lowres_small', LOWRES_MSG_SMALL) : tier === 'placed' ? t('upload.lowres_placed', LOWRES_MSG_PLACED) : null
   }
-  const refreshLowRes = (obj: any) => setLowResWarning(lowResMessageFor(obj))
+  // "Preview at print size" payload for a selected object, or null if not previewable. Same gate as the
+  // low-res warning (raster UPLOAD only — not clipart/decals/vectors/curved/N&N), PLUS a known physical
+  // placement (placed inches > 0): without the print-area inches we can't render at true print scale, so
+  // the button simply doesn't appear (honest — same products the Tier-2 DPI check already skips). Read
+  // the side from the REF (mount-time canvas handlers see stale `shirtView` state), mirroring lowResMessageFor.
+  const printPreviewDataFor = (obj: any): PrintPreviewData | null => {
+    if (!obj || obj.type !== 'image' || !obj._uploadSrc) return null
+    if (obj._isSvg || obj._isVectorUpload || obj._isCurvedText || obj[NN_ROLE_PROP]) return null
+    const srcW = Number(obj.width) || 0, srcH = Number(obj.height) || 0
+    if (!(srcW > 0) || !(srcH > 0)) return null
+    const bounds = getPrintAreaBounds()
+    const snap = shirtViewRef.current === 'back' ? printAreaBackSnapRef.current : printAreaFrontSnapRef.current
+    const boxW = bounds ? bounds.right - bounds.left : 0, boxH = bounds ? bounds.bottom - bounds.top : 0
+    const placedInW = placedInches(obj.getScaledWidth?.() || 0, boxW, Number(snap?.width_in) || 0)
+    const placedInH = placedInches(obj.getScaledHeight?.() || 0, boxH, Number(snap?.height_in) || 0)
+    if (!(placedInW > 0) || !(placedInH > 0)) return null
+    return {
+      src: String(obj._uploadSrc), srcW, srcH, placedInW, placedInH,
+      dpi: effectiveDpi(srcW, srcH, placedInW, placedInH),
+      tier: lowResTier(srcW, srcH, placedInW, placedInH),
+    }
+  }
+  // Single writer for both upload-derived panel cues. refreshLowRes(null) clears both (used on deselect).
+  const refreshLowRes = (obj: any) => {
+    setLowResWarning(lowResMessageFor(obj))
+    setPrintPreviewAvailable(printPreviewDataFor(obj) != null)
+  }
+  // Open the modal from the panel button — recompute from the LIVE active object so the placed size is
+  // current (it may have been resized since the last refresh).
+  const openPrintSizePreview = () => {
+    const d = printPreviewDataFor(fabricCanvasRef.current?.getActiveObject())
+    if (d) setPrintPreview(d)
+  }
 
   // THE single enforcement point for the print-area contract.
   //
@@ -2820,7 +2858,7 @@ export default function DesignerCanvas({
     }
     setTextInput('')
     setSelectedTextPreview('')
-    setSelectedObjectType(null); setLowResWarning(null)
+    setSelectedObjectType(null); refreshLowRes(null)
     textInputRef.current?.focus()
   }
 
@@ -3204,7 +3242,7 @@ export default function DesignerCanvas({
     if (m === 'embroidery' && HIDDEN_FOR_EMBROIDERY.includes(activeTab)) setActiveTab('text')
 
     canvas?.discardActiveObject(); canvas?.renderAll()
-    setLowResWarning(null)
+    refreshLowRes(null)
     setPrintMethod(m)
   }
 
@@ -3330,7 +3368,7 @@ export default function DesignerCanvas({
       active._originalText = words
       if (!words.trim()) {
         canvas.remove(active)
-        setSelectedObjectType(null); setLowResWarning(null); setSelectedTextPreview('')
+        setSelectedObjectType(null); refreshLowRes(null); setSelectedTextPreview('')
         canvas.renderAll()
         return
       }
@@ -3355,7 +3393,7 @@ export default function DesignerCanvas({
     // design content) would both be wrong. Typing again spawns a fresh one.
     if (!value.trim()) {
       canvas.remove(active)
-      setSelectedObjectType(null); setLowResWarning(null)
+      setSelectedObjectType(null); refreshLowRes(null)
       setSelectedTextPreview('')
       canvas.renderAll()
       return
@@ -4998,7 +5036,7 @@ export default function DesignerCanvas({
       dbColors={dbColors}
       deleteSelected={deleteSelected}
       text={textProps}
-      upload={{ handleImageUpload, handleImageDrop, uploadGuidance: uploadGuidanceText, uploadRightsOk, setUploadRightsOk, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload, removeWhite: removeWhiteFromSelected, removeBackground: removeBackgroundFromSelected, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy, colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop: cleanupCrop, lowResWarning }}
+      upload={{ handleImageUpload, handleImageDrop, uploadGuidance: uploadGuidanceText, uploadRightsOk, setUploadRightsOk, libraryUploads, libraryLoading, pickLibraryUpload, deleteLibraryUpload, removeWhite: removeWhiteFromSelected, removeBackground: removeBackgroundFromSelected, eyedropperActive, setEyedropperActive, removeColorTol, setRemoveColorTol, imageEditBusy, colorPreview, applyColorRemoval, cancelColorRemoval, startCrop, cropMode, applyCrop, cancelCrop: cleanupCrop, lowResWarning, printSizeAvailable: printPreviewAvailable, onPreviewPrintSize: openPrintSizePreview }}
       clipart={{ printMethod, handleClipartSelect, recolorSvg, setSelectedSvgColor, selectedSvgColor }}
     />
   )
@@ -5110,6 +5148,8 @@ export default function DesignerCanvas({
         applyCrop={applyCrop}
         cancelCrop={cleanupCrop}
         lowResWarning={lowResWarning}
+        printSizeAvailable={printPreviewAvailable}
+        onPreviewPrintSize={openPrintSizePreview}
       />
     )
     : activeTab === 'clipart' ? (
@@ -5601,6 +5641,9 @@ export default function DesignerCanvas({
         subtitle={t('designer.switch_subtitle', 'Switch this design to another garment — it re-fits onto:')}
         onPick={(target) => { void switchToProduct(target) }}
       />
+
+      {/* "Preview at print size" (Lens 1): the selected raster upload rendered at true print scale. */}
+      <PrintSizePreview open={!!printPreview} data={printPreview} onClose={() => setPrintPreview(null)} />
     </div>
   )
 }
