@@ -193,6 +193,7 @@ const CANVAS_CUSTOM_PROPS = ['_isSvg', '_originalText', '_currentColor', '_isCur
   '_curveAmount', '_curveFontFamily', '_curveFontSize', '_curveFill', '_curveBold', '_curveItalic', '_curveCharSpacing',
   '_curvePath', // Z-hp type-on-path: the admin-drawn quadratic a curved text follows (persist so re-open + the cut match)
   '_isVectorUpload', // an uploaded SVG (vector) — excluded from the low-res warning (client + bench)
+  '_cutFromDifferentSource', // convert/re-add whose bench cut-source differs from _uploadSrc — cut-edge preview suppressed (Lens 2)
   '_nnRole', // Names & Numbers placeholder role ('name'|'number') — the substitution + cut-file split key
   // A placed DESIGN (decal): the admin-assigned number + its name, frozen onto the object so the order
   // can record which decals were used (sell-through). Survives serialization via this allowlist.
@@ -2770,10 +2771,25 @@ export default function DesignerCanvas({
     const placedInW = placedInches(obj.getScaledWidth?.() || 0, boxW, Number(snap?.width_in) || 0)
     const placedInH = placedInches(obj.getScaledHeight?.() || 0, boxH, Number(snap?.height_in) || 0)
     if (!(placedInW > 0) || !(placedInH > 0)) return null
+    // Dark-garment HINT for the cut-edge preview (Lens 2): a dark garment is almost always printed as a
+    // cut transfer, so we lead with cut lines there. A hint only — cuttability itself is the real gate
+    // (the trace), decided server-side. Best hex: the template color, else the legacy map, else the swatch.
+    const gh = templateColors[selectedColor]?.hex || COLOR_HEX_MAP[selectedColor] || shirtHex
+    const m = /^#?([0-9a-f]{6}|[0-9a-f]{3})$/i.exec((gh || '').trim())
+    let garmentDark = false
+    if (m) {
+      const h = m[1].length === 3 ? m[1].split('').map(c => c + c).join('') : m[1]
+      const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16)
+      garmentDark = (0.299 * r + 0.587 * g + 0.114 * b) < 110
+    }
     return {
       src: String(obj._uploadSrc), srcW, srcH, placedInW, placedInH,
       dpi: effectiveDpi(srcW, srcH, placedInW, placedInH),
       tier: lowResTier(srcW, srcH, placedInW, placedInH),
+      garmentDark,
+      // Cut-edge preview (Lens 2) only when the previewed bytes ARE the bench's cut source. Converted
+      // AI/PSD/PDF (and re-added edited rasters) cut from a different original, so suppress it there.
+      cutEligible: !obj._cutFromDifferentSource,
     }
   }
   // Single writer for both upload-derived panel cues. refreshLowRes(null) clears both (used on deselect).
@@ -3526,6 +3542,12 @@ export default function DesignerCanvas({
       if (item.fileType === 'image/svg+xml' || item.url.toLowerCase().split('?')[0].endsWith('.svg')) {
         (img as any)._isVectorUpload = true
       }
+      // Cut-preview parity: a re-added item whose bench cut-source (originalUrl) differs from what we
+      // preview (item.url) — a converted AI/PSD/PDF, or a re-added edited raster — must NOT show cut
+      // lines that wouldn't match the produced cut. Suppress Lens 2 for it (Lens 1 still works).
+      if (item.originalUrl && item.originalUrl !== item.url) {
+        (img as any)._cutFromDifferentSource = true
+      }
       await placeImageOnCanvas(img, fabricCanvas)
       markDirty()
       uploadedFilesRef.current = [
@@ -3604,6 +3626,10 @@ export default function DesignerCanvas({
         const { FabricImage } = await import('fabric')
         const img = await FabricImage.fromURL(pngUrl, { crossOrigin: 'anonymous' })
         ;(img as any)._uploadSrc = pngUrl
+        // Cut-preview parity: the bench cuts from the RAW vector (originalUrl), not this PNG rendition, so
+        // a potrace of the PNG would NOT match the produced cut. Flag it so the cut-edge preview is
+        // suppressed (Lens 2) — the print-size preview (Lens 1) still works on the PNG. See printPreviewDataFor.
+        ;(img as any)._cutFromDifferentSource = true
         await placeImageOnCanvas(img, fabricCanvas)
         // Index the converted PNG in My Uploads (Cloudinary already hosts it).
         void persistUploadToLibrary({ url: pngUrl, publicId: data.public_id, fileName: file.name, fileType: 'image/png', source: 'converted', width: data.width, height: data.height, originalUrl, originalFormat: ext })
@@ -3652,6 +3678,9 @@ export default function DesignerCanvas({
         ])
         if (uploaded) {
           ;(img as any)._uploadSrc = uploaded.url
+          // Cut-preview parity: the bench cuts from the raw PDF, not this rasterized page — suppress the
+          // cut-edge preview (Lens 2). Print-size preview (Lens 1) still works. See printPreviewDataFor.
+          ;(img as any)._cutFromDifferentSource = true
           void persistUploadToLibrary({
             url: uploaded.url, publicId: uploaded.publicId, fileName: file.name,
             fileType: 'image/png', source: 'pdf', width: uploaded.width, height: uploaded.height,
@@ -3776,9 +3805,11 @@ export default function DesignerCanvas({
 
   // A single image-edit STATE (undo/redo restores these). Position is captured too, because CROP
   // changes the object's size + position — undo must put it back exactly.
-  type EditState = { src: string; uploadSrc?: string; entry?: any; left?: number; top?: number; scaleX?: number; scaleY?: number; angle?: number }
+  type EditState = { src: string; uploadSrc?: string; entry?: any; left?: number; top?: number; scaleX?: number; scaleY?: number; angle?: number; cutFromDifferentSource?: boolean }
   const snapshotState = (img: any, src: string, uploadSrc?: string, entry?: any): EditState =>
-    ({ src, uploadSrc, entry, left: img.left, top: img.top, scaleX: img.scaleX, scaleY: img.scaleY, angle: img.angle })
+    // Capture the cut-parity flag too: undoing across an edit boundary rolls _uploadSrc back to a
+    // convert's PNG rendition, so the flag must roll back WITH it (else the cut preview would return).
+    ({ src, uploadSrc, entry, left: img.left, top: img.top, scaleX: img.scaleX, scaleY: img.scaleY, angle: img.angle, cutFromDifferentSource: !!img._cutFromDifferentSource })
 
   // Apply an image-edit STATE (used by undo, redo): swap the object to that src + restore its
   // _uploadSrc, uploaded_files entry, and position/scale. No re-upload — the url is already hosted.
@@ -3789,6 +3820,7 @@ export default function DesignerCanvas({
     img.setCoords?.(); fabricCanvas?.renderAll()
     refreshLowRes(img) // undo/redo can swap to a different natural-px src → re-evaluate effective DPI
     img._uploadSrc = state.uploadSrc
+    img._cutFromDifferentSource = !!state.cutFromDifferentSource // restore cut-parity flag alongside _uploadSrc
     const list = uploadedFilesRef.current
     const idx = list.findIndex(f => f.url === curSrc)
     if (state.entry) { if (idx >= 0) list[idx] = { ...state.entry }; else list.push({ ...state.entry }) }
@@ -3831,6 +3863,9 @@ export default function DesignerCanvas({
         revisedUrl = editedSrc // already hosted (server re-hosted the cutout) — no re-upload
       }
       img._uploadSrc = revisedUrl
+      // After an edit the bench cuts from THIS revised raster (edited uploads trace f.url = _uploadSrc),
+      // so the cut preview matches again — clear any convert/re-add suppression flag.
+      img._cutFromDifferentSource = false
       const list = uploadedFilesRef.current
       const idx = list.findIndex(f => f.url === oldSrc)
       let entry: any

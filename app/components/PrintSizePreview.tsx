@@ -19,6 +19,23 @@ export type PrintPreviewData = {
   placedInH: number
   dpi: number          // effective DPI at the placed size (Infinity if unknowable)
   tier: 'small' | 'placed' | null // low-res verdict, mirrors the panel warning
+  garmentDark?: boolean // Lens 2 hint: a dark garment is almost always a cut transfer → lead with cut lines
+  cutEligible?: boolean // Lens 2 gate: false when the bench cuts a DIFFERENT source than this preview (AI/PSD/PDF convert)
+}
+
+// Cut-edge trace cache (Lens 2), keyed by upload URL. The trace is deterministic per file, and crop /
+// bg-removal produce a NEW url, so a fresh key = automatic invalidation (no manual busting needed).
+// null = traced-but-not-cuttable (photo/multi-color); a {viewBox, inner} = the cut outline to overlay.
+type CutTrace = { viewBox: string; inner: string }
+const traceCache = new Map<string, CutTrace | null>()
+
+// Pull the viewBox + inner markup out of potrace's <svg> so we can re-style the outline (fill→none,
+// stroke) and stretch it to the displayed art. potrace emits numeric <g>/<path> only (no scripts).
+function parseTrace(svg: string): CutTrace | null {
+  const vb = svg.match(/viewBox="([^"]+)"/)
+  const inner = svg.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '').trim()
+  if (!vb || !inner) return null
+  return { viewBox: vb[1], inner }
 }
 
 // Screen pixels per print-inch for the "Actual size" view. ~96 is the CSS reference px/inch — a close
@@ -42,6 +59,11 @@ export default function PrintSizePreview({
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const [loaded, setLoaded] = useState(false)
   const drag = useRef<{ startX: number; startY: number; ox: number; oy: number } | null>(null)
+  // Lens 2 — cut-edge preview. 'idle'→'loading'→'ready' (cuttable, `trace` set) | 'none' (not cuttable) |
+  // 'error'. `showCut` toggles the overlay; it leads ON for dark garments (likely transfers).
+  const [traceState, setTraceState] = useState<'idle' | 'loading' | 'ready' | 'none' | 'error'>('idle')
+  const [trace, setTrace] = useState<CutTrace | null>(null)
+  const [showCut, setShowCut] = useState(false)
 
   // Measure the viewport (drives Fit + pan clamping); re-measure on resize.
   useLayoutEffect(() => {
@@ -55,10 +77,39 @@ export default function PrintSizePreview({
     return () => window.removeEventListener('resize', measure)
   }, [open])
 
-  // Fresh open: reset to life-size, centered, not-yet-loaded.
+  // Fresh open: reset to life-size, centered, not-yet-loaded, cut overlay off.
   useEffect(() => {
-    if (open) { setMode('actual'); setLoaded(false) }
+    if (open) { setMode('actual'); setLoaded(false); setShowCut(false); setTrace(null); setTraceState('idle') }
   }, [open, data?.src])
+
+  // Fetch the cut-edge trace (Lens 2) for the open art. Skipped when the art isn't cut-eligible (a
+  // convert whose bench cut-source differs). Cache-first (deterministic per url); on a fresh result lead
+  // the overlay ON for dark garments (almost always cut transfers), else leave it to the toggle. A
+  // "couldn't read" response (checked:false — fetch/timeout/size/host) stays neutral: NO cut verdict.
+  useEffect(() => {
+    if (!open || !data) return
+    if (data.cutEligible === false) { setTraceState('idle'); return } // no cut preview for this upload
+    const src = data.src
+    const dark = !!data.garmentDark
+    const apply = (c: CutTrace | null) => {
+      if (c) { setTrace(c); setTraceState('ready'); setShowCut(dark) }
+      else { setTrace(null); setTraceState('none') }
+    }
+    if (traceCache.has(src)) { apply(traceCache.get(src)!); return }
+    let alive = true
+    setTraceState('loading')
+    fetch('/api/trace-preview', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url: src }) })
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error('trace failed'))))
+      .then((j: { svg?: string | null; checked?: boolean }) => {
+        if (!alive) return
+        if (j.checked === false) { setTraceState('error'); return } // couldn't read the file — claim nothing (don't cache)
+        const parsed = j.svg ? parseTrace(j.svg) : null
+        traceCache.set(src, parsed)
+        apply(parsed)
+      })
+      .catch(() => { if (alive) setTraceState('error') })
+    return () => { alive = false }
+  }, [open, data?.src, data?.garmentDark, data?.cutEligible])
 
   useEffect(() => {
     if (!open) return
@@ -187,6 +238,22 @@ export default function PrintSizePreview({
                 transition: 'opacity 120ms',
               }}
             />
+            {/* Cut-edge overlay (Lens 2): the production trace, re-styled as a magenta outline with a white
+                halo so it reads on any art/garment. Stretched to the exact same box as the image (both fill
+                dispW×dispH), so it aligns even under non-uniform scale. non-scaling-stroke keeps the line a
+                constant screen width across zoom. */}
+            {showCut && trace && (
+              <svg
+                viewBox={trace.viewBox}
+                preserveAspectRatio="none"
+                width={dispW} height={dispH}
+                style={{ position: 'absolute', left: posX, top: posY, pointerEvents: 'none' }}
+                aria-hidden="true"
+              >
+                <g className="psp-cut-halo" dangerouslySetInnerHTML={{ __html: trace.inner }} />
+                <g className="psp-cut-line" dangerouslySetInnerHTML={{ __html: trace.inner }} />
+              </svg>
+            )}
             {!loaded && (
               <div className="absolute inset-0 flex items-center justify-center text-xs font-mono text-gray-400">
                 {t('designer.preview.loading', 'Loading…')}
@@ -206,13 +273,39 @@ export default function PrintSizePreview({
             )}
           </div>
 
+          {/* Cut-edge controls (Lens 2). Toggle appears only when the art actually traces (cuttable). */}
+          {traceState === 'loading' && (
+            <p className="text-[11px] text-gray-400">{t('designer.preview.cut_checking', 'Checking how this would cut…')}</p>
+          )}
+          {traceState === 'ready' && (
+            <label className="flex w-fit cursor-pointer select-none items-center gap-2 text-[13px] text-gray-800">
+              <input type="checkbox" checked={showCut} onChange={e => setShowCut(e.target.checked)}
+                className="h-4 w-4 cursor-pointer accent-[#e11d8f]" />
+              <span className="inline-block h-0 w-5 border-t-2 border-[#e11d8f]" aria-hidden="true" />
+              {t('designer.preview.cut_toggle', 'Show cut lines')}
+            </label>
+          )}
+          {traceState === 'none' && (
+            <p className="text-[11px] leading-snug text-gray-500">{t('designer.preview.cut_none', 'Too detailed to cut cleanly — this design would be printed, not cut.')}</p>
+          )}
+
           <div className="flex flex-col gap-1 rounded-lg bg-gray-50 px-3 py-2.5">
             <p className="text-[13px] font-medium text-gray-900">{printsAbout}</p>
             {verdict && <p className={`text-xs leading-snug ${verdictTone}`}>{verdict}</p>}
+            {traceState === 'ready' && showCut && (
+              <p className="text-[11px] leading-snug text-gray-500">
+                {t('designer.preview.cut_hedge', 'The magenta outline is how this art would cut. Our team makes the final print-or-cut call for your order.')}
+                {data.garmentDark ? ' ' + t('designer.preview.cut_dark_hint', 'Dark garments are usually printed as a cut transfer.') : ''}
+              </p>
+            )}
             <p className="mt-0.5 text-[11px] leading-snug text-gray-400">
               {t('designer.preview.screen_note', "“Actual size” is your screen's best estimate of real print size — it can vary a little by screen. Zoom in to inspect fine detail up close.")}
             </p>
           </div>
+          <style>{`
+            .psp-cut-halo path, .psp-cut-halo polygon { fill: none; stroke: #ffffff; stroke-width: 3.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+            .psp-cut-line path, .psp-cut-line polygon { fill: none; stroke: #e11d8f; stroke-width: 1.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+          `}</style>
         </div>
       </div>
     </div>

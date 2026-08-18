@@ -105,12 +105,6 @@ reassess → then Z-hp-2 fresh.
 
 ## Parked (named, deliberate, not lost)
 
-- 🅿️ **Lens 2 — cut-edge preview** (SCOPED 2026-08-18, no build). Show the auto-traced cut outline on
-  the art so customers see how a transfer/vinyl job will cut. Audience is real (the bench cuts dark-garment
-  transfers + text-as-vinyl on "Print" orders); honest trigger = actual cuttability (does the art trace),
-  NOT garment-color alone (dark-garment is a lead-in hint). Rides on Lens 1's modal as a "Show cut lines"
-  toggle + a trace API + overlay, ~3–4.5 dev-days. Full scope in the `project_cut_preview` memory. Not
-  launch-blocking — data-earned fast-follow.
 - ✅ DONE — Chest reference guide (CustomInk-style dashed outline), commit cc89dda.
 - ✅ DONE — Hat-back one-text guard + "size set by arc" cue, commit fb0d3dc.
 - ✅ DONE — Sleeve/color dup-mockup cleanup (8 no-space legacy rows deleted,
@@ -131,6 +125,15 @@ reassess → then Z-hp-2 fresh.
   caption. Test: upload a low-res/blurry image, size it up on the shirt, open the preview → the softness
   should be visible when zoomed; the caption should match the amber low-res nudge. Vector/SVG uploads and
   clipart show no button (correct). Works desktop + mobile.
+- **Lens 2 "cut-edge preview"** (built 2026-08-18, adversarial review clean after fixes). Inside the same
+  preview modal, a **"Show cut lines"** toggle overlays the production trace (same `autoTraceSvg` the bench
+  gets) as a magenta outline — so cut/transfer jobs show the exact edges that would cut. Gate = cuttability
+  (the trace), garment color a hint (dark garments lead the overlay ON). Test: open the preview on a
+  one-color logo → "Show cut lines" appears and outlines it; open it on a photo → "too detailed to cut —
+  would be printed, not cut"; on a dark garment the outline leads on. AI/PSD/PDF uploads deliberately show
+  NO cut toggle (the bench cuts their raw vector, not the preview PNG). Review found + fixed: SSRF/DoS on the
+  new endpoint, a false "printed not cut" on fetch failures, the AI/PDF parity gap, and an undo-desync of the
+  parity flag — all closed before push.
 
 ## Recently DONE (verified, for morale)
 
