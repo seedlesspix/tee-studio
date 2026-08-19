@@ -25,10 +25,7 @@ function potraceTrace(mask: Buffer): Promise<string> {
   })
 }
 
-// Long-edge trace resolution: small art is supersampled UP to this for crisp edges; large art is clamped
-// DOWN to it. The clamp is load-bearing for memory — potrace decodes the mask to a W×H×4 bitmap, so an
-// unclamped huge upload (a clean 12000px logo) OOM-kills the worker even though its perimeter is low.
-const TRACE_SUPERSAMPLE = 2400
+const TRACE_SUPERSAMPLE = 2400 // long-edge target; grow-only (never shrinks already-large art)
 const TRACE_BLUR = 5           // px sigma at supersample scale — smooths edge jitter, keeps real corners
 // OOM GUARD. A full-res potrace on a shattered (fuzzy/noisy/photo) mask allocates >1GB (a 5k–44k-island
 // path) and OOM-kills a serverless worker — the whole production bundle then 500s. potrace's cost scales
@@ -37,13 +34,10 @@ const TRACE_BLUR = 5           // px sigma at supersample scale — smooths edge
 // logo ~6k, a crisp 120-ray sunburst ~250k (must pass), a noisy/feathered mask 1M+ (OOM). TUNABLE.
 const MAX_PERIMETER = 400_000
 
-// Clamp the mask to `size` on the long edge (small art supersampled UP for crisp edges; large art scaled
-// DOWN) + optional edge-clean blur, shared by both masks. The DOWN-clamp is load-bearing for memory: potrace
-// decodes the mask to a W×H×4 bitmap, so a clean-but-huge upload (a high-res transparent logo) OOM-kills the
-// worker if left at native resolution — its silhouette is simple (low perimeter, passes that guard) but its
-// pixel count is not. NO withoutReduction — that flag kept large art native and was the "all orders" OOM.
+// Supersample (grow-only) + optional edge-clean blur, shared by both masks. blur=true is the CLEANED mask
+// we output from (crisp, jitter-free); blur=false raw. `size` lets callers trace at a smaller resolution.
 function prep(s: ReturnType<typeof sharp>, applyBlur: boolean, size: number): ReturnType<typeof sharp> {
-  const up = s.resize(size, size, { fit: 'inside', kernel: 'lanczos3' })
+  const up = s.resize(size, size, { fit: 'inside', withoutReduction: true, kernel: 'lanczos3' })
   return applyBlur ? up.blur(Math.max(0.3, TRACE_BLUR * size / TRACE_SUPERSAMPLE)) : up
 }
 
@@ -72,9 +66,7 @@ async function hasTransparency(bytes: Uint8Array): Promise<boolean> {
   const buf = Buffer.from(bytes)
   const meta = await sharp(buf).metadata()
   if (!meta.hasAlpha) return false
-  // Downscale before reading the alpha raw — a transfer-ready logo's transparent background is a large
-  // region that survives downscaling, so we detect it without materializing a native-res (100MB+) buffer.
-  const { data } = await sharp(buf).resize(1000, 1000, { fit: 'inside' }).ensureAlpha().extractChannel(3).raw().toBuffer({ resolveWithObject: true })
+  const { data } = await sharp(buf).ensureAlpha().extractChannel(3).raw().toBuffer({ resolveWithObject: true })
   const step = Math.max(1, Math.floor(data.length / 8192))
   for (let i = 0; i < data.length; i += step) if (data[i] < 128) return true
   return false
