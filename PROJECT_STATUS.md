@@ -4,6 +4,23 @@ Denise's regroup checkpoint. One page: what's in flight, what awaits her eyes,
 what's queued, what's parked. CC: reconcile this against your tracker and
 correct anything stale, then keep it updated at major checkpoints.
 
+## 🔴 INCIDENT RESOLVED 2026-08-19 — production bundle 500 on ALL orders
+
+**Real cause: sharp couldn't load on Vercel** (native libvips `.so` not bundled into the lambda —
+`ERR_DLOPEN_FAILED: libvips-cpp.so.8.18.3`). It was NEVER the trace logic. Fixed by force-including
+sharp's native binary in `next.config.ts` (`outputFileTracingIncludes`, same as the fonts). Bundle
+confirmed working, libvips error gone.
+
+**Course-correction on the way there:** the silhouette cut MODEL (multicolor-by-contour) was reverted off
+production per Denise (bench first; model gets rebuilt on a branch). Three trace "OOM fixes" before the
+revert were chasing a symptom local repros invented — sharp loads fine on macOS, so the prod-only failure
+was invisible until Denise supplied the actual Vercel log. **Lesson logged:** get the real prod exception +
+verify the live deploy BEFORE shipping a prod fix.
+
+**Live now:** Lens 1 (print-size preview) + Lens 2 preview at the pre-silhouette GARMENT-SPLIT model
+(one-color art traces; multicolor → "too many colors"). The silhouette model + its OOM hardening (perimeter
+guard + 2400px mask clamp — both real, keep them) are parked for a branch rebuild.
+
 ## In flight (CC — the agreed work order, nothing else starts)
 
 ✅ CLOSED 2026-08-15: the managed-mockup switch is FINAL. The adversarial
