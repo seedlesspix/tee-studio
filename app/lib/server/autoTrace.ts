@@ -27,35 +27,13 @@ function potraceTrace(mask: Buffer): Promise<string> {
 
 const TRACE_SUPERSAMPLE = 2400 // long-edge target; grow-only (never shrinks already-large art)
 const TRACE_BLUR = 5           // px sigma at supersample scale — smooths edge jitter, keeps real corners
-// OOM GUARD. A full-res potrace on a shattered (fuzzy/noisy/photo) mask allocates >1GB (a 5k–44k-island
-// path) and OOM-kills a serverless worker — the whole production bundle then 500s. potrace's cost scales
-// with the mask's boundary PERIMETER, which we measure cheaply on the ACTUAL full-res mask (a raw pixel
-// scan, no potrace) and bail above this cap BEFORE tracing. Calibrated on the shop's mask pipeline: a clean
-// logo ~6k, a crisp 120-ray sunburst ~250k (must pass), a noisy/feathered mask 1M+ (OOM). TUNABLE.
-const MAX_PERIMETER = 400_000
 
-// Supersample (grow-only) + optional edge-clean blur, shared by both masks. blur=true is the CLEANED mask
-// we output from (crisp, jitter-free); blur=false raw. `size` lets callers trace at a smaller resolution.
-function prep(s: ReturnType<typeof sharp>, applyBlur: boolean, size: number): ReturnType<typeof sharp> {
-  const up = s.resize(size, size, { fit: 'inside', withoutReduction: true, kernel: 'lanczos3' })
-  return applyBlur ? up.blur(Math.max(0.3, TRACE_BLUR * size / TRACE_SUPERSAMPLE)) : up
-}
-
-// Total black/white boundary length of a bilevel mask (≈ potrace's work). Cheap raw scan (bounded memory,
-// ~ms) — runs BEFORE potrace so a shattered mask is rejected without ever allocating the giant trace.
-async function maskPerimeter(maskPng: Buffer): Promise<number> {
-  const { data, info } = await sharp(maskPng).raw().toBuffer({ resolveWithObject: true })
-  const { width: w, height: h, channels: ch } = info
-  let t = 0
-  for (let y = 0; y < h; y++) {
-    const row = y * w * ch
-    for (let x = 1; x < w; x++) { const i = row + x * ch; if ((data[i] < 128) !== (data[i - ch] < 128)) t++ }
-  }
-  for (let x = 0; x < w; x++) {
-    const col = x * ch
-    for (let y = 1; y < h; y++) { const i = col + y * w * ch; if ((data[i] < 128) !== (data[i - w * ch] < 128)) t++ }
-  }
-  return t
+// Supersample (grow-only) + optional edge-clean blur, shared by both masks. blur=true is the CLEANED
+// mask we output from (crisp, jitter-free); blur=false is the RAW mask used to DETECT complexity by
+// island/anchor count — cleaning would smooth a photo into a small blob and hide it.
+function prep(s: ReturnType<typeof sharp>, applyBlur: boolean): ReturnType<typeof sharp> {
+  const up = s.resize(TRACE_SUPERSAMPLE, TRACE_SUPERSAMPLE, { fit: 'inside', withoutReduction: true, kernel: 'lanczos3' })
+  return applyBlur ? up.blur(TRACE_BLUR) : up
 }
 
 // Does the art carry MEANINGFUL transparency? That transparency IS the weed line: on a transfer the cutter
@@ -75,16 +53,16 @@ async function hasTransparency(bytes: Uint8Array): Promise<boolean> {
 // SILHOUETTE mask from the ALPHA channel: opaque (printed) → black shape, transparent → weeded, interior
 // transparent holes preserved. COLOR-INDEPENDENT — this is the "flatten all non-transparent pixels to
 // black, trace faithfully" model, and it cuts multicolor art by its true contour.
-async function toAlphaMask(bytes: Uint8Array, applyBlur: boolean, size: number = TRACE_SUPERSAMPLE): Promise<Buffer> {
-  return prep(sharp(Buffer.from(bytes)).ensureAlpha().extractChannel(3).negate(), applyBlur, size).threshold(128).png().toBuffer()
+async function toAlphaMask(bytes: Uint8Array, applyBlur: boolean): Promise<Buffer> {
+  return prep(sharp(Buffer.from(bytes)).ensureAlpha().extractChannel(3).negate(), applyBlur).threshold(128).png().toBuffer()
 }
 
 // Best-effort LUMINANCE mask (dark-on-light) for OPAQUE art. Only valid for one-color-on-light art (the
 // isCuttable gate below restricts it): the bench gets it as a starting point. The customer preview does
 // NOT present opaque art as a confident cut — an opaque "white box" is ambiguous (removable background vs
 // intentional), so we point it out and offer Remove White instead of guessing a cut.
-async function toLuminanceMask(bytes: Uint8Array, applyBlur: boolean, size: number = TRACE_SUPERSAMPLE): Promise<Buffer> {
-  return prep(sharp(Buffer.from(bytes)).flatten({ background: '#ffffff' }).greyscale(), applyBlur, size).threshold(128).png().toBuffer()
+async function toLuminanceMask(bytes: Uint8Array, applyBlur: boolean): Promise<Buffer> {
+  return prep(sharp(Buffer.from(bytes)).flatten({ background: '#ffffff' }).greyscale(), applyBlur).threshold(128).png().toBuffer()
 }
 
 // A one-color cuttable logo traces to tens–low-hundreds of anchors. A photo that slips the color
@@ -144,24 +122,28 @@ export type TraceReason = 'cuttable' | 'too_complex' | 'opaque_background' | 'un
 export async function traceForCut(bytes: Uint8Array): Promise<{ svg: string | null; reason: TraceReason; islands: number }> {
   try {
     const transparent = await hasTransparency(bytes)
-    // Opaque + not one-color-on-light → no trustworthy silhouette; the preview asks the customer to Remove
-    // White. (isCuttable gates the opaque best-effort path AND keeps a many-color opaque photo out of the
-    // trace entirely.) Transparent art skips this — it's cuttable by its alpha contour, any color.
-    if (!transparent && !(await isCuttable(bytes))) return { svg: null, reason: 'opaque_background', islands: 0 }
-    const okReason: TraceReason = transparent ? 'cuttable' : 'opaque_background'
-    // Opaque never surfaces "too_complex" to the customer (the preview shows remove-background regardless);
-    // a null svg just means no best-effort file for the bench.
-    const failReason: TraceReason = transparent ? 'too_complex' : 'opaque_background'
-    const maskPng = transparent ? await toAlphaMask(bytes, true) : await toLuminanceMask(bytes, true)
-    // OOM GUARD (see MAX_PERIMETER): reject a shattered mask on the cheap perimeter scan BEFORE potrace can
-    // allocate the giant trace and OOM the worker. Also serves as the "too fuzzy / intricate to cut" gate.
-    if (await maskPerimeter(maskPng) > MAX_PERIMETER) return { svg: null, reason: failReason, islands: 0 }
-    // Gate on the CLEANED (output) trace, not a raw pre-blur trace: the raw is inflated by supersample /
-    // anti-alias JITTER the blur removes, so a raw cap false-rejects CRISP fine detail as "too fuzzy". The
-    // honest weeding gate is the clean trace's ISLAND count, with a command backstop for pathological density.
-    const cleanSvg = await potraceTrace(maskPng)
+    if (transparent) {
+      // Alpha silhouette — the real cut for a transfer. Gate on the CLEANED (output) trace, NOT the raw
+      // pre-blur trace: the raw is inflated by supersample/anti-alias JITTER the blur removes, so a raw cap
+      // false-rejects CRISP fine detail (a sharp many-ray emblem) as "too fuzzy". The honest weeding gate
+      // is the clean trace's ISLAND count — fuzzy/feathered edges shatter into many tiny pieces that
+      // survive the blur — with a command backstop for pathological density.
+      const cleanSvg = await potraceTrace(await toAlphaMask(bytes, true))
+      const islands = subpathCount(cleanSvg)
+      if (islands > MAX_TRACE_ISLANDS || pathCommandCount(cleanSvg) > MAX_TRACE_COMMANDS) return { svg: null, reason: 'too_complex', islands }
+      return { svg: cleanSvg, reason: 'cuttable', islands }
+    }
+    // Opaque: no transparency to define the weed line. Multicolor-opaque → no trustworthy silhouette (the
+    // customer must remove the background); one-color-on-light → a best-effort luminance trace for the
+    // bench. Either way the preview shows the "remove background" note, never a confident cut. Photo
+    // detection needs the RAW luminance trace (the blur smooths a photo into a small blob that slips the
+    // cap), so keep the raw pre-check on THIS path only.
+    if (!(await isCuttable(bytes))) return { svg: null, reason: 'opaque_background', islands: 0 }
+    const rawSvg = await potraceTrace(await toLuminanceMask(bytes, false))
+    if (pathCommandCount(rawSvg) > MAX_TRACE_COMMANDS) return { svg: null, reason: 'too_complex', islands: subpathCount(rawSvg) }
+    const cleanSvg = await potraceTrace(await toLuminanceMask(bytes, true))
     const islands = subpathCount(cleanSvg)
-    if (islands > MAX_TRACE_ISLANDS || pathCommandCount(cleanSvg) > MAX_TRACE_COMMANDS) return { svg: null, reason: failReason, islands }
-    return { svg: cleanSvg, reason: okReason, islands }
+    if (islands > MAX_TRACE_ISLANDS || pathCommandCount(cleanSvg) > MAX_TRACE_COMMANDS) return { svg: null, reason: 'too_complex', islands }
+    return { svg: cleanSvg, reason: 'opaque_background', islands }
   } catch { return { svg: null, reason: 'unreadable', islands: 0 } }
 }
