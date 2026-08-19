@@ -1,5 +1,5 @@
 // Customer-facing cut-edge PREVIEW (Lens 2). POST { url } -> { svg, checked }.
-// Runs the SAME production trace the fulfillment bench gets (autoTraceSvg — potrace), so the customer
+// Runs the SAME production trace the fulfillment bench gets (traceForCut — potrace), so the customer
 // sees the EXACT edges that would be cut (parity, same spirit as type-on-path on-screen/cut parity).
 //   { checked:true,  svg:"<svg…>" } — cuttable one-color art (show the outline)
 //   { checked:true,  svg:null      } — traced-but-not-cuttable (photo/multi-color): printed, not cut

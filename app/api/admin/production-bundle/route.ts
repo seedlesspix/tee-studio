@@ -19,7 +19,7 @@ import { collectCutPaths } from '../../../lib/server/generateCutFile'
 import { orderFileStem } from '../../../lib/orderFiles'
 import { assembleCutSvgUnioned } from '../../../lib/server/cutBoolean'
 import { generateLayoutSvgForSide } from '../../../lib/server/generateLayout'
-import { autoTraceSvg } from '../../../lib/server/autoTrace'
+import { traceForCut } from '../../../lib/server/autoTrace'
 import { collectNnCutPaths, nnEntryFilename } from '../../../lib/server/nnCutFiles'
 import { type RosterEntry, entryHasContent, rosterValue, rosterShirtCount } from '../../../lib/namesNumbers'
 import { orderZones, zoneLabel } from '../../../lib/zones'
@@ -264,13 +264,15 @@ export async function GET(req: NextRequest) {
             origLines.push(`  ✓ Originals/${i + 1}-${stem}-inverted.png  (auto-inverted — white/light artwork, for tracing)`)
           }
         }
-        // Auto-trace one-color artwork -> best-effort vinyl cut vector (potrace). Photos/multi-color
-        // art are gated out. Best-effort: verify in Illustrator; the raster in Originals/ is the source.
-        const traced = await autoTraceSvg(bytes)
+        // Auto-trace artwork -> best-effort cut vector (potrace silhouette). Transparent art (incl.
+        // MULTICOLOR) traces its alpha contour; opaque one-color traces luminance; photos/fuzzy art gate
+        // out. Best-effort: verify in Illustrator; the raster in Originals/ is the source. The island
+        // count = how many separate pieces to weed (the bench's difficulty signal).
+        const { svg: traced, islands } = await traceForCut(bytes)
         if (traced) {
           traceFolder ??= root.folder('Auto-Traced')!
           traceFolder.file(`${i + 1}-${stem}-traced.svg`, traced)
-          traceLines.push(`  ✓ Auto-Traced/${i + 1}-${stem}-traced.svg  (best-effort — verify in Illustrator)`)
+          traceLines.push(`  ✓ Auto-Traced/${i + 1}-${stem}-traced.svg  (best-effort — verify in Illustrator; ~${islands} pieces to weed)`)
         }
       } else origLines.push(`  ⚠ Originals/${name} — could not fetch`)
     }
