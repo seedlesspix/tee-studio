@@ -239,15 +239,21 @@ reassess → then Z-hp-2 fresh.
 - **Lens 2 "cut-edge preview"** (built 2026-08-18, adversarial review clean after fixes). Inside the same
   preview modal, a **"Show cut lines"** toggle overlays the production trace (same `autoTraceSvg` the bench
   gets) as a magenta outline — so cut/transfer jobs show the exact edges that would cut. Gate = cuttability
-  (the trace), garment color a hint (dark garments lead the overlay ON). Test: open the preview on a
-  one-color logo → "Show cut lines" appears and outlines it; on a dark garment the outline leads on.
-  **A failed trace now splits by garment (shop truth):** on a DARK garment it's a clean-up warning that
-  NAMES the problem — "edges too fuzzy to cut cleanly" vs "too many colors" (on darks a failed trace means
-  the bench cleans up then cuts, NOT that we print instead); on a LIGHT garment it's the simple "printed,
-  not cut". AI/PSD/PDF uploads deliberately show NO cut toggle (the bench cuts their raw vector, not the
-  preview PNG). Review found + fixed: SSRF/DoS on the new endpoint, a false "printed not cut" on fetch
-  failures, the AI/PDF parity gap, and an undo-desync of the parity flag — all closed before push.
-  Wording is language-editable (dark message = shop-truth warning, amber; Denise to tune phrasing).
+  the trace. Test: open the preview on any transparent logo → "Show cut lines" outlines its silhouette.
+  **Cuttability model corrected 2026-08-19 (shop truth):** a transfer is cut by its CONTOUR everywhere
+  (outer edge + interior holes), so it's the SILHOUETTE, not the colors. **Multicolor art is now fully
+  cuttable** (transparent multicolor → real contour with holes); the "too many colors" failure is gone.
+  Opaque art (no transparent background) → the preview POINTS OUT the solid background and offers Remove
+  White (doesn't guess a cut — the white box is usually removable, sometimes intentional). "Too complex"
+  now means the silhouette shatters into too many islands (fuzzy/feathered = weeding hell) → the DARK
+  garment gets the edges/cleanup warning, LIGHT gets "printed, not cut". Bench OrderInfo now shows
+  "~N pieces to weed" per traced upload. AI/PSD/PDF still show no toggle (bench cuts their raw vector).
+  Two review rounds found + fixed: SSRF/DoS/false-verdict/AI-parity/undo-desync (round 1) and a
+  crisp-fine-detail false-reject + the unused island metric (round 2). Wording is language-editable
+  (island cap = 500, tunable against real art; Denise to tune phrasing).
+- **Point 4 (SCOPED, not built):** make this silhouette the actual per-side cut FILE for raster transfer
+  uploads (currently excluded), mapped into true physical inches — replacing the bench's manual
+  Photoshop→Illustrator step. ~2–4 dev-days, after the model is proven on real art. See `project_cut_preview`.
 
 ## Recently DONE (verified, for morale)
 
