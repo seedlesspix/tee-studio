@@ -200,7 +200,43 @@ const CANVAS_CUSTOM_PROPS = ['_isSvg', '_originalText', '_currentColor', '_isCur
   '_decalNumber', '_decalName',
   // Which print methods a placed art supports — a method switch keeps art valid in the new method
   // (dual-method clipart survives Print↔Embroidery) instead of removing everything.
-  '_supportedMethods']
+  '_supportedMethods',
+  // SVG clipart displayed as a HI-RES raster (crisp when enlarged): the object's src is a big rasterized
+  // data-URL, so keep the ORIGINAL svg url here for the cut/layout engines (they fetch it + key off viewBox).
+  '_svgOrigSrc']
+
+// Rasterize an SVG at HIGH RES so library clipart stays crisp when enlarged. A plain FabricImage.fromURL
+// rasterizes the SVG at its tiny natural size (~250px) → blur when scaled up. Fetch the SVG, PRESERVE its
+// viewBox, and set a large root width/height so the browser rasterizes at ~targetPx. The cut/layout engines
+// read the ORIGINAL url (via _svgOrigSrc) and key off the viewBox, so the bigger display width is invariant
+// there (sImgX = width/viewBox). Interim; the true-vector load is the parked proper fix. Falls back to a
+// plain natural-size load on any hiccup (CORS/parse) — may blur, but never fails to place.
+async function loadSvgHiRes(FabricImage: any, url: string, targetPx = 1500): Promise<any> {
+  try {
+    const res = await fetch(url, { mode: 'cors' })
+    if (!res.ok) throw new Error('fetch')
+    const text = await res.text()
+    const open = text.match(/<svg\b[^>]*>/i)?.[0]
+    if (!open) throw new Error('no <svg>')
+    let vbW = 0, vbH = 0
+    const vb = open.match(/viewBox\s*=\s*"([^"]+)"/i)
+    if (vb) { const p = vb[1].trim().split(/[\s,]+/).map(Number); vbW = p[2]; vbH = p[3] }
+    if (!(vbW > 0 && vbH > 0)) {
+      vbW = parseFloat(open.match(/\bwidth\s*=\s*"([\d.]+)/i)?.[1] || '') || 0
+      vbH = parseFloat(open.match(/\bheight\s*=\s*"([\d.]+)/i)?.[1] || '') || 0
+    }
+    if (!(vbW > 0 && vbH > 0)) throw new Error('no dims')
+    const scale = targetPx / Math.max(vbW, vbH)
+    const outW = Math.round(vbW * scale), outH = Math.round(vbH * scale)
+    let newOpen = open.replace(/\s(width|height)\s*=\s*"[^"]*"/gi, '')        // drop the root width/height
+    if (!/viewBox\s*=/i.test(newOpen)) newOpen = newOpen.replace(/<svg\b/i, `<svg viewBox="0 0 ${vbW} ${vbH}"`)
+    newOpen = newOpen.replace(/<svg\b/i, `<svg width="${outW}" height="${outH}"`) // scale up (viewBox preserved)
+    const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(text.replace(open, newOpen))
+    return await FabricImage.fromURL(dataUrl, { crossOrigin: 'anonymous' })
+  } catch {
+    return await FabricImage.fromURL(url, { crossOrigin: 'anonymous' })
+  }
+}
 
 // Fallback size list ONLY — real sizes come per-product from the Shopify Size
 // option (see productSizes). Used when a product exposes no Size option.
@@ -4864,19 +4900,24 @@ export default function DesignerCanvas({
       spawnX = ((overlayRect.left - canvasRect.left) * scaleX) + (overlayRect.width * scaleX / 2)
       spawnY = ((overlayRect.top - canvasRect.top) * scaleY) + (overlayRect.height * scaleY / 2)
     }
-    import('fabric').then(({ FabricImage }) => {
-      FabricImage.fromURL(url, { crossOrigin: 'anonymous' }).then(img => {
-        const canvasEl = canvasRef.current
-        const overlay = document.querySelector('[data-print-area]') as HTMLElement
-        if (overlay && canvasEl) {
-          const canvasRect = canvasEl.getBoundingClientRect()
-          const overlayRect = overlay.getBoundingClientRect()
+    import('fabric').then(async ({ FabricImage }) => {
+      const isSvg = fileType === 'svg'
+      // SVG clipart loads as a HI-RES raster so it stays crisp when enlarged (interim fix); PNG/raster
+      // loads natively. Keep the original SVG url for the cut/layout engines via _svgOrigSrc.
+      const img: any = isSvg ? await loadSvgHiRes(FabricImage, url) : await FabricImage.fromURL(url, { crossOrigin: 'anonymous' })
+      {
+        const canvasEl2 = canvasRef.current
+        const overlay2 = document.querySelector('[data-print-area]') as HTMLElement
+        if (overlay2 && canvasEl2) {
+          const canvasRect = canvasEl2.getBoundingClientRect()
+          const overlayRect = overlay2.getBoundingClientRect()
           const scaleX = CANVAS_W / canvasRect.width
           const maxW = overlayRect.width * scaleX * 0.5
           if (img.width > maxW) img.scaleToWidth(maxW)
         }
         img.set({ left: spawnX, top: spawnY, originX: 'center', originY: 'center' })
-        ;(img as any)._isSvg = fileType === 'svg'
+        ;(img as any)._isSvg = isSvg
+        if (isSvg) (img as any)._svgOrigSrc = url
         // Which methods this art supports — so a Print↔Embroidery switch keeps it if it's valid there.
         if (meta?.supportedMethods) (img as any)._supportedMethods = meta.supportedMethods
         // Decal stamp: freeze the number + name onto the object so the order can record which
@@ -4890,7 +4931,7 @@ export default function DesignerCanvas({
         lastActiveObjectRef.current = img
         setSelectedSvgColor('#000000')
         fabricCanvas.renderAll()
-      })
+      }
     })
   }
 
@@ -5501,7 +5542,7 @@ export default function DesignerCanvas({
             willChange: view.zoom !== 1 ? 'transform' : undefined,
           }}>
             <div style={{ width: 680, height: 850, transformOrigin: 'top left', transform: stageScale !== 1 ? `scale(${stageScale})` : undefined }}>
-              <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} arcGuide={shirtView === 'hat_back' ? hatBackPath() : null} referenceGuides={referenceGuidesRef.current[shirtView] || []} onReady={handleCanvasReady} emptyState={emptyState} />
+              <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} arcGuide={shirtView === 'hat_back' && !zoneHasContent('hat_back') ? hatBackPath() : null} referenceGuides={referenceGuidesRef.current[shirtView] || []} onReady={handleCanvasReady} emptyState={emptyState} />
             </div>
             {/* "Thinking" overlay for async ops (Remove Background API round-trip, edits + their
                 re-upload, converted-file uploads). Silence reads as broken; the spinner reads as

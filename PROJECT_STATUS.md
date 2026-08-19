@@ -29,10 +29,11 @@ guard + 2400px mask clamp — both real, keep them) are parked for a branch rebu
    which worsens it. Repro solid. NEEDS FIX (not started).
 2. ✅ **DONE — admin lands on ORDERS after login, not Clip Art.** Changed the two login-redirect defaults
    (`auth/callback` `next`, `admin-login` `from`) `/admin/clipart` → `/admin/orders`.
-3. **Hat-back arc guide — option to HIDE the dotted line (propose).** Recommendation: **auto-hide the guide
-   once text is placed** (zero-config; the guide helps placement while the zone is empty and vanishes from
-   the final look) + optionally a per-template admin toggle for hats where you never want it. Awaiting
-   Denise's pick before build.
+3. ✅ **DONE — hat-back arc guide auto-hides once text is placed.** `arcGuide` gated on
+   `!zoneHasContent('hat_back')` — shows on the empty zone to guide placement, vanishes from the final look.
+   No admin toggle (Denise: add one only when a real hat needs it). OPEN Q from Denise: should the rectangle
+   print-area box also hide on hat-back? — answered (can auto-hide it the same way; kept for now since it's
+   the measured `[data-print-area]` element, would hide the visual only). Do on request.
 4. **SCOPE — "PrepStation Manual"** (content feature). A simple, good-looking one-page "how it works" guide
    (add text, uploads, sleeves, saving…). Proposed: a dedicated `/how-it-works` page (shareable/bookmarkable,
    linkable from emails/support) + a "How it works" link in the designer top bar. Content written later
@@ -43,16 +44,15 @@ guard + 2400px mask clamp — both real, keep them) are parked for a branch rebu
      `_uploadSrc`). So the current code cannot produce this. Most likely a STALE deploy (we just resolved a
      serious deploy problem). **Step 1: re-test on the fresh post-sharp-fix deploy.** If it still repros,
      it's a genuine hole needing a live console check (inspect the selected object's props) — NO blind fix.
-   - (b) **Enlarged clipart blurry — CONFIRMED bug.** SVG clipart loads via `FabricImage.fromURL` →
-     rasterized at its 250px natural size → blur when enlarged (recolor is a BlendColor filter on that
-     raster). Fix options: **interim = rasterize the SVG at high res (~1500px)** (keeps the recolor-filter +
-     cut-file `.src` architecture; crisp up to that size); **proper = load SVG as true vectors** (infinite
-     crispness, but reworks recolor→path-fill AND the cut-file `isClipartObj`/`.src` read — a real refactor).
-     Recommend the interim now, proper later. **UPLOAD SPEC (Claude's requirement, per Denise's pushback —
-     on-screen crispness only, NOT print res; bench pulls the original from the decal folder; keep Supabase
-     lean):** SVG → natural size IRRELEVANT once the render fix lands, keep them tiny (prefer SVG); PNG decal
-     → **~1024px on the longest side** (crisp at full print-area size on a Retina screen; ~100–500KB). Drop
-     the ImprintNext 250×250 rule. Not started.
+   - (b) ✅ **DONE (interim) — enlarged clipart no longer blurry.** SVG clipart now loads via `loadSvgHiRes`
+     (fetch → preserve viewBox → set root width/height to ~1500px → data-URL raster), so it stays crisp when
+     enlarged. The recolor BlendColor filter is unchanged. **Cut/layout parity preserved:** the object keeps
+     the ORIGINAL svg url in `_svgOrigSrc` (in CANVAS_CUSTOM_PROPS), and `generateCutFile`/`generateLayout`
+     read it — the engine keys off viewBox and scales by width/viewBox, so the bigger display width is
+     invariant (`sImgX = width/vbW`). PROVEN by test: hi-res (w1500) cut == natural (w250) cut, byte-identical.
+     **Proper true-vector refactor stays PARKED.** **UPLOAD SPEC shipped into the Art admin's upload hint:**
+     SVG preferred + tiny (crisp at any size); PNG/JPG ~1024px longest side (screen crispness only — bench
+     prints the decal-folder original; no print res needed). 250×250 rule retired.
 
 ## In flight (CC — the agreed work order, nothing else starts)
 

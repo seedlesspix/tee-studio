@@ -295,6 +295,11 @@ export default function ClipartAdmin() {
                   <p className="text-gray-500 font-mono text-xs mt-1">
                     SVG, PNG, JPG, WEBP · new art starts as Print-only, in this category
                   </p>
+                  <p className="text-gray-400 font-mono text-[11px] mt-1 leading-snug">
+                    Best quality: <b>SVG preferred</b> (stays crisp at any size — keep the file tiny).
+                    PNG/JPG: <b>~1024px on the longest side</b> (screen crispness only; the bench prints from
+                    the original in the decal folder). No need for print resolution here.
+                  </p>
                 </>
               )}
             </div>

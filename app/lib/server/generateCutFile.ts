@@ -65,7 +65,10 @@ export async function outlineVectorObject(
     const name = String(t.src ?? '').split('/').pop() || 'clipart'
     try {
       const cps = await clipartToCutPaths({
-        src: String(t.src ?? ''),
+        // Hi-res SVG clipart carries a big rasterized data-URL in .src; _svgOrigSrc is the ORIGINAL svg url
+        // (fetchable + viewBox-accurate). The engine keys off viewBox and scales by width/viewBox, so the
+        // larger display width is invariant here — same cut geometry, just a fetchable source.
+        src: String(t._svgOrigSrc ?? t.src ?? ''),
         left: Number(t.left), top: Number(t.top),
         scaleX: Number(t.scaleX ?? 1), scaleY: Number(t.scaleY ?? 1),
         angle: Number(t.angle ?? 0),

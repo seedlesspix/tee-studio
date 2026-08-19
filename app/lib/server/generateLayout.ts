@@ -53,7 +53,7 @@ async function toDataUri(src: string): Promise<string | null> {
 // source (_uploadSrc, higher-res) over the canvas display rendition so the layout can double
 // as a placed-size print.
 async function rasterFragment(t: Record<string, unknown>, canvasBox: CanvasBox, phys: PhysBox, dpi = 300): Promise<string | null> {
-  const src = String(t._uploadSrc || t.src || '')
+  const src = String(t._uploadSrc || t._svgOrigSrc || t.src || '')
   const natW = Number(t.width ?? 0), natH = Number(t.height ?? 0)
   if (!src || !natW || !natH) return null
   const href = await toDataUri(src)
@@ -79,7 +79,7 @@ const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 
 // Readable filename for the bench note (skip data: URIs + query strings; clamp length).
 function imgName(t: Record<string, unknown>): string {
-  const src = String(t._uploadSrc || t.src || '')
+  const src = String(t._uploadSrc || t._svgOrigSrc || t.src || '')
   if (!src || src.startsWith('data:')) return 'image'
   const base = src.split('/').pop()?.split('?')[0] || 'image'
   return base.length > 40 ? base.slice(0, 37) + '…' : base
