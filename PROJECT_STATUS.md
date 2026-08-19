@@ -21,6 +21,39 @@ verify the live deploy BEFORE shipping a prod fix.
 (one-color art traces; multicolor → "too many colors"). The silhouette model + its OOM hardening (perimeter
 guard + 2400px mask clamp — both real, keep them) are parked for a branch rebuild.
 
+## New items — Denise 2026-08-19
+
+1. **BUG — vertical text breaks in sleeve zones.** Unisex Long Sleeve T → add a sleeve print area → add
+   text → Direction=Vertical: text goes OUTSIDE the box and wraps in weird places. The text-fit/wrap logic
+   (`reWrapText`/`fitAndConstrain`) is not vertical-aware in the new zone boxes; sleeves are tall+narrow,
+   which worsens it. Repro solid. NEEDS FIX (not started).
+2. ✅ **DONE — admin lands on ORDERS after login, not Clip Art.** Changed the two login-redirect defaults
+   (`auth/callback` `next`, `admin-login` `from`) `/admin/clipart` → `/admin/orders`.
+3. **Hat-back arc guide — option to HIDE the dotted line (propose).** Recommendation: **auto-hide the guide
+   once text is placed** (zero-config; the guide helps placement while the zone is empty and vanishes from
+   the final look) + optionally a per-template admin toggle for hats where you never want it. Awaiting
+   Denise's pick before build.
+4. **SCOPE — "PrepStation Manual"** (content feature). A simple, good-looking one-page "how it works" guide
+   (add text, uploads, sleeves, saving…). Proposed: a dedicated `/how-it-works` page (shareable/bookmarkable,
+   linkable from emails/support) + a "How it works" link in the designer top bar. Content written later
+   (Denise + Claude). Scope = the page container + entry link + language-editable copy; not started.
+5. **Clipart quality (two related):**
+   - (a) **False low-res warning on clipart — the guard is PRESENT + correct in current code**
+     (`lowResMessageFor` line ~2744: `if (!obj._uploadSrc) return null`; clipart is NEVER stamped
+     `_uploadSrc`). So the current code cannot produce this. Most likely a STALE deploy (we just resolved a
+     serious deploy problem). **Step 1: re-test on the fresh post-sharp-fix deploy.** If it still repros,
+     it's a genuine hole needing a live console check (inspect the selected object's props) — NO blind fix.
+   - (b) **Enlarged clipart blurry — CONFIRMED bug.** SVG clipart loads via `FabricImage.fromURL` →
+     rasterized at its 250px natural size → blur when enlarged (recolor is a BlendColor filter on that
+     raster). Fix options: **interim = rasterize the SVG at high res (~1500px)** (keeps the recolor-filter +
+     cut-file `.src` architecture; crisp up to that size); **proper = load SVG as true vectors** (infinite
+     crispness, but reworks recolor→path-fill AND the cut-file `isClipartObj`/`.src` read — a real refactor).
+     Recommend the interim now, proper later. **UPLOAD SPEC (Claude's requirement, per Denise's pushback —
+     on-screen crispness only, NOT print res; bench pulls the original from the decal folder; keep Supabase
+     lean):** SVG → natural size IRRELEVANT once the render fix lands, keep them tiny (prefer SVG); PNG decal
+     → **~1024px on the longest side** (crisp at full print-area size on a Retina screen; ~100–500KB). Drop
+     the ImprintNext 250×250 rule. Not started.
+
 ## In flight (CC — the agreed work order, nothing else starts)
 
 ✅ CLOSED 2026-08-15: the managed-mockup switch is FINAL. The adversarial
