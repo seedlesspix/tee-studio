@@ -23,8 +23,8 @@ export type PrintPreviewData = {
   cutEligible?: boolean // Lens 2 gate: false when the bench cuts a DIFFERENT source than this preview (AI/PSD/PDF convert)
 }
 
-// WHY the trace resolved the way it did (mirrors the server's TraceReason) — drives the message.
-type CutReason = 'cuttable' | 'too_complex' | 'opaque_background' | 'unreadable'
+// WHY the trace failed (mirrors the server's TraceReason) — drives the garment-split message.
+type CutReason = 'cuttable' | 'multicolor' | 'too_complex' | 'unreadable'
 // Cut-edge trace cache (Lens 2), keyed by upload URL. The trace is deterministic per file, and crop /
 // bg-removal produce a NEW url, so a fresh key = automatic invalidation (no manual busting needed).
 // trace null = not cuttable; `reason` says why (colors vs fuzzy edges) so the message can be specific.
@@ -64,9 +64,9 @@ export default function PrintSizePreview({
   const drag = useRef<{ startX: number; startY: number; ox: number; oy: number } | null>(null)
   // Lens 2 — cut-edge preview. 'idle'→'loading'→'ready' (cuttable, `trace` set) | 'none' (not cuttable) |
   // 'error'. `showCut` toggles the overlay; it leads ON for dark garments (likely transfers).
-  // 'opaque' = art has no transparent background → we point it out (Remove White) instead of guessing a cut.
-  const [traceState, setTraceState] = useState<'idle' | 'loading' | 'ready' | 'none' | 'opaque' | 'error'>('idle')
+  const [traceState, setTraceState] = useState<'idle' | 'loading' | 'ready' | 'none' | 'error'>('idle')
   const [trace, setTrace] = useState<CutTrace | null>(null)
+  const [cutReason, setCutReason] = useState<CutReason | null>(null) // why a 'none' result happened
   const [showCut, setShowCut] = useState(false)
 
   // Measure the viewport (drives Fit + pan clamping); re-measure on resize.
@@ -83,7 +83,7 @@ export default function PrintSizePreview({
 
   // Fresh open: reset to life-size, centered, not-yet-loaded, cut overlay off.
   useEffect(() => {
-    if (open) { setMode('actual'); setLoaded(false); setShowCut(false); setTrace(null); setTraceState('idle') }
+    if (open) { setMode('actual'); setLoaded(false); setShowCut(false); setTrace(null); setCutReason(null); setTraceState('idle') }
   }, [open, data?.src])
 
   // Fetch the cut-edge trace (Lens 2) for the open art. Skipped when the art isn't cut-eligible (a
@@ -95,13 +95,12 @@ export default function PrintSizePreview({
     if (data.cutEligible === false) { setTraceState('idle'); return } // no cut preview for this upload
     const src = data.src
     const dark = !!data.garmentDark
-    // 'unreadable' → claim nothing (neutral). 'opaque_background' → point out the solid background (Remove
-    // White), never a guessed cut. 'cuttable' → show the outline. Otherwise 'none' (too complex to cut).
+    // 'unreadable' → we couldn't process the file, so claim nothing (neutral, like a fetch failure).
+    // 'cuttable' → show the outline. Otherwise 'none' with the reason (drives the garment-split message).
     const apply = (res: CutResult) => {
       if (res.reason === 'unreadable') { setTraceState('error'); return }
-      if (res.reason === 'opaque_background') { setTraceState('opaque'); return }
       if (res.trace) { setTrace(res.trace); setTraceState('ready'); setShowCut(dark) }
-      else { setTrace(null); setTraceState('none') }
+      else { setTrace(null); setCutReason(res.reason); setTraceState('none') }
     }
     if (traceCache.has(src)) { apply(traceCache.get(src)!); return }
     let alive = true
@@ -111,9 +110,7 @@ export default function PrintSizePreview({
       .then((j: { svg?: string | null; checked?: boolean; reason?: CutReason }) => {
         if (!alive) return
         if (j.checked === false) { setTraceState('error'); return } // couldn't read the file — claim nothing (don't cache)
-        // Only parse/show the outline for a confident 'cuttable' silhouette; ignore any best-effort svg
-        // that rides along with 'opaque_background'.
-        const parsed = j.reason === 'cuttable' && j.svg ? parseTrace(j.svg) : null
+        const parsed = j.svg ? parseTrace(j.svg) : null
         const res: CutResult = { trace: parsed, reason: j.reason || (parsed ? 'cuttable' : 'too_complex') }
         traceCache.set(src, res)
         apply(res)
@@ -191,17 +188,19 @@ export default function PrintSizePreview({
     verdictTone = 'text-emerald-700'
   }
 
-  // "Too complex to cut" message SPLITS BY GARMENT (Denise, shop truth): on DARK garments a design is cut
-  // by its edges (transfer), so a failed trace is a CLEAN-UP warning about the EDGES — NOT "we'll print it
-  // instead". On LIGHT garments, failing the cut just means it gets printed. Wording is language-editable.
-  let cutNoneMsg: string
-  let cutNoneTone: string
+  // "Not cuttable" message SPLITS BY GARMENT (Denise, shop truth): on DARK garments a design is cut by its
+  // edges (transfer), so a failed trace is a CLEAN-UP warning — NOT "we'll print it instead" — and it names
+  // the actual problem (fuzzy edges vs too many colors). On LIGHT garments, failing the cut just means it
+  // gets printed. Wording is language-editable.
+  let cutNoneMsg = ''
+  let cutNoneTone = 'text-gray-500'
   if (data.garmentDark) {
-    cutNoneMsg = t('designer.preview.cut_none_dark_fuzzy', 'On dark garments this design is cut by its edges — and as-is, the edges are too fuzzy to cut cleanly. We may need to clean it up (this can add time), or send us a version with solid colors and crisp edges.')
+    cutNoneMsg = cutReason === 'multicolor'
+      ? t('designer.preview.cut_none_dark_colors', 'On dark garments this design is cut by its edges — and as-is it has too many colors to cut cleanly as one piece. Send us a version with solid colors and crisp edges, or we may need to clean it up first (this can add time).')
+      : t('designer.preview.cut_none_dark_fuzzy', 'On dark garments this design is cut by its edges — and as-is, the edges are too fuzzy to cut cleanly. We may need to clean it up (this can add time), or send us a version with solid colors and crisp edges.')
     cutNoneTone = 'text-amber-700'
   } else {
     cutNoneMsg = t('designer.preview.cut_none_light', 'This design would be printed, not cut.')
-    cutNoneTone = 'text-gray-500'
   }
 
   const canPan = dispW > vp.w || dispH > vp.h
@@ -311,13 +310,6 @@ export default function PrintSizePreview({
           )}
           {traceState === 'none' && (
             <p className={`text-[11px] leading-snug ${cutNoneTone}`}>{cutNoneMsg}</p>
-          )}
-          {/* Opaque art: no transparent background, so the weed line is ambiguous. Point it out + offer the
-              self-serve fix (customers often ask in the notes to "remove the white box", not knowing they can). */}
-          {traceState === 'opaque' && (
-            <p className="text-[11px] leading-snug text-gray-600">
-              {t('designer.preview.cut_opaque_bg', "This upload has a solid background. If it shouldn't print on the shirt, use Remove White or Remove Background — then you'll see exactly how it cuts. If the background is part of your design, you're all set.")}
-            </p>
           )}
 
           <div className="flex flex-col gap-1 rounded-lg bg-gray-50 px-3 py-2.5">

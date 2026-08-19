@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import sharp from 'sharp'
 import paper from 'paper-jsdom'
 import { assembleCutSvgUnioned } from '../app/lib/server/cutBoolean'
-import { traceForCut } from '../app/lib/server/autoTrace'
+import { autoTraceSvg } from '../app/lib/server/autoTrace'
 
 const phys = { width_in: 12, height_in: 16 } // 3600 x 4800 print box
 const pathCount = (svg: string) => (svg.match(/<path/g) || []).length
@@ -63,37 +63,22 @@ describe('cut engine — curve fidelity (guards the paper.js boolean gate)', () 
   })
 })
 
-describe('auto-trace cuttability model (silhouette by transparency, not color)', () => {
-  it('traces a transparent one-color logo by its silhouette', async () => {
-    // A shape with NO background rect -> the PNG is transparent outside the shape -> alpha silhouette.
+describe('auto-trace gate', () => {
+  it('traces a one-color logo', async () => {
     const logo = await sharp(Buffer.from(
       '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><circle cx="200" cy="200" r="150" fill="#000"/></svg>',
     )).png().toBuffer()
-    const { svg, reason } = await traceForCut(new Uint8Array(logo))
-    expect(reason).toBe('cuttable')
+    const svg = await autoTraceSvg(new Uint8Array(logo))
+    expect(svg).toBeTruthy()
     expect(svg).toContain('<svg')
   })
 
-  it('traces TRANSPARENT MULTICOLOR art by contour (multicolor is cuttable now)', async () => {
-    // A red circle + blue square on a TRANSPARENT background: the cut is their alpha silhouette,
-    // independent of the two ink colors. This is the corrected model — multicolor is NOT rejected.
-    const multi = await sharp(Buffer.from(
-      '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240"><circle cx="120" cy="120" r="90" fill="#e11d48"/><rect x="90" y="90" width="90" height="90" fill="#2563eb"/></svg>',
-    )).png().toBuffer()
-    const { svg, reason } = await traceForCut(new Uint8Array(multi))
-    expect(reason).toBe('cuttable')
-    expect(svg).toContain('<svg')
-  })
-
-  it('opaque art (no transparent background) is not a confident cut — asks to remove background', async () => {
-    // A full-bleed multicolor rect: opaque, so there is no weed line to cut. Not rejected as "colors",
-    // just flagged as needing the background removed (the preview points this out).
+  it('rejects a multi-color image (a photo-like rainbow)', async () => {
     const stops = Array.from({ length: 12 }, (_, i) => `<stop offset="${i / 11}" stop-color="hsl(${i * 30},90%,50%)"/>`).join('')
     const rainbow = await sharp(Buffer.from(
       `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">${stops}</linearGradient></defs><rect width="240" height="240" fill="url(#g)"/></svg>`,
     )).png().toBuffer()
-    const { svg, reason } = await traceForCut(new Uint8Array(rainbow))
-    expect(reason).toBe('opaque_background')
+    const svg = await autoTraceSvg(new Uint8Array(rainbow))
     expect(svg).toBeNull()
   })
 })
