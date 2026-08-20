@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, type RefObject } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { Type, Upload, Shapes, Hash } from 'lucide-react'
 import { useT } from './StringsProvider'
 
@@ -54,6 +54,15 @@ export default function CanvasStage({
   emptyState?: EmptyState | null
 }) {
   const t = useT()
+  // Dismiss the "Let's build it" box the instant a CTA is clicked — the tool takes over and the box
+  // lingering over the print area is confusing (Denise). Re-shows only when a FRESH empty state appears
+  // (a newly-empty side), so returning to an empty side offers it again.
+  const [ctaDismissed, setCtaDismissed] = useState(false)
+  const hadEmptyRef = useRef(false)
+  useEffect(() => {
+    if (emptyState && !hadEmptyRef.current) setCtaDismissed(false)
+    hadEmptyRef.current = !!emptyState
+  }, [emptyState])
   // D0 step 2: CanvasStage owns the Fabric canvas LIFECYCLE — creation here,
   // disposal on unmount. The parent wires every handler/control/geometry in its
   // onReady(canvas) callback, invoked once right after creation, preserving the
@@ -158,7 +167,7 @@ export default function CanvasStage({
           print area. A separate element from [data-print-area] so it never
           affects the DOM-measured print geometry. Hidden the moment anything is
           placed (the parent stops passing emptyState once the side has content). */}
-      {emptyState && printArea && (
+      {emptyState && printArea && !ctaDismissed && (
         <div
           className="absolute z-[3] -translate-x-1/2 -translate-y-1/2"
           style={{
@@ -167,7 +176,9 @@ export default function CanvasStage({
             pointerEvents: 'auto',
           }}
         >
-          <div className="flex w-[220px] flex-col items-center gap-3 rounded-xl bg-white/95 px-5 py-4 text-center shadow-lg ring-1 ring-black/5">
+          {/* Semi-transparent so the print box / hat-back arc underneath stays visible (Denise) — the box
+              tells the customer to place art, so it must not hide WHERE the art will go. */}
+          <div className="flex w-[220px] flex-col items-center gap-3 rounded-xl bg-white/80 px-5 py-4 text-center shadow-lg ring-1 ring-black/5">
             {emptyState.showGreeting && (
               <div>
                 <p className="text-lg font-black tracking-tight text-gray-900">{t('designer.empty.build_heading', "Let's build it.")}</p>
@@ -179,14 +190,14 @@ export default function CanvasStage({
                   Red is reserved for the single thin separator below the buttons. Add Text
                   leads by order, not colour. */}
               <button
-                onClick={emptyState.onAddText}
+                onClick={() => { setCtaDismissed(true); emptyState.onAddText() }}
                 className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"
               >
                 <Type size={16} strokeWidth={1.75} /> {t('designer.empty.add_text', 'Add Text')}
               </button>
               {emptyState.onUpload && (
                 <button
-                  onClick={emptyState.onUpload}
+                  onClick={() => { setCtaDismissed(true); emptyState.onUpload?.() }}
                   className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"
                 >
                   <Upload size={16} strokeWidth={1.75} /> {t('designer.empty.upload', 'Upload')}
@@ -194,7 +205,7 @@ export default function CanvasStage({
               )}
               {emptyState.onAddArt && (
                 <button
-                  onClick={emptyState.onAddArt}
+                  onClick={() => { setCtaDismissed(true); emptyState.onAddArt?.() }}
                   className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"
                 >
                   <Shapes size={16} strokeWidth={1.75} /> {t('designer.empty.add_art', 'Add Art')}
@@ -202,7 +213,7 @@ export default function CanvasStage({
               )}
               {emptyState.onNames && (
                 <button
-                  onClick={emptyState.onNames}
+                  onClick={() => { setCtaDismissed(true); emptyState.onNames?.() }}
                   className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"
                 >
                   <Hash size={16} strokeWidth={1.75} /> {t('designer.empty.names', 'Names & Numbers')}
