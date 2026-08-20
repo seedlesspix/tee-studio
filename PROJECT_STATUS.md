@@ -32,15 +32,18 @@ guard + 2400px mask clamp — both real, keep them) are parked for a branch rebu
   hidden from the rail on the hat_back zone (mirrors embroidery hiding); a guard drops to the Text tab if the
   view switches while a hidden tab is active; the blank-zone CTAs show only Add Text (onAddArt now optional in
   CanvasStage). No uploads / Art / N&N can be placed on the back of a hat.
-- **NEXT — vertical sleeve text bug** (item 1 below): text with Direction=Vertical in a sleeve zone goes
-  outside the box + wraps oddly. Fit/wrap logic isn't vertical-aware in the tall-narrow zone boxes.
+- ✅ **DONE — vertical sleeve text bug** (item 1 below). Root cause: `reWrapText` wrapped to the box WIDTH and
+  fit the stack to the box HEIGHT, but a vertical text is the same layout rotated 90° — so a line runs along
+  the box HEIGHT and the lines stack across its WIDTH. In a tall-narrow sleeve it wrapped to the NARROW width
+  → shattered into many lines → overflowed when rotated. Fix: `reWrapText` gains a `vertical` flag that SWAPS
+  the width/height limits; wired into every wrap site (live edit, typing, fitAndConstrain, both refit paths),
+  keyed off `textDirection`/`angle===90`. `constrainObject` already clamped the rotated footprint (aCoords).
 
 ## New items — Denise 2026-08-19
 
-1. **BUG — vertical text breaks in sleeve zones.** Unisex Long Sleeve T → add a sleeve print area → add
-   text → Direction=Vertical: text goes OUTSIDE the box and wraps in weird places. The text-fit/wrap logic
-   (`reWrapText`/`fitAndConstrain`) is not vertical-aware in the new zone boxes; sleeves are tall+narrow,
-   which worsens it. Repro solid. NEEDS FIX (not started).
+1. ✅ **DONE — vertical text in sleeve zones** (see the 2026-08-20 note above). `reWrapText` now swaps its
+   width/height limits for vertical (90°-rotated) text, so it wraps along the box height and stacks across
+   the width instead of shattering in the narrow sleeve box.
 2. ✅ **DONE — admin lands on ORDERS after login, not Clip Art.** Changed the two login-redirect defaults
    (`auth/callback` `next`, `admin-login` `from`) `/admin/clipart` → `/admin/orders`.
 3. ✅ **DONE — hat-back arc guide auto-hides once text is placed.** `arcGuide` gated on

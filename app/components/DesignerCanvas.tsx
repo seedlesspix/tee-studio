@@ -913,7 +913,7 @@ export default function DesignerCanvas({
         ? (active as any)._originalText.toUpperCase()
         : (active as any)._originalText
       const { text: rewrapped, fontSize: newSize } = reWrapText(
-        baseText, currentFontSize, selectedFont, isBold, isItalic, letterSpacing * 10, lineHeight
+        baseText, currentFontSize, selectedFont, isBold, isItalic, letterSpacing * 10, lineHeight, undefined, textDirection === 'vertical'
       )
       active.set({
         text: rewrapped,
@@ -1792,7 +1792,7 @@ export default function DesignerCanvas({
         ? (active as any)._originalText.toUpperCase()
         : (active as any)._originalText
       const { text: rewrapped, fontSize: newSize } = reWrapText(
-        baseText, fontSize, selectedFont, isBold, isItalic, letterSpacing * 10, lineHeight
+        baseText, fontSize, selectedFont, isBold, isItalic, letterSpacing * 10, lineHeight, undefined, textDirection === 'vertical'
       )
       active.set({
         text: rewrapped,
@@ -2508,7 +2508,7 @@ export default function DesignerCanvas({
         canvas.remove(obj); canvas.add(rebaked)
       } else if (obj.type === 'i-text' || obj.type === 'textbox') {
         const raw = String(obj._originalText || obj.text || '')
-        const { text, fontSize } = reWrapText(raw, Number(obj.fontSize) || 36, obj.fontFamily, obj.fontWeight === 'bold', obj.fontStyle === 'italic', Number(obj.charSpacing) || 0, typeof obj.lineHeight === 'number' ? obj.lineHeight : 1.2)
+        const { text, fontSize } = reWrapText(raw, Number(obj.fontSize) || 36, obj.fontFamily, obj.fontWeight === 'bold', obj.fontStyle === 'italic', Number(obj.charSpacing) || 0, typeof obj.lineHeight === 'number' ? obj.lineHeight : 1.2, undefined, Math.round(Number(obj.angle) || 0) === 90)
         const wasUpper = raw !== '' && norm(String(obj.text || '')) === norm(raw.toUpperCase()) && norm(String(obj.text || '')) !== norm(raw)
         obj.set({ text: wasUpper ? text.toUpperCase() : text, fontSize })
         if (targetLTRB) constrainObject(obj, targetLTRB)
@@ -2540,7 +2540,7 @@ export default function DesignerCanvas({
         out.push(rebaked)
       } else if (obj.type === 'i-text' || obj.type === 'textbox') {
         const raw = String(obj._originalText || obj.text || '')
-        const { text, fontSize } = reWrapText(raw, Number(obj.fontSize) || 36, obj.fontFamily, obj.fontWeight === 'bold', obj.fontStyle === 'italic', Number(obj.charSpacing) || 0, typeof obj.lineHeight === 'number' ? obj.lineHeight : 1.2, box)
+        const { text, fontSize } = reWrapText(raw, Number(obj.fontSize) || 36, obj.fontFamily, obj.fontWeight === 'bold', obj.fontStyle === 'italic', Number(obj.charSpacing) || 0, typeof obj.lineHeight === 'number' ? obj.lineHeight : 1.2, box, Math.round(Number(obj.angle) || 0) === 90)
         const wasUpper = raw !== '' && norm(String(obj.text || '')) === norm(raw.toUpperCase()) && norm(String(obj.text || '')) !== norm(raw)
         obj.set({ text: wasUpper ? text.toUpperCase() : text, fontSize })
         if (backLTRB) constrainObject(obj, backLTRB)
@@ -2683,7 +2683,7 @@ export default function DesignerCanvas({
 
   // `boxOverride` (canvas-px maxWidth/maxHeight) lets this run HEADLESS — used to re-wrap the BACK side
   // during a D2 port before its overlay is mounted (P2/P3). Without it, it measures the live DOM overlay.
-  const reWrapText = (text: string, targetFontSize: number, fontFamily: string, bold: boolean, italic: boolean, charSpacing: number = 0, lineHeightFactor: number = 1.2, boxOverride?: { maxWidth: number; maxHeight: number }): { text: string; fontSize: number } => {
+  const reWrapText = (text: string, targetFontSize: number, fontFamily: string, bold: boolean, italic: boolean, charSpacing: number = 0, lineHeightFactor: number = 1.2, boxOverride?: { maxWidth: number; maxHeight: number }, vertical: boolean = false): { text: string; fontSize: number } => {
     let maxWidth: number, maxHeight: number
     if (boxOverride) {
       maxWidth = boxOverride.maxWidth
@@ -2698,6 +2698,10 @@ export default function DesignerCanvas({
       maxWidth = overlayRect.width * scaleX * 0.92
       maxHeight = overlayRect.height * (CANVAS_H / canvasRect.height) * 0.92
     }
+    // Vertical text is the SAME wrap rotated 90°: a line runs along the box's HEIGHT and the lines stack
+    // across its WIDTH. Swap the limits so wrapping/shrinking use the right axis — otherwise a tall-narrow
+    // sleeve box wraps to its NARROW width, shattering into many lines that then overflow when rotated.
+    if (vertical) { const tmp = maxWidth; maxWidth = maxHeight; maxHeight = tmp }
 
     const tmpCanvas = document.createElement('canvas')
     const tmpCtx = tmpCanvas.getContext('2d')!
@@ -2880,6 +2884,8 @@ export default function DesignerCanvas({
         obj.fontStyle === 'italic',
         obj.charSpacing || 0,
         typeof obj.lineHeight === 'number' ? obj.lineHeight : 1.2,
+        undefined,
+        Math.round(obj.angle || 0) === 90, // vertical text is rotated 90° — wrap along the box height
       )
       obj.set({ text, fontSize: fitted })
     }
