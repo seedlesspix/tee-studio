@@ -21,6 +21,23 @@ verify the live deploy BEFORE shipping a prod fix.
 (one-color art traces; multicolor → "too many colors"). The silhouette model + its OOM hardening (perimeter
 guard + 2400px mask clamp — both real, keep them) are parked for a branch rebuild.
 
+## Follow-ups — Denise 2026-08-20 (verification round)
+
+- ✅ **AA on curved text — the button was DISABLED for curved text** (`disabled={selectedIsCurved}`), so it
+  worked once (during create) then greyed on reselect. Now enabled (my bake fix makes caps apply + persist);
+  reselect reflects `_curveUppercase` correctly.
+- ✅ **Embroidery convert now re-bakes CURVED text too.** The forward (print→embroidery) reconcile only
+  restyled plain text (i-text/textbox) — a hat's arc text kept its print font. Extracted the E2 reverse
+  re-bake into a shared `recurveCurvedToValidFont(valid, fallback)` and wired it into the forward, so curved
+  text whose font isn't an embroidery font is re-baked to the embroidery default (both directions now covered;
+  re-locks a hat-back re-bake). NOTE: covers the current-view canvas + front/back refs (same as E2); an
+  off-canvas EXTRA zone (hat_back text while viewing a different zone) is a pre-existing gap in both directions.
+- ✅ **Hat-back dashed rectangle border dropped** (kept the invisible measured `[data-print-area]` box).
+  `CanvasStage` gains `hidePrintAreaBorder`, passed true on the hat_back zone.
+- ✅ **Vertical text now SHRINKS instead of shattering into columns.** `reWrapText` vertical mode no longer
+  auto-wraps — each paragraph is one column down the box and the font shrinks to fit (intentional Enter still
+  makes columns). Same "shrink cleanly" philosophy as horizontal.
+
 ## New items — Denise 2026-08-20 (two hat-back items + vertical sleeve text)
 
 - ✅ **DONE — AA (all-caps) now works on curved hat-back text.** Uppercase was deliberately never wired for

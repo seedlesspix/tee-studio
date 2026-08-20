@@ -32,6 +32,7 @@ export default function CanvasStage({
   canvasRef,
   shirtImgRef,
   printArea,
+  hidePrintAreaBorder = false,
   arcGuide = null,
   referenceGuides = [],
   onReady,
@@ -40,6 +41,9 @@ export default function CanvasStage({
   canvasRef: RefObject<HTMLCanvasElement | null>
   shirtImgRef: RefObject<HTMLImageElement | null>
   printArea: PrintAreaPct | null
+  // Keep the [data-print-area] element (geometry measures it) but drop its visible dashed border — used on
+  // the hat-back, where the arc guide is the placement cue and the rectangle is just clutter (Denise).
+  hidePrintAreaBorder?: boolean
   // Chest reference guide: secondary print areas shown as dashed labelled outlines (placement/size
   // references, e.g. "Left Chest") — not design zones, never priced.
   referenceGuides?: { pct: PrintAreaPct; label: string }[]
@@ -115,11 +119,11 @@ export default function CanvasStage({
           top: `${printArea.yPct}%`,
           width: `${printArea.widthPct}%`,
           height: `${printArea.heightPct}%`,
-          border: '1.5px dashed rgba(0,0,0,0.7)',
+          border: hidePrintAreaBorder ? 'none' : '1.5px dashed rgba(0,0,0,0.7)',
           borderRadius: '2px',
           pointerEvents: 'none',
           zIndex: 2,
-          boxShadow: '0 0 0 1.5px rgba(255,255,255,0.7)',
+          boxShadow: hidePrintAreaBorder ? 'none' : '0 0 0 1.5px rgba(255,255,255,0.7)',
         }}>
 
         </div>

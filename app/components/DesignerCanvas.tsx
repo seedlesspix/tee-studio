@@ -1455,8 +1455,11 @@ export default function DesignerCanvas({
       o.initDimensions?.()
       fitAndConstrain(o)
     }
-    const applyConversion = () => {
+    const applyConversion = async () => {
       ;[...canvas.getObjects(), ...allZoneObjs()].forEach(restyle)
+      // Curved-text bakes can't reflow (font lives in the pixels) — RE-BAKE any whose font isn't an
+      // embroidery font to the embroidery default, so a hat's arc text converts too (not just plain text).
+      await recurveCurvedToValidFont(new Set(dbFonts.map((f: any) => f.value)), font)
       canvas.renderAll()
       pendingEmbConvertRef.current = false
       markDirty()
@@ -2487,6 +2490,44 @@ export default function DesignerCanvas({
   }
   const applyHatBackLock = (img: any) => { img.set(HAT_BACK_LOCK); img.setCoords?.() }
 
+  // Re-bake any CURVED text whose baked font isn't in `valid` to `fallback`, on the current canvas AND the
+  // non-current front/back ref (with mid-bake view-change guards). Shared by BOTH method-convert directions:
+  // a baked font lives in the PIXELS, so unlike plain text it can't reflow — it must be re-baked. E2 fixed
+  // this for embroidery→print; this shared helper also drives print→embroidery (arc text on a hat kept its
+  // print font on convert — Denise). Re-locks a hat-back re-bake (size/position preserved).
+  const recurveCurvedToValidFont = async (valid: Set<string>, fallback: string) => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas || !fallback) return
+    const needsRecurve = (o: any) => o?._isCurvedText && o._curveFontFamily && !valid.has(String(o._curveFontFamily))
+    const recurveWithFont = (o: any, bounds: { left: number; top: number; right: number; bottom: number } | null) =>
+      bakeCurvedArc(
+        String(o._originalText || ''),
+        { curveAmount: Number(o._curveAmount) || 0, fontSize: Number(o._curveFontSize) || 36, fontFamily: fallback, fill: String(o._curveFill || '#000000'), bold: !!o._curveBold, italic: !!o._curveItalic, charSpacing: Number(o._curveCharSpacing) || 0, path: o._curvePath, uppercase: !!o._curveUppercase },
+        o.left, o.top, bounds, Number(o.angle) || 0,
+      )
+    const view0 = shirtViewRef.current
+    const curLTRB = getPrintAreaBounds()
+    const otherIsBack = view0 !== 'back'
+    const otherRef = otherIsBack ? backObjectsRef : frontObjectsRef
+    const otherPct = otherIsBack ? printAreaDataRef.current?.back : printAreaDataRef.current?.front
+    const otherLTRB = otherPct ? (() => { const bx = boxFromPct(otherPct); return { left: bx.left, top: bx.top, right: bx.left + bx.width, bottom: bx.top + bx.height } })() : null
+    for (const o of [...canvas.getObjects()]) {
+      if (!needsRecurve(o)) continue
+      const rebaked = await recurveWithFont(o, curLTRB)
+      if (shirtViewRef.current !== view0 || !canvas.contains(o)) continue
+      canvas.remove(o); canvas.add(rebaked)
+      if (isHatBack()) applyHatBackLock(rebaked)
+    }
+    if (shirtViewRef.current !== view0) return
+    const arr = otherRef.current
+    for (let i = 0; i < arr.length; i++) {
+      if (!needsRecurve(arr[i])) continue
+      const rebaked = await recurveWithFont(arr[i], otherLTRB)
+      if (shirtViewRef.current !== view0) return
+      arr[i] = rebaked
+    }
+  }
+
   // D2 port follow-ups: after refitSide has re-projected a side's geometry onto the target box, run the
   // DOM-coupled refinements per object (the pure engine can't): curved text re-curves at the scaled
   // size, plain text re-wraps to the new box width from _originalText (re-applying uppercase) and
@@ -2721,6 +2762,18 @@ export default function DesignerCanvas({
     // Enter used to lay a doomed break that vanished on the next re-wrap.
     const paragraphs = text.split('\n').map(p => p.replace(/\s+/g, ' ').trim())
     const words = paragraphs.flatMap(p => p.split(' ')).filter(Boolean)
+
+    // VERTICAL: don't auto-wrap — each paragraph is ONE column reading down the box; SHRINK the font to
+    // fit rather than shattering into extra columns (Denise). maxWidth is the box HEIGHT (swapped above)
+    // = a line's length down the box; maxHeight is the box WIDTH = the column stack. Intentional Enter
+    // breaks still make separate columns. Same "shrink cleanly, don't shatter" philosophy as horizontal.
+    if (vertical) {
+      let size = targetFontSize
+      const longestLine = (s: number) => paragraphs.reduce((m, p) => Math.max(m, measureWidth(p, s)), 0)
+      while (size > 8 && (longestLine(size) > maxWidth || paragraphs.length * size * lineHeightFactor > maxHeight)) size -= 1
+      return { text: paragraphs.join('\n'), fontSize: size }
+    }
+
     let autoFontSize = targetFontSize
 
     // Reduce font size until the longest single word fits (a word can't break)
@@ -5563,7 +5616,7 @@ export default function DesignerCanvas({
             willChange: view.zoom !== 1 ? 'transform' : undefined,
           }}>
             <div style={{ width: 680, height: 850, transformOrigin: 'top left', transform: stageScale !== 1 ? `scale(${stageScale})` : undefined }}>
-              <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} arcGuide={shirtView === 'hat_back' && !zoneHasContent('hat_back') ? hatBackPath() : null} referenceGuides={referenceGuidesRef.current[shirtView] || []} onReady={handleCanvasReady} emptyState={emptyState} />
+              <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} hidePrintAreaBorder={shirtView === 'hat_back'} arcGuide={shirtView === 'hat_back' && !zoneHasContent('hat_back') ? hatBackPath() : null} referenceGuides={referenceGuidesRef.current[shirtView] || []} onReady={handleCanvasReady} emptyState={emptyState} />
             </div>
             {/* "Thinking" overlay for async ops (Remove Background API round-trip, edits + their
                 re-upload, converted-file uploads). Silence reads as broken; the spinner reads as

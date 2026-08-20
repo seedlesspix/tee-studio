@@ -273,8 +273,9 @@ export default function SelectionPanel({
                       className={`flex items-center justify-center py-2 rounded border transition-all ${isItalic ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'}`}>
                       <span className="text-[18px] font-serif font-bold italic leading-none">I</span>
                     </button>
-                    <button onClick={() => setIsUppercase(u => !u)} disabled={selectedIsCurved} title={t('designer.text.uppercase_tooltip', 'UPPERCASE')}
-                      className={`flex items-center justify-center py-2 rounded border transition-all disabled:opacity-40 disabled:cursor-default ${isUppercase ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'}`}>
+                    {/* AA works on curved text too (bakeCurvedArc applies + persists it) — never disabled. */}
+                    <button onClick={() => setIsUppercase(u => !u)} title={t('designer.text.uppercase_tooltip', 'UPPERCASE')}
+                      className={`flex items-center justify-center py-2 rounded border transition-all ${isUppercase ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-100 text-gray-800 border-gray-200 hover:border-gray-400'}`}>
                       <span className="text-[15px] font-black leading-none tracking-tight">AA</span>
                     </button>
                   </div>
