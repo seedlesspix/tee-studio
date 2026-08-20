@@ -30,8 +30,8 @@ guard + 2400px mask clamp — both real, keep them) are parked for a branch rebu
   restyled plain text (i-text/textbox) — a hat's arc text kept its print font. Extracted the E2 reverse
   re-bake into a shared `recurveCurvedToValidFont(valid, fallback)` and wired it into the forward, so curved
   text whose font isn't an embroidery font is re-baked to the embroidery default (both directions now covered;
-  re-locks a hat-back re-bake). NOTE: covers the current-view canvas + front/back refs (same as E2); an
-  off-canvas EXTRA zone (hat_back text while viewing a different zone) is a pre-existing gap in both directions.
+  re-locks a hat-back re-bake). Covers the current-view canvas + front/back refs (same as E2). The
+  off-canvas EXTRA-zone gap is now a real tracked item ↓, not a footnote.
 - ✅ **Hat-back dashed rectangle border dropped** (kept the invisible measured `[data-print-area]` box).
   `CanvasStage` gains `hidePrintAreaBorder`, passed true on the hat_back zone.
 - ✅ **Vertical text now SHRINKS instead of shattering into columns.** `reWrapText` vertical mode no longer
@@ -172,6 +172,19 @@ reassess → then Z-hp-2 fresh.
 
 ## Queued (agreed, not started)
 
+- 🔶 **Method-switch must reconcile ALL zones' text, not just the visible one (fulfillment-correctness;
+  fix before launch volume).** Print↔embroidery font reconcile (`restyle` for plain text +
+  `recurveCurvedToValidFont` for curved) covers the CURRENT-view canvas + the front/back refs only.
+  **Off-canvas EXTRA zones (sleeves, hat_back) are not reconciled** — e.g. design a hat-back arc text, flip
+  to the hat FRONT, switch to embroidery: the hat-back keeps its print font, and it's SILENT — no error, it
+  just reaches the bench in the wrong font at order time (wrong cut/digitize). Plain text in extra zones is
+  half-covered (`restyle` iterates `allZoneObjs()`), but **curved text in an off-canvas extra zone is the
+  real hole**, and the plain-text extra-zone path isn't re-fit against that zone's box either. **Fix shape:**
+  generalize the reconcile to walk EVERY zone (canvas + front/back refs + `extraZoneObjectsRef` per zone),
+  each with its own box — the hard part is an off-canvas extra zone's LTRB in canvas-px (needs the zone's
+  mockup natural dims, same px→% math as the designer read). Cheaper interim: stamp a "needs-refont" flag on
+  off-canvas curved text at switch time and re-bake it when its zone is next shown (lazy, uses that view's
+  live `getPrintAreaBounds`). Same class as the [[project_print_zones]] "every zone must be handled" theme.
 - ✅ **DONE — Type-on-path hat-back curve (Z-hp-2 … Z-hp-6).** Admin draws the arc
   per hat template (endpoints + bulge on the mockup); customer hat-back text lays
   along it at a fixed height, centered; the cut file follows the same path. Shipped
