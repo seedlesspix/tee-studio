@@ -12,7 +12,7 @@ type EmptyState = {
   showGreeting: boolean
   onAddText: () => void
   onUpload?: () => void // omitted in embroidery (no uploads) → the Upload CTA is hidden
-  onAddArt: () => void
+  onAddArt?: () => void // omitted on the text-only hat-back → the Add Art CTA is hidden
   onNames?: () => void // omitted in embroidery and when the product template disables N&N
   loggedIn?: boolean // drives the "log in to keep this design" tip (hidden once logged in)
 }
@@ -188,12 +188,14 @@ export default function CanvasStage({
                   <Upload size={16} strokeWidth={1.75} /> {t('designer.empty.upload', 'Upload')}
                 </button>
               )}
-              <button
-                onClick={emptyState.onAddArt}
-                className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"
-              >
-                <Shapes size={16} strokeWidth={1.75} /> {t('designer.empty.add_art', 'Add Art')}
-              </button>
+              {emptyState.onAddArt && (
+                <button
+                  onClick={emptyState.onAddArt}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors hover:border-gray-400"
+                >
+                  <Shapes size={16} strokeWidth={1.75} /> {t('designer.empty.add_art', 'Add Art')}
+                </button>
+              )}
               {emptyState.onNames && (
                 <button
                   onClick={emptyState.onNames}

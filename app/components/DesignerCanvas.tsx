@@ -116,6 +116,9 @@ const methodLabel = (m: string) => METHOD_LABELS[m] || m
 // raster (can't be embroidered); names = the print cut-file N&N (embroidered N&N needs stitch files,
 // a future thread). Keep Text (embroidery fonts) · Thread colors · Art (embroidery clipart) · Curve.
 const HIDDEN_FOR_EMBROIDERY = ['upload', 'names']
+// Hat-back is TEXT-ONLY (v1 decision): no uploads, no Art, no N&N on the back of a hat — the zone is a
+// single curved text locked to the template arc. Hide those tools the same way embroidery hides its unusable ones.
+const HIDDEN_FOR_HAT_BACK = ['upload', 'clipart', 'names']
 // Customer-facing address for the "email us the big file" valve. Shown in the reject
 // message so an oversize file still reaches the shop.
 const SUPPORT_EMAIL = 'orders@tshirtdeli.com' // TODO(Denise): confirm the real address
@@ -190,7 +193,7 @@ const COLOR_HEX_MAP: Record<string, string> = {
 const CANVAS_CUSTOM_PROPS = ['_isSvg', '_originalText', '_currentColor', '_isCurvedText', '_uploadSrc',
   // Bake params for a curved-text image, so selecting it reflects the curve
   // slider + font/size/color and adjusting the curve re-bakes from its OWN values.
-  '_curveAmount', '_curveFontFamily', '_curveFontSize', '_curveFill', '_curveBold', '_curveItalic', '_curveCharSpacing',
+  '_curveAmount', '_curveFontFamily', '_curveFontSize', '_curveFill', '_curveBold', '_curveItalic', '_curveCharSpacing', '_curveUppercase',
   '_curvePath', // Z-hp type-on-path: the admin-drawn quadratic a curved text follows (persist so re-open + the cut match)
   '_isVectorUpload', // an uploaded SVG (vector) — excluded from the low-res warning (client + bench)
   '_cutFromDifferentSource', // convert/re-add whose bench cut-source differs from _uploadSrc — cut-edge preview suppressed (Lens 2)
@@ -1205,6 +1208,7 @@ export default function DesignerCanvas({
       setIsBold(!!obj._curveBold)
       setIsItalic(!!obj._curveItalic)
       setLetterSpacing(Math.round((obj._curveCharSpacing || 0) / 10))
+      setIsUppercase(!!obj._curveUppercase) // reflect the AA state so a toggle re-bakes from the right base
       setCurveAmount(obj._curveAmount ?? 0)
       // Bind the box to the curved text's words so they can be re-typed in place (judge readability
       // while curved) — the arc re-bakes on edit, same as adjusting its curve/spacing.
@@ -1423,6 +1427,12 @@ export default function DesignerCanvas({
     if (!namesNumbersEnabled && activeTab === 'names') setActiveTab('text')
   }, [namesNumbersEnabled, activeTab])
 
+  // Hat-back is text-only: if the view switches to the hat back while a now-hidden tool tab is active,
+  // drop to Text so the customer never sees an Upload/Art/Names panel for a zone that forbids them.
+  useEffect(() => {
+    if (shirtView === 'hat_back' && HIDDEN_FOR_HAT_BACK.includes(activeTab)) setActiveTab('text')
+  }, [shirtView, activeTab])
+
   // Warn+convert follow-through: after a confirmed switch to embroidery, restyle existing text to the
   // now-loaded embroidery font + thread color. The embroidery fonts/colors load ASYNC after setPrintMethod,
   // so this MUST wait until configMethod === 'embroidery' (both palettes are non-empty, so length can't
@@ -1494,7 +1504,7 @@ export default function DesignerCanvas({
     const recurveWithFont = (o: any, bounds: { left: number; top: number; right: number; bottom: number } | null) =>
       bakeCurvedArc(
         String(o._originalText || ''),
-        { curveAmount: Number(o._curveAmount) || 0, fontSize: Number(o._curveFontSize) || 36, fontFamily: fallback, fill: String(o._curveFill || '#000000'), bold: !!o._curveBold, italic: !!o._curveItalic, charSpacing: Number(o._curveCharSpacing) || 0, path: o._curvePath },
+        { curveAmount: Number(o._curveAmount) || 0, fontSize: Number(o._curveFontSize) || 36, fontFamily: fallback, fill: String(o._curveFill || '#000000'), bold: !!o._curveBold, italic: !!o._curveItalic, charSpacing: Number(o._curveCharSpacing) || 0, path: o._curvePath, uppercase: !!o._curveUppercase },
         o.left, o.top, bounds, Number(o.angle) || 0,
       )
     const recurveInvalidFonts = async () => {
@@ -2381,12 +2391,14 @@ export default function DesignerCanvas({
   // D2 re-fit path calls it per _isCurvedText object to re-curve onto the target garment.
   const bakeCurvedArc = async (
     rawText: string,
-    p: { curveAmount: number; fontSize: number; fontFamily: string; fill: string; bold: boolean; italic: boolean; charSpacing?: number; path?: { p0: Pt; control: Pt; p2: Pt } },
+    p: { curveAmount: number; fontSize: number; fontFamily: string; fill: string; bold: boolean; italic: boolean; charSpacing?: number; path?: { p0: Pt; control: Pt; p2: Pt }; uppercase?: boolean },
     left: number, top: number,
     bounds: { left: number; top: number; right: number; bottom: number } | null,
     angle: number = 0, // carry the source object's rotation through the re-bake (E2 / D2 re-fit) — else a rotated curved text snaps back to horizontal
   ): Promise<any> => {
-    const { dataUrl } = renderCurvedArc(rawText, p) // p.path (Z-hp) → glyphs follow the drawn path; else the degrees arc
+    // Uppercase is a DISPLAY transform (like plain text): bake the upper-cased glyphs but keep _originalText
+    // RAW so the words can still be re-typed / toggled back. _curveUppercase persists the toggle state.
+    const { dataUrl } = renderCurvedArc(p.uppercase ? rawText.toUpperCase() : rawText, p) // p.path (Z-hp) → glyphs follow the drawn path; else the degrees arc
     const { FabricImage } = await import('fabric')
     const img: any = await FabricImage.fromURL(dataUrl)
     img.set({ left, top, originX: 'center', originY: 'center' })
@@ -2402,6 +2414,7 @@ export default function DesignerCanvas({
     img._curveBold = p.bold
     img._curveItalic = p.italic
     img._curveCharSpacing = p.charSpacing ?? 0
+    img._curveUppercase = !!p.uppercase
     // Stamp the drawn path (Z-hp) so re-bakes AND the cut file follow the SAME curve. Absent for the
     // degrees model — left unset so nothing changes for today's hat-back / degrees curved text.
     if (p.path) img._curvePath = p.path
@@ -2489,7 +2502,7 @@ export default function DesignerCanvas({
         const p = rebakeCurveParams(Number(obj._curveFontSize) || 36, Number(obj._curveAmount) || 0, scale)
         const rebaked = await bakeCurvedArc(
           String(obj._originalText || ''),
-          { curveAmount: p.curveAmount, fontSize: p.curveFontSize, fontFamily: String(obj._curveFontFamily || 'Impact'), fill: String(obj._curveFill || '#000000'), bold: !!obj._curveBold, italic: !!obj._curveItalic, charSpacing: Number(obj._curveCharSpacing) || 0, path: obj._curvePath },
+          { curveAmount: p.curveAmount, fontSize: p.curveFontSize, fontFamily: String(obj._curveFontFamily || 'Impact'), fill: String(obj._curveFill || '#000000'), bold: !!obj._curveBold, italic: !!obj._curveItalic, charSpacing: Number(obj._curveCharSpacing) || 0, path: obj._curvePath, uppercase: !!obj._curveUppercase },
           obj.left, obj.top, targetLTRB, Number(obj.angle) || 0,
         )
         canvas.remove(obj); canvas.add(rebaked)
@@ -2521,7 +2534,7 @@ export default function DesignerCanvas({
         const p = rebakeCurveParams(Number(obj._curveFontSize) || 36, Number(obj._curveAmount) || 0, scale)
         const rebaked = await bakeCurvedArc(
           String(obj._originalText || ''),
-          { curveAmount: p.curveAmount, fontSize: p.curveFontSize, fontFamily: String(obj._curveFontFamily || 'Impact'), fill: String(obj._curveFill || '#000000'), bold: !!obj._curveBold, italic: !!obj._curveItalic, charSpacing: Number(obj._curveCharSpacing) || 0, path: obj._curvePath },
+          { curveAmount: p.curveAmount, fontSize: p.curveFontSize, fontFamily: String(obj._curveFontFamily || 'Impact'), fill: String(obj._curveFill || '#000000'), bold: !!obj._curveBold, italic: !!obj._curveItalic, charSpacing: Number(obj._curveCharSpacing) || 0, path: obj._curvePath, uppercase: !!obj._curveUppercase },
           obj.left, obj.top, backLTRB, Number(obj.angle) || 0,
         )
         out.push(rebaked)
@@ -2628,7 +2641,7 @@ export default function DesignerCanvas({
         const { IText } = await import('fabric')
         if (myToken !== curveTokenRef.current) return  // superseded by a newer bake
         const { text: wrappedText, fontSize: autoFontSize } = reWrapText(rawText, cSize, cFont, cBold, cItalic, letterSpacing * 10)
-        const textObj = new IText(wrappedText, {
+        const textObj = new IText(isUppercase ? wrappedText.toUpperCase() : wrappedText, {
           left: spawnX, top: spawnY,
           fontFamily: cFont, fontSize: autoFontSize,
           fill: cFill, fontWeight: cBold ? 'bold' : 'normal',
@@ -2645,7 +2658,7 @@ export default function DesignerCanvas({
       // inside bakeCurvedArc is the exact pixel code that used to live here).
       const img = await bakeCurvedArc(
         rawText,
-        { curveAmount: cAmount, fontSize: (active as any)._curvePath ? HAT_ARC_FONT_PX : cSize, fontFamily: cFont, fill: cFill, bold: cBold, italic: cItalic, charSpacing: letterSpacing * 10, path: (active as any)._curvePath },
+        { curveAmount: cAmount, fontSize: (active as any)._curvePath ? HAT_ARC_FONT_PX : cSize, fontFamily: cFont, fill: cFill, bold: cBold, italic: cItalic, charSpacing: letterSpacing * 10, path: (active as any)._curvePath, uppercase: isUppercase },
         spawnX, spawnY, getPrintAreaBounds(),
       )
       if (myToken !== curveTokenRef.current) return  // superseded while baking/decoding
@@ -2660,7 +2673,7 @@ export default function DesignerCanvas({
     return () => {
       if (curveRafRef.current != null) { cancelAnimationFrame(curveRafRef.current); curveRafRef.current = null }
     }
-  }, [curveAmount, fontSize, selectedFont, textColor, isBold, isItalic, letterSpacing, curveTextTick])
+  }, [curveAmount, fontSize, selectedFont, textColor, isBold, isItalic, isUppercase, letterSpacing, curveTextTick])
 
   // Clears the pull-on-select guard. Declared AFTER every push/dirty/curve
   // effect above, so on the batched mirror commit it flushes last — the guarded
@@ -3354,7 +3367,7 @@ export default function DesignerCanvas({
       const cy = center ? center.y : (bounds ? (bounds.top + bounds.bottom) / 2 : 378)
       const img = await bakeCurvedArc(
         pendingTextRef.current.replace(/\n/g, ' '),
-        { curveAmount: arc ? 0 : hatBackCurve(), fontSize: arc ? HAT_ARC_FONT_PX : fontSize, fontFamily: selectedFont, fill: textColor, bold: isBold, italic: isItalic, charSpacing: letterSpacing * 10, path: arc ?? undefined },
+        { curveAmount: arc ? 0 : hatBackCurve(), fontSize: arc ? HAT_ARC_FONT_PX : fontSize, fontFamily: selectedFont, fill: textColor, bold: isBold, italic: isItalic, charSpacing: letterSpacing * 10, path: arc ?? undefined, uppercase: isUppercase },
         cx, cy, bounds,
       )
       if (!img) return
@@ -4623,11 +4636,12 @@ export default function DesignerCanvas({
     onAddText: () => { setActiveTab('text'); setBandOpen(true); setTimeout(() => textInputRef.current?.focus(), 0) },
     // Upload isn't offered in embroidery (same rule as the rail's HIDDEN_FOR_EMBROIDERY) — omit the
     // greeting's Upload CTA so it can't confuse customers with an option that does nothing there.
-    onUpload: printMethod === 'embroidery' ? undefined : () => { setActiveTab('upload'); setBandOpen(true) },
-    onAddArt: () => { setActiveTab('clipart'); setBandOpen(true) },
+    // Upload/Art/Names are all omitted on the hat-back (text-only zone) — same rule as railHiddenKeys.
+    onUpload: (printMethod === 'embroidery' || shirtView === 'hat_back') ? undefined : () => { setActiveTab('upload'); setBandOpen(true) },
+    onAddArt: shirtView === 'hat_back' ? undefined : () => { setActiveTab('clipart'); setBandOpen(true) },
     // Names & Numbers CTA — hidden for the same reasons the rail hides the 'names' tab:
-    // embroidery mode, and templates with N&N turned off (see railHiddenKeys).
-    onNames: (printMethod === 'embroidery' || !namesNumbersEnabled) ? undefined : () => { handleSelectTab('names'); setBandOpen(true) }, // handleSelectTab (not setActiveTab) so the N&N CTA also auto-opens on the Back, same as the Names tab
+    // embroidery mode, templates with N&N turned off, and the text-only hat-back (see railHiddenKeys).
+    onNames: (printMethod === 'embroidery' || !namesNumbersEnabled || shirtView === 'hat_back') ? undefined : () => { handleSelectTab('names'); setBandOpen(true) }, // handleSelectTab (not setActiveTab) so the N&N CTA also auto-opens on the Back, same as the Names tab
     loggedIn, // #25b: hide the "log in to keep this design" tip once signed in
   } : null
   // Per-side surcharge. designer_pricing.sides is a SIDE IDENTITY (1 = Front,
@@ -5152,6 +5166,7 @@ export default function DesignerCanvas({
   const railHiddenKeys = (() => {
     const hidden: string[] = []
     if (printMethod === 'embroidery') hidden.push(...HIDDEN_FOR_EMBROIDERY)
+    if (shirtView === 'hat_back') hidden.push(...HIDDEN_FOR_HAT_BACK.filter(k => !hidden.includes(k)))
     if (!namesNumbersEnabled && !hidden.includes('names')) hidden.push('names')
     return hidden.length ? hidden : undefined
   })()

@@ -21,6 +21,20 @@ verify the live deploy BEFORE shipping a prod fix.
 (one-color art traces; multicolor → "too many colors"). The silhouette model + its OOM hardening (perimeter
 guard + 2400px mask clamp — both real, keep them) are parked for a branch rebuild.
 
+## New items — Denise 2026-08-20 (two hat-back items + vertical sleeve text)
+
+- ✅ **DONE — AA (all-caps) now works on curved hat-back text.** Uppercase was deliberately never wired for
+  curved text ("case doesn't apply to a single arc"). Now `bakeCurvedArc` takes an `uppercase` param (bakes
+  upper-cased glyphs, keeps `_originalText` RAW, stamps `_curveUppercase`); reflected on select, in the curve
+  effect's deps, threaded through every re-bake (refit/resize/re-curve/spawn), and persisted via
+  CANVAS_CUSTOM_PROPS. Straighten→IText also applies it.
+- ✅ **DONE — hat-back is enforced TEXT-ONLY** (v1 decision). `HIDDEN_FOR_HAT_BACK = [upload, clipart, names]`
+  hidden from the rail on the hat_back zone (mirrors embroidery hiding); a guard drops to the Text tab if the
+  view switches while a hidden tab is active; the blank-zone CTAs show only Add Text (onAddArt now optional in
+  CanvasStage). No uploads / Art / N&N can be placed on the back of a hat.
+- **NEXT — vertical sleeve text bug** (item 1 below): text with Direction=Vertical in a sleeve zone goes
+  outside the box + wraps oddly. Fit/wrap logic isn't vertical-aware in the tall-narrow zone boxes.
+
 ## New items — Denise 2026-08-19
 
 1. **BUG — vertical text breaks in sleeve zones.** Unisex Long Sleeve T → add a sleeve print area → add
@@ -39,11 +53,8 @@ guard + 2400px mask clamp — both real, keep them) are parked for a branch rebu
    linkable from emails/support) + a "How it works" link in the designer top bar. Content written later
    (Denise + Claude). Scope = the page container + entry link + language-editable copy; not started.
 5. **Clipart quality (two related):**
-   - (a) **False low-res warning on clipart — the guard is PRESENT + correct in current code**
-     (`lowResMessageFor` line ~2744: `if (!obj._uploadSrc) return null`; clipart is NEVER stamped
-     `_uploadSrc`). So the current code cannot produce this. Most likely a STALE deploy (we just resolved a
-     serious deploy problem). **Step 1: re-test on the fresh post-sharp-fix deploy.** If it still repros,
-     it's a genuine hole needing a live console check (inspect the selected object's props) — NO blind fix.
+   - (a) ✅ **CLOSED (2026-08-20) — was the STALE deploy.** Re-tested on the fresh deploy: no false warning
+     on either PNG or SVG clipart. The `_uploadSrc` guard was correct all along.
    - (b) ✅ **DONE (interim) — enlarged clipart no longer blurry.** SVG clipart now loads via `loadSvgHiRes`
      (fetch → preserve viewBox → set root width/height to ~1500px → data-URL raster), so it stays crisp when
      enlarged. The recolor BlendColor filter is unchanged. **Cut/layout parity preserved:** the object keeps
