@@ -1030,6 +1030,9 @@ export default function DesignerCanvas({
   // zone → url. Populated at template load; a color change copies the current color's extra-zone images
   // into extraZoneImageRef so switchView can show a sleeve/hat its own mockup.
   const zoneMockupMapRef = useRef<Record<string, Record<string, string>>>({})
+  // Layered mockups: normalized color → zone → FOREGROUND overlay url (e.g. hoodie strings). Parallel to
+  // zoneMockupMapRef; only populated for mockups that have an overlay. Empty = no overlays for this product.
+  const zoneOverlayMapRef = useRef<Record<string, Record<string, string>>>({})
   const zoneObjs = (zone: string): any[] =>
     zone === 'front' ? frontObjectsRef.current
     : zone === 'back' ? backObjectsRef.current
@@ -1893,8 +1896,14 @@ export default function DesignerCanvas({
               // mockup saved under any spelling lines up with the selected Shopify color.
               const tplMockups = (tpl?.product_template_mockups || []) as any[]
               const zmap: Record<string, Record<string, string>> = {}
-              tplMockups.forEach((mk: any) => { (zmap[normalizeColorKey(mk.color_name)] ??= {})[mk.zone] = mk.image_url })
+              const zoverlay: Record<string, Record<string, string>> = {}
+              tplMockups.forEach((mk: any) => {
+                (zmap[normalizeColorKey(mk.color_name)] ??= {})[mk.zone] = mk.image_url
+                // Layered mockups: stash the foreground overlay (if any) under the same color×zone key.
+                if (mk.overlay_url) (zoverlay[normalizeColorKey(mk.color_name)] ??= {})[mk.zone] = mk.overlay_url
+              })
               zoneMockupMapRef.current = zmap
+              zoneOverlayMapRef.current = zoverlay
 
               const areas = (tpl?.product_template_print_areas || []) as any[]
               // Print Zones Z2b: derive this product's zones (front, back, sleeves, hat_back) from its
@@ -2359,6 +2368,10 @@ export default function DesignerCanvas({
     if (zone === 'back') return imgs?.back || imgs?.front || firstImageUrlRef.current || ''
     return firstImageUrlRef.current || ''
   }
+
+  // Foreground overlay (layered mockups) for a zone×color, or '' if none. Admin-managed only — no fallback.
+  const zoneOverlayUrl = (zone: string, color: string): string =>
+    zoneOverlayMapRef.current[normalizeColorKey(color)]?.[zone] || ''
 
   const handleColorSelect = useCallback((color: string) => {
     markDirty()
@@ -4354,7 +4367,10 @@ export default function DesignerCanvas({
         canvas.clear()
         objs.forEach((o: any) => canvas.add(o))
         canvas.renderAll()
-        const pngBlob = await exportCanvasPNG(canvas, shirtSrc)
+        // Layered mockups: composite this zone's foreground overlay (e.g. strings) onto the saved preview so
+        // the stored image matches the live designer. `name` IS the zone key (front/back/sleeve/hat_back).
+        const overlaySrc = zoneOverlayUrl(name, selectedColor) || undefined
+        const pngBlob = await exportCanvasPNG(canvas, shirtSrc, overlaySrc)
         const svgBlob = exportCanvasSVG(canvas)
         // MUST be toObject(props), not toJSON(props). Fabric's own source says
         // it plainly: "JSON does not support additional properties because
@@ -4914,12 +4930,14 @@ export default function DesignerCanvas({
 
       // My Designs tile composites on the managed mockup too (front/back), for consistency with the live
       // designer + the order-preview composite — never the cut file. See zoneGarmentUrl.
-      const shirtSrc = zoneGarmentUrl(useFront ? 'front' : 'back', selectedColor, colorImageMap) || undefined
+      const tileZone = useFront ? 'front' : 'back'
+      const shirtSrc = zoneGarmentUrl(tileZone, selectedColor, colorImageMap) || undefined
+      const overlaySrc = zoneOverlayUrl(tileZone, selectedColor) || undefined
 
       canvas.clear()
       objs.forEach((o: any) => canvas.add(o))
       canvas.renderAll()
-      const blob = await exportCanvasPNG(canvas, shirtSrc)
+      const blob = await exportCanvasPNG(canvas, shirtSrc, overlaySrc)
 
       canvas.clear()
       liveObjects.forEach((o: any) => canvas.add(o))
@@ -5642,7 +5660,7 @@ export default function DesignerCanvas({
             willChange: view.zoom !== 1 ? 'transform' : undefined,
           }}>
             <div style={{ width: 680, height: 850, transformOrigin: 'top left', transform: stageScale !== 1 ? `scale(${stageScale})` : undefined }}>
-              <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} hidePrintAreaBorder={shirtView === 'hat_back'} arcGuide={shirtView === 'hat_back' && !zoneHasContent('hat_back') ? hatBackPath() : null} referenceGuides={referenceGuidesRef.current[shirtView] || []} onReady={handleCanvasReady} emptyState={emptyState} />
+              <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} hidePrintAreaBorder={shirtView === 'hat_back'} overlayUrl={zoneOverlayUrl(shirtView, selectedColor) || null} arcGuide={shirtView === 'hat_back' && !zoneHasContent('hat_back') ? hatBackPath() : null} referenceGuides={referenceGuidesRef.current[shirtView] || []} onReady={handleCanvasReady} emptyState={emptyState} />
             </div>
             {/* "Thinking" overlay for async ops (Remove Background API round-trip, edits + their
                 re-upload, converted-file uploads). Silence reads as broken; the spinner reads as

@@ -645,6 +645,9 @@ export type Database = {
           image_url: string
           natural_h: number | null
           natural_w: number | null
+          overlay_natural_h: number | null
+          overlay_natural_w: number | null
+          overlay_url: string | null
           sort_order: number
           source: string
           template_id: string
@@ -657,6 +660,9 @@ export type Database = {
           image_url: string
           natural_h?: number | null
           natural_w?: number | null
+          overlay_natural_h?: number | null
+          overlay_natural_w?: number | null
+          overlay_url?: string | null
           sort_order?: number
           source?: string
           template_id: string
@@ -669,6 +675,9 @@ export type Database = {
           image_url?: string
           natural_h?: number | null
           natural_w?: number | null
+          overlay_natural_h?: number | null
+          overlay_natural_w?: number | null
+          overlay_url?: string | null
           sort_order?: number
           source?: string
           template_id?: string

@@ -63,9 +63,12 @@ export default function MockupBatchUpload({
     })
 
     const out: Result[] = []
-    for (let i = 0; i < files.length; i++) {
-      setProgress({ done: i, total: files.length })
-      const file = files[i]
+    // Process base mockups BEFORE overlays so an overlay's base row already exists to attach to (an overlay
+    // only UPDATEs its base row — it can't create one, because image_url is required).
+    const ordered = [...files].sort((a, b) => (parseMockupFilename(a.name)?.isOverlay ? 1 : 0) - (parseMockupFilename(b.name)?.isOverlay ? 1 : 0))
+    for (let i = 0; i < ordered.length; i++) {
+      setProgress({ done: i, total: ordered.length })
+      const file = ordered[i]
       const parsed = parseMockupFilename(file.name)
       if (!parsed) { out.push({ name: file.name, ok: false, detail: 'Name must be style_color_position — e.g. 2001_White_LeftSleeve.png' }); continue }
       const tmpl = byStyle.get(parsed.style.trim().toLowerCase())
@@ -73,6 +76,23 @@ export default function MockupBatchUpload({
       if (!parsed.zone) { out.push({ name: file.name, ok: false, detail: 'Unrecognized position (last part of the name)' }); continue }
       const color = canonicalByTemplate.get(tmpl.id)?.get(normalizeColorKey(parsed.color)) ?? parsed.color
       const ext = (file.name.match(/\.([a-z0-9]+)$/i)?.[1] || 'png').toLowerCase()
+      // Layered mockups: an `_Overlay` file attaches a FOREGROUND overlay to the EXISTING base row (its own
+      // storage path; UPDATE only — never creates a row, since it has no base image). Base must exist first.
+      if (parsed.isOverlay) {
+        const opath = `mockups/${tmpl.id}/${slug(color)}_${parsed.zone}_overlay.${ext}`
+        const { error: upErr } = await supabase.storage.from('garment-swatches').upload(opath, file, { upsert: true, contentType: file.type || 'image/png' })
+        if (upErr) { out.push({ name: file.name, ok: false, detail: `Upload failed: ${upErr.message}` }); continue }
+        const { data: pub } = supabase.storage.from('garment-swatches').getPublicUrl(opath)
+        const odims = await naturalSize(file)
+        const { data: upd, error: dbErr } = await supabase.from('product_template_mockups')
+          .update({ overlay_url: `${pub.publicUrl}?v=${Date.now()}`, overlay_natural_w: odims.w || null, overlay_natural_h: odims.h || null })
+          .eq('template_id', tmpl.id).eq('color_name', color).eq('zone', parsed.zone)
+          .select('id')
+        if (dbErr) { out.push({ name: file.name, ok: false, detail: `Save failed: ${dbErr.message}` }); continue }
+        if (!upd?.length) { out.push({ name: file.name, ok: false, detail: `No base mockup for ${color} · ${ZONE_LABELS[parsed.zone] ?? parsed.zone} yet — upload the base mockup first` }); continue }
+        out.push({ name: file.name, ok: true, detail: `Overlay · ${tmpl.name} · ${color} · ${ZONE_LABELS[parsed.zone] ?? parsed.zone}` })
+        continue
+      }
       const path = `mockups/${tmpl.id}/${slug(color)}_${parsed.zone}.${ext}`
       const { error: upErr } = await supabase.storage.from('garment-swatches').upload(path, file, { upsert: true, contentType: file.type || 'image/png' })
       if (upErr) { out.push({ name: file.name, ok: false, detail: `Upload failed: ${upErr.message}` }); continue }

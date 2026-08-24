@@ -176,6 +176,11 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
     if (error) { setBusy(null); onMessage(`Delete failed for ${color} · ${zoneLabel(zone)}: ${error.message}`, 'error'); return }
     const oldPath = storagePathFromUrl(row.image_url)
     if (oldPath) { try { await supabase.storage.from('garment-swatches').remove([oldPath]) } catch { /* best-effort */ } }
+    // Deleting the base row drops overlay_url with it — sweep the overlay blob too, or it orphans in the bucket.
+    if (row.overlay_url) {
+      const oldOverlay = storagePathFromUrl(row.overlay_url)
+      if (oldOverlay) { try { await supabase.storage.from('garment-swatches').remove([oldOverlay]) } catch { /* best-effort */ } }
+    }
     setMockups(m => {
       const byZone = { ...(m[color] ?? {}) }
       delete byZone[zone]
@@ -183,6 +188,61 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
     })
     setBusy(null)
     onMessage(`Deleted ${color} · ${zoneLabel(zone)}.`)
+  }
+
+  // Layered mockups — attach a FOREGROUND overlay (e.g. hoodie drawstrings) to an existing base row. Renders
+  // above the customer's art in the designer and bakes into every preview. UPDATE-only: an overlay rides on
+  // its base row, so the base must exist first (its own storage path, its own overlay_* columns).
+  const uploadOverlay = async (color: string, zone: string, file: File) => {
+    const row = mockups[color]?.[zone]
+    if (!row) { onMessage(`Upload the base ${color} · ${zoneLabel(zone)} mockup before its overlay.`, 'error'); return }
+    const key = `${color}::${zone}::overlay`
+    setBusy(key)
+    const storeColor = row.color_name
+    const ext = (file.name.match(/\.([a-z0-9]+)$/i)?.[1] || 'png').toLowerCase()
+    const path = `mockups/${templateId}/${slug(storeColor)}_${zone}_overlay.${ext}`
+    const { error: upErr } = await supabase.storage.from('garment-swatches').upload(path, file, { upsert: true, contentType: file.type || 'image/png' })
+    if (upErr) { setBusy(null); onMessage(`Overlay upload failed for ${color} · ${zoneLabel(zone)}: ${upErr.message}`, 'error'); return }
+    const { data: pub } = supabase.storage.from('garment-swatches').getPublicUrl(path)
+    const dims = await naturalSize(file)
+    const { data, error: dbErr } = await supabase.from('product_template_mockups')
+      .update({ overlay_url: `${pub.publicUrl}?v=${file.lastModified}`, overlay_natural_w: dims.w || null, overlay_natural_h: dims.h || null })
+      .eq('id', row.id).select().single()
+    if (dbErr || !data) { setBusy(null); onMessage(`Overlay save failed for ${color} · ${zoneLabel(zone)}: ${dbErr?.message ?? 'unknown'}`, 'error'); return }
+    // Sweep the old overlay file if the extension changed (else the overwrite covered it in place).
+    if (row.overlay_url) {
+      const oldPath = storagePathFromUrl(row.overlay_url)
+      if (oldPath && oldPath !== path) { try { await supabase.storage.from('garment-swatches').remove([oldPath]) } catch { /* best-effort */ } }
+    }
+    setMockups(m => ({ ...m, [color]: { ...(m[color] ?? {}), [zone]: data } }))
+    setBusy(null)
+    onMessage(`${row.overlay_url ? 'Replaced' : 'Added'} overlay for ${color} · ${zoneLabel(zone)}.`)
+  }
+
+  const removeOverlay = async (color: string, zone: string) => {
+    const row = mockups[color]?.[zone]
+    if (!row?.overlay_url) return
+    if (!confirm(`Remove the ${color} · ${zoneLabel(zone)} overlay? The base mockup stays.`)) return
+    const key = `${color}::${zone}::overlay`
+    setBusy(key)
+    const { data, error } = await supabase.from('product_template_mockups')
+      .update({ overlay_url: null, overlay_natural_w: null, overlay_natural_h: null })
+      .eq('id', row.id).select().single()
+    if (error || !data) { setBusy(null); onMessage(`Overlay delete failed for ${color} · ${zoneLabel(zone)}: ${error?.message ?? 'unknown'}`, 'error'); return }
+    const oldPath = storagePathFromUrl(row.overlay_url)
+    if (oldPath) { try { await supabase.storage.from('garment-swatches').remove([oldPath]) } catch { /* best-effort */ } }
+    setMockups(m => ({ ...m, [color]: { ...(m[color] ?? {}), [zone]: data } }))
+    setBusy(null)
+    onMessage(`Removed overlay for ${color} · ${zoneLabel(zone)}.`)
+  }
+
+  // Warn-if-dims-differ guard: the overlay composites over the base via aspect-fit-contain, so a different
+  // ASPECT ratio (not a scaled-but-same-shape file) is what misaligns the strings. Flag >2% aspect drift.
+  const overlayFrameWarn = (r: MockupRow): boolean => {
+    const { natural_w: bw, natural_h: bh, overlay_natural_w: ow, overlay_natural_h: oh } = r
+    if (!bw || !bh || !ow || !oh) return false
+    const baseAR = bw / bh, ovAR = ow / oh
+    return Math.abs(ovAR - baseAR) / baseAR > 0.02
   }
 
   // Auto-import the product's Shopify Front/Back photos into managed mockups (single source of truth, per
@@ -331,6 +391,11 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
         Sleeve/hat zones with no mockup show <span className="text-[#dd3333]">⚠</span> (the designer has no fallback there);
         Front/Back fall back to the Shopify photo, so a gap there is fine. Bulk-add on the templates list.
       </p>
+      <p className="text-xs text-gray-500 font-mono mb-4 -mt-2">
+        <span className="font-semibold text-gray-600">Overlay (optional):</span> a transparent PNG rendered <em>above</em> the
+        customer’s art — e.g. hoodie drawstrings — so the design sits under it. Use <span className="text-gray-600">+ overlay</span> under
+        any mockup (same frame as the base). <span className="text-amber-700">⚠ frame</span> means its shape differs from the base and may misalign.
+      </p>
 
       {loading ? (
         <p className="text-gray-600 font-mono text-center py-8">Loading…</p>
@@ -362,22 +427,56 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
                     const row = mockups[color]?.[zone]
                     const key = `${color}::${zone}`
                     const isBusy = busy === key
+                    const overlayBusy = busy === `${key}::overlay`
                     const softMissing = FALLBACK_ZONES.has(zone)
                     return (
                       <td key={zone} className="align-middle">
                         {row ? (
-                          <div className="relative w-16 h-16">
-                            <label title="Click to replace" className={`block w-full h-full cursor-pointer ${isBusy ? 'opacity-50 pointer-events-none' : ''}`}>
-                              <img src={row.image_url} alt={`${color} ${zoneLabel(zone)}`}
-                                className="w-full h-full object-cover rounded border border-gray-300 hover:border-[#dd3333]" />
-                              <input type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" className="hidden"
-                                onChange={e => { const f = e.target.files?.[0]; if (f) upload(color, zone, f); e.target.value = '' }} />
-                            </label>
-                            <button onClick={() => remove(color, zone)} disabled={isBusy} title="Delete this mockup"
-                              className="absolute -top-2 -right-2 w-5 h-5 flex items-center justify-center rounded-full bg-white border border-gray-300 text-red-600 text-xs leading-none hover:bg-red-50 hover:border-red-300 shadow-sm disabled:opacity-50">
-                              ✕
-                            </button>
-                            {isBusy && <span className="absolute inset-0 flex items-center justify-center text-[10px] font-mono text-gray-600">…</span>}
+                          <div className="flex flex-col items-center gap-1 w-16">
+                            <div className="relative w-16 h-16">
+                              <label title="Click to replace" className={`block w-full h-full cursor-pointer ${isBusy ? 'opacity-50 pointer-events-none' : ''}`}>
+                                <img src={row.image_url} alt={`${color} ${zoneLabel(zone)}`}
+                                  className="w-full h-full object-cover rounded border border-gray-300 hover:border-[#dd3333]" />
+                                <input type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" className="hidden"
+                                  onChange={e => { const f = e.target.files?.[0]; if (f) upload(color, zone, f); e.target.value = '' }} />
+                              </label>
+                              <button onClick={() => remove(color, zone)} disabled={isBusy} title="Delete this mockup"
+                                className="absolute -top-2 -right-2 w-5 h-5 flex items-center justify-center rounded-full bg-white border border-gray-300 text-red-600 text-xs leading-none hover:bg-red-50 hover:border-red-300 shadow-sm disabled:opacity-50">
+                                ✕
+                              </button>
+                              {isBusy && <span className="absolute inset-0 flex items-center justify-center text-[10px] font-mono text-gray-600">…</span>}
+                            </div>
+                            {/* Layered-mockup overlay: a foreground image (e.g. drawstrings) rendered above the art. */}
+                            {row.overlay_url ? (
+                              <div className="flex items-center gap-0.5 w-full">
+                                <label
+                                  title={overlayFrameWarn(row)
+                                    ? 'Overlay frame differs from the base mockup — the strings may not line up. Re-export it at the same size/shape as the base. Click to replace.'
+                                    : 'Overlay attached — click to replace the foreground image'}
+                                  className={`flex-1 min-w-0 flex items-center justify-center h-5 rounded border cursor-pointer text-[9px] font-mono ${
+                                    overlayBusy ? 'opacity-50 pointer-events-none' : ''
+                                  } ${overlayFrameWarn(row)
+                                    ? 'border-amber-400 bg-amber-50 text-amber-700'
+                                    : 'border-gray-300 bg-gray-100 text-gray-600 hover:border-[#dd3333]'}`}>
+                                  <span className="truncate px-1">{overlayBusy ? '…' : overlayFrameWarn(row) ? '⚠ frame' : '▨ overlay'}</span>
+                                  <input type="file" accept="image/png,image/webp,.png,.webp" className="hidden"
+                                    onChange={e => { const f = e.target.files?.[0]; if (f) uploadOverlay(color, zone, f); e.target.value = '' }} />
+                                </label>
+                                <button onClick={() => removeOverlay(color, zone)} disabled={overlayBusy} title="Remove overlay (keeps the base mockup)"
+                                  className="w-4 h-5 flex items-center justify-center rounded border border-gray-200 text-red-500 text-[10px] leading-none hover:bg-red-50 disabled:opacity-50">
+                                  ✕
+                                </button>
+                              </div>
+                            ) : (
+                              <label title="Add a foreground overlay (e.g. hoodie drawstrings) that renders ABOVE the customer’s art. Same frame as this mockup; transparent PNG."
+                                className={`w-full flex items-center justify-center h-5 rounded border border-dashed border-gray-300 cursor-pointer text-[9px] font-mono text-gray-400 hover:border-[#dd3333] hover:text-gray-600 ${
+                                  overlayBusy ? 'opacity-50 pointer-events-none' : ''
+                                }`}>
+                                {overlayBusy ? '…' : '+ overlay'}
+                                <input type="file" accept="image/png,image/webp,.png,.webp" className="hidden"
+                                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadOverlay(color, zone, f); e.target.value = '' }} />
+                              </label>
+                            )}
                           </div>
                         ) : (
                           <label title={softMissing ? 'No mockup — the designer uses the Shopify photo here. Click to upload one anyway.' : 'Missing — click to upload this zone’s mockup'}
