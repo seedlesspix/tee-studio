@@ -35,7 +35,7 @@ export function normalizeZone(token: string): string | null {
 // (to line a stored mockup up with its color row regardless of how the filename was spelled).
 export const normalizeColorKey = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 
-export type ParsedMockupName = { style: string; color: string; zone: string | null }
+export type ParsedMockupName = { style: string; color: string; zone: string | null; isOverlay: boolean }
 
 // `2001_White_LeftSleeve.png` → { style: '2001', color: 'White', zone: 'left_sleeve' }.
 // FIRST token = style number; the ZONE is the LAST token, OR the last TWO tokens when they combine into a
@@ -47,7 +47,12 @@ export type ParsedMockupName = { style: string; color: string; zone: string | nu
 // tokens; returns zone:null when the tail isn't a recognized zone (caller surfaces "unknown zone").
 export function parseMockupFilename(filename: string): ParsedMockupName | null {
   const base = filename.replace(/\.[a-z0-9]+$/i, '').trim() // strip extension
-  const parts = base.split('_').map((s) => s.trim()).filter(Boolean)
+  let parts = base.split('_').map((s) => s.trim()).filter(Boolean)
+  // FOREGROUND OVERLAY (layered mockups): a trailing `_Overlay` token flags a foreground layer (e.g. hoodie
+  // drawstrings) that renders ABOVE the customer's art. Strip it, then parse style/color/zone from the rest
+  // EXACTLY as a base mockup — so `4001_Military_Front_Overlay` → style 4001, color Military, zone front.
+  let isOverlay = false
+  if (parts.length && /^overlay$/i.test(parts[parts.length - 1])) { isOverlay = true; parts = parts.slice(0, -1) }
   if (parts.length < 3) return null
   const style = parts[0]
   // Greedy from the end: prefer a 2-token zone (e.g. "Hat"+"Back" → hat_back) when it's recognized,
@@ -60,5 +65,5 @@ export function parseMockupFilename(filename: string): ParsedMockupName | null {
   }
   const color = parts.slice(1, colorEnd).join(' ')
   if (!style || !color) return null
-  return { style, color, zone }
+  return { style, color, zone, isOverlay }
 }

@@ -33,6 +33,7 @@ export default function CanvasStage({
   shirtImgRef,
   printArea,
   hidePrintAreaBorder = false,
+  overlayUrl = null,
   arcGuide = null,
   referenceGuides = [],
   onReady,
@@ -44,6 +45,9 @@ export default function CanvasStage({
   // Keep the [data-print-area] element (geometry measures it) but drop its visible dashed border — used on
   // the hat-back, where the arc guide is the placement cue and the rectangle is just clutter (Denise).
   hidePrintAreaBorder?: boolean
+  // Layered mockups: a FOREGROUND overlay (e.g. hoodie drawstrings) that renders ABOVE the design so the
+  // art sits under it like a real garment. Same frame/contain-fit as the base mockup, non-interactive.
+  overlayUrl?: string | null
   // Chest reference guide: secondary print areas shown as dashed labelled outlines (placement/size
   // references, e.g. "Left Chest") — not design zones, never priced.
   referenceGuides?: { pct: PrintAreaPct; label: string }[]
@@ -105,6 +109,26 @@ export default function CanvasStage({
         ref={canvasRef}
         style={{ position: 'absolute', top: 0, left: 0 }}
       />
+
+      {/* Layered-mockup FOREGROUND overlay (e.g. hoodie strings): above the design canvas so the art sits
+          UNDER it, below the guides (zIndex 2). Same 100%/contain fit + box as the base shirt <img>, so it
+          aligns exactly. Non-interactive — clicks pass through to the canvas. Absent = nothing rendered. */}
+      {overlayUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={overlayUrl}
+          alt=""
+          aria-hidden="true"
+          crossOrigin="anonymous"
+          style={{
+            position: 'absolute', top: 0, left: 0,
+            width: '100%', height: '100%',
+            objectFit: 'contain',
+            pointerEvents: 'none',
+            zIndex: 1,
+          }}
+        />
+      )}
       {/* Type-on-path arc guide (Z-hp #2): the dotted line the hat-back text follows. A white halo under a
           dark dash so it reads on both light and dark caps, matching the print box's halo treatment. */}
       {arcGuide && (

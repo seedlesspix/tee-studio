@@ -21,6 +21,23 @@ verify the live deploy BEFORE shipping a prod fix.
 (one-color art traces; multicolor → "too many colors"). The silhouette model + its OOM hardening (perimeter
 guard + 2400px mask clamp — both real, keep them) are parked for a branch rebuild.
 
+## Building — Layered Mockups (Denise 2026-08-20, in progress)
+
+Foreground overlay image per mockup (e.g. hoodie drawstrings) that renders ABOVE the customer's art so the
+design sits UNDER it like a real garment (Photific-style). Optional per template×color×zone, same frame as
+the base mockup, uploaded via the batch convention with an `_Overlay` suffix (`4001_Military_Front_Overlay.png`).
+**Visual only — print/cut untouched**; order/cart/admin previews inherit it (they display the baked
+`canvas_png`). Denise produces the transparent string PNGs.
+- ✅ **Phase A (dormant plumbing, DB-independent):** `mockupFilename` parses `_Overlay`→`isOverlay` (+ tests);
+  `CanvasStage` renders a non-interactive foreground `<img>` (`overlayUrl` prop, contain-fit, zIndex 1, above
+  the design + below guides); `exportCanvasPNG` gains `overlaySrc` (drawn above the design via the CORS proxy,
+  same aspect-fit as the base). All additive + dormant (nothing passes the props yet); tsc/build/tests green.
+- **Phase B (pending migration approval):** migration (`overlay_url` + `overlay_natural_w/h` on
+  `product_template_mockups`) → batch upload routes `_Overlay`→`overlay_url` + dims → admin grid manages the
+  overlay per cell + **warn-if-dims-differ badge** → product-load builds the overlay map + `zoneOverlayUrl`
+  resolver → wire `CanvasStage overlayUrl` + the `exportCanvasPNG` callers. Then usual review + Denise E2E with
+  real overlays. Cross-cuts [[project_print_zones]] (per-zone mockup system).
+
 ## Follow-ups — Denise 2026-08-20 (verification round)
 
 - ✅ **AA on curved text — the button was DISABLED for curved text** (`disabled={selectedIsCurved}`), so it

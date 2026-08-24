@@ -4222,8 +4222,10 @@ export default function DesignerCanvas({
     } catch { /* image already restored by cleanupCrop — leave it be */ }
   }
 
-  // Export canvas as PNG blob - composite with shirt image using proxy to avoid CORS
-  const exportCanvasPNG = async (canvas: any, shirtSrc: string | null | undefined): Promise<Blob | null> => {
+  // Export canvas as PNG blob - composite with shirt image using proxy to avoid CORS. `overlaySrc` (layered
+  // mockups) draws a FOREGROUND layer (e.g. hoodie strings) ABOVE the design so the baked preview/cart/order
+  // image matches the live designer (art sits under the strings). Visual only — never the cut file.
+  const exportCanvasPNG = async (canvas: any, shirtSrc: string | null | undefined, overlaySrc?: string | null): Promise<Blob | null> => {
     return new Promise(async resolve => {
       try {
         const composite = document.createElement('canvas')
@@ -4270,6 +4272,30 @@ export default function DesignerCanvas({
         // Draw design canvas on top
         const designEl = canvasRef.current
         if (designEl) ctx.drawImage(designEl, 0, 0, 680, 850)
+        // Foreground overlay (layered mockups) ABOVE the design — same aspect-fit CONTAIN as the base
+        // mockup, via the same CORS proxy. No overlay → skipped (a no-op for every current garment).
+        if (overlaySrc && !overlaySrc.startsWith('data:')) {
+          try {
+            const ovRes = await fetch(`/api/preview?shirt=${encodeURIComponent(overlaySrc)}`)
+            if (ovRes.ok) {
+              const { shirt: ov } = await ovRes.json()
+              await new Promise<void>(r => {
+                const img = new Image()
+                img.onload = () => {
+                  const imgAspect = img.naturalWidth / img.naturalHeight
+                  const canvasAspect = 680 / 850
+                  let drawW = 680, drawH = 850, drawX = 0, drawY = 0
+                  if (imgAspect > canvasAspect) { drawH = 680 / imgAspect; drawY = (850 - drawH) / 2 }
+                  else { drawW = 850 * imgAspect; drawX = (680 - drawW) / 2 }
+                  ctx.drawImage(img, drawX, drawY, drawW, drawH)
+                  r()
+                }
+                img.onerror = () => r()
+                img.src = ov
+              })
+            }
+          } catch { /* overlay is best-effort — a fetch/decode failure just omits it */ }
+        }
         composite.toBlob(blob => resolve(blob), 'image/png', 0.95)
       } catch (e) {
         const dataUrl = canvas.toDataURL({ format: 'png', multiplier: 2 })
