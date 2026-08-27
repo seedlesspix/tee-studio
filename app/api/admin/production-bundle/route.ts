@@ -412,14 +412,19 @@ export async function GET(req: NextRequest) {
   // (the earlier prod-bundle-500 territory), so a large bundle — e.g. one carrying an embedded print image —
   // could fail to download. A streamed body has no such cap. JSZip's internal stream emits chunks; wrap it in
   // a Web ReadableStream. streamFiles keeps memory bounded per entry too.
+  // Retain the JSZip stream handle so a CANCELLED download (tab closed, save cancelled, client disconnect)
+  // can PAUSE it — otherwise JSZip keeps pumping and enqueue() throws on the now-closed stream as an
+  // uncaught server exception. The enqueue is also try-guarded so a late in-flight chunk pauses, not throws.
+  const zipStream = zip.generateInternalStream({ type: 'uint8array', streamFiles: true })
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
-      zip.generateInternalStream({ type: 'uint8array', streamFiles: true })
-        .on('data', (chunk: Uint8Array) => controller.enqueue(chunk))
+      zipStream
+        .on('data', (chunk: Uint8Array) => { try { controller.enqueue(chunk) } catch { try { zipStream.pause() } catch { /* already torn down */ } } })
         .on('error', (err: Error) => controller.error(err))
         .on('end', () => controller.close())
         .resume()
     },
+    cancel() { try { zipStream.pause() } catch { /* already torn down */ } },
   })
   return new NextResponse(body, {
     status: 200,
