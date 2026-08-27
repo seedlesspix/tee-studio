@@ -51,13 +51,15 @@ export function placeRasterCutLayers(sep: SeparateResult, obj: Record<string, un
   if (!p.width || !p.height) return []
   const suffix = idx > 0 ? ` ${idx + 1}` : ''
   const layers: NamedCutLayer[] = []
+  // reorient:true — these are potrace paths whose holes wind the same way as their outer contour; the
+  // assembler must fix the winding or nonzero fills the letter counters (prod bug, 2026-08-27).
   if (sep.contour) {
     const vb = vbOf(sep.contour)
-    if (vb) layers.push({ name: `Contour${suffix}`, fill: CONTOUR_FILL, d: pathsOf(sep.contour).map(d => toPhysical(d, vb.w, vb.h, p, box, phys)).join(' ') })
+    if (vb) layers.push({ name: `Contour${suffix}`, fill: CONTOUR_FILL, reorient: true, d: pathsOf(sep.contour).map(d => toPhysical(d, vb.w, vb.h, p, box, phys)).join(' ') })
   }
   for (const s of sep.solids) {
     const vb = vbOf(s.svg)
-    if (vb) layers.push({ name: `Vinyl ${s.color}${suffix}`, fill: s.color, d: pathsOf(s.svg).map(d => toPhysical(d, vb.w, vb.h, p, box, phys)).join(' ') })
+    if (vb) layers.push({ name: `Vinyl ${s.color}${suffix}`, fill: s.color, reorient: true, d: pathsOf(s.svg).map(d => toPhysical(d, vb.w, vb.h, p, box, phys)).join(' ') })
   }
   return layers
 }

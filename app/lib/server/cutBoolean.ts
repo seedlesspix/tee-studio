@@ -35,7 +35,11 @@ const closeSubpaths = (d: string): string =>
 // the bench sees every make-up option in one place (Denise 2026-08-27). Same per-layer union/crop/mirror
 // treatment and the same physical 300-DPI space as assembleCutSvgUnioned; the only difference is the group
 // carries the caller's name instead of one derived from the fill.
-export type NamedCutLayer = { name: string; fill: string; d: string }
+// `reorient`: normalize subpath winding for the nonzero fill rule BEFORE any boolean/output. potrace emits
+// hole subpaths (letter counters) with the SAME winding as their outer contour, which nonzero fills in
+// solid (opentype vector paths already wind holes opposite, so they don't need this). paper's reorient()
+// makes nested subpaths wind opposite so nonzero renders the holes correctly AND they survive crop/union.
+export type NamedCutLayer = { name: string; fill: string; d: string; reorient?: boolean }
 export function assembleLayeredCutSvg(
   layers: NamedCutLayer[], phys: PhysBox, opts: { dpi?: number; mirror?: boolean } = {},
 ): string {
@@ -51,6 +55,8 @@ export function assembleLayeredCutSvg(
       if (!layer.d) { i++; continue }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const combined: any = scope.PathItem.create(closeSubpaths(layer.d))
+      // Fix potrace's same-winding holes BEFORE any boolean/output (see NamedCutLayer.reorient).
+      if (layer.reorient && typeof combined.reorient === 'function') combined.reorient()
       const selfCrosses = (combined.getCrossings ? combined.getCrossings() : combined.getIntersections()).length > 0
       const insideBox = box.bounds.contains(combined.bounds)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
