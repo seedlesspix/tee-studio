@@ -206,6 +206,13 @@ export function vectorCutLayers(paths: CutPath[]): NamedCutLayer[] {
   return [...byColor.entries()].map(([fill, ds]) => ({ name: `Cut ${fill}`, fill, d: ds.join(' ') }))
 }
 
+// ⛔ TEMP KILL-SWITCH (prod 2026-08-27): the layered raster SVG shipped WRONG geometry — potrace hole
+// subpaths (letter counters) FILLED IN under the assembler's nonzero fill-rule (potrace paths need evenodd;
+// opentype vector paths are fine with nonzero, which is why only the raster layers broke). Disabled so we
+// never ship a wrong cut file; a raster order skips with a bench note and the art still prints from
+// Originals/. Re-enable (true) only after the winding fix lands AND is re-verified with a FILLED render.
+const RASTER_CUT_ENABLED = false
+
 export type RasterCutResult = { layers: NamedCutLayer[]; phys: PhysBox | null; notes: string[] }
 // Phase 2: SEPARATE + PLACE every raster on a side into physical named cut layers (Contour + one Vinyl per
 // solid color), positioned exactly where the art sits in the print area. Skips converts whose bench
@@ -217,6 +224,10 @@ export async function collectRasterCutLayers(canvasJson: string | null | undefin
   if (!prep.ok) return { layers: [], phys: null, notes: [] }
   const { objects, canvasBox, phys } = prep
   const rasters = objects.filter(o => isRasterObj(o) && o._cutFromDifferentSource !== true)
+  // Kill-switch: skip the layered raster cut entirely rather than emit a wrong file (see RASTER_CUT_ENABLED).
+  if (!RASTER_CUT_ENABLED) {
+    return { layers: [], phys, notes: rasters.length ? ['a placed image is present — automatic vinyl/contour separation is temporarily OFF for a fix; print it from Originals/ and cut by hand for now'] : [] }
+  }
   const layers: NamedCutLayer[] = []
   const notes: string[] = []
   let idx = 0
