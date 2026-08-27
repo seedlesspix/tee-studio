@@ -208,6 +208,31 @@ const CANVAS_CUSTOM_PROPS = ['_isSvg', '_originalText', '_currentColor', '_isCur
   // data-URL, so keep the ORIGINAL svg url here for the cut/layout engines (they fetch it + key off viewBox).
   '_svgOrigSrc']
 
+// An UPLOADED image is loaded into Fabric FROM a base64 data-URL, so its serialized `src` carries the whole
+// image; `_uploadSrc` holds the hosted (Cloudinary/storage) URL for those same bytes. Rewrite `src` -> that
+// hosted URL in the SERIALIZED json so canvas_json REFERENCES the image instead of embedding it — otherwise
+// one multi-MB upload pushes the inline save/draft POST past Vercel's 4.5MB request-body cap (413
+// FUNCTION_PAYLOAD_TOO_LARGE). Operates on the plain toObject() OUTPUT only; the live Fabric object keeps its
+// data-URL src, so nothing on-canvas re-fetches or flickers. crossOrigin='anonymous' is set alongside so the
+// restored image (Edit design / draft restore) loads CORS-clean and the canvas stays exportable (Cloudinary
+// serves Access-Control-Allow-Origin). No hosted _uploadSrc yet (Cloudinary still uploading, or unconfigured)
+// -> the object is left as-is, preserving the image over the size win. Library SVG clipart (_svgOrigSrc, no
+// _uploadSrc) is intentionally untouched — its restore re-rasterizes hi-res and needs the raster src.
+const dehydrateUploadedSrcs = (serialized: any): any => {
+  const walk = (objs: any[]) => {
+    for (const o of objs) {
+      if (o && typeof o.src === 'string' && o.src.startsWith('data:') &&
+          typeof o._uploadSrc === 'string' && !o._uploadSrc.startsWith('data:')) {
+        o.src = o._uploadSrc
+        o.crossOrigin = 'anonymous'
+      }
+      if (Array.isArray(o?.objects)) walk(o.objects) // groups / nested objects
+    }
+  }
+  if (Array.isArray(serialized?.objects)) walk(serialized.objects)
+  return serialized
+}
+
 // Rasterize an SVG at HIGH RES so library clipart stays crisp when enlarged. A plain FabricImage.fromURL
 // rasterizes the SVG at its tiny natural size (~250px) → blur when scaled up. Fetch the SVG, PRESERVE its
 // viewBox, and set a large root width/height so the browser rasterizes at ~targetPx. The cut/layout engines
@@ -4382,7 +4407,9 @@ export default function DesignerCanvas({
         // _uploadSrc stamps too — taking the print shop's files with it.
         // Proof: the draft path's toObject(CUSTOM_PROPS) kept stamps on the same
         // objects, minutes apart, in the same session.
-        const json = JSON.stringify(canvas.toObject(CANVAS_CUSTOM_PROPS))
+        // dehydrate: swap uploaded images' embedded data-URL src -> hosted _uploadSrc, or this JSON alone
+        // can blow the 4.5MB POST cap (413). See dehydrateUploadedSrcs.
+        const json = JSON.stringify(dehydrateUploadedSrcs(canvas.toObject(CANVAS_CUSTOM_PROPS)))
         const [png, svg] = await Promise.all([
           pngBlob ? uploadToStorage(pngBlob, `${orderId}/${name}.png`, 'design-exports') : null,
           svgBlob ? uploadToStorage(svgBlob, `${orderId}/${name}.svg`, 'design-exports') : null,
@@ -4772,8 +4799,10 @@ export default function DesignerCanvas({
     // Custom props Fabric's default serializer drops but we rely on for editing
     // affordances (SVG recolor, uppercase toggle, curved-text identity).
     const CUSTOM_PROPS = CANVAS_CUSTOM_PROPS
-    const liveJson = canvas.toObject(CUSTOM_PROPS)
-    const serializeRef = (objs: any[]) => ({
+    // dehydrate uploaded images' embedded data-URL src -> hosted _uploadSrc so the draft POST can't blow the
+    // 4.5MB cap either (same fix as the order-save path). See dehydrateUploadedSrcs.
+    const liveJson = dehydrateUploadedSrcs(canvas.toObject(CUSTOM_PROPS))
+    const serializeRef = (objs: any[]) => dehydrateUploadedSrcs({
       version: liveJson.version,
       objects: objs.map((o: any) => (o.toObject ? o.toObject(CUSTOM_PROPS) : o)),
     })
@@ -5091,6 +5120,19 @@ export default function DesignerCanvas({
         alert(format(t('designer.nn_empty_roster', 'Your Names & Numbers list has no {fields} filled in yet. Add at least one in the Names & Numbers panel before continuing.'), { fields }))
         return
       }
+    }
+    // Upload-still-in-flight gate (mirrors the Remove Background guard, :4069). A freshly uploaded image
+    // keeps its base64 data URL until its Cloudinary upload resolves; saving in that window embeds the whole
+    // image in canvas_json and the POST 413s (Vercel caps the request body at ~4.5MB — dehydrateUploadedSrcs
+    // can only shrink it once _uploadSrc is the hosted URL). Ask the customer to wait the moment out (it
+    // flips within a second or two) or re-upload if it truly failed. Checks the live view AND every zone.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const uploadPending = [...canvas.getObjects(), ...allZoneObjs()].some(
+      (o: any) => o && String(o.type).toLowerCase() === 'image' && typeof o._uploadSrc === 'string' && !/^https?:\/\//.test(o._uploadSrc),
+    )
+    if (uploadPending) {
+      alert(t('designer.next_upload_wait', 'Your image is still uploading — please wait a moment, then tap Next Step again. If it doesn’t finish, try re-uploading the image.'))
+      return
     }
     // Deselect all objects so handles don't show in preview
     canvas.discardActiveObject()
