@@ -19,7 +19,6 @@ import { collectCutPaths, collectRasterCutLayers, vectorCutLayers } from '../../
 import { orderFileStem } from '../../../lib/orderFiles'
 import { assembleCutSvgUnioned, assembleLayeredCutSvg } from '../../../lib/server/cutBoolean'
 import { generateLayoutSvgForSide } from '../../../lib/server/generateLayout'
-import { traceForCut } from '../../../lib/server/autoTrace'
 import { collectNnCutPaths, nnEntryFilename } from '../../../lib/server/nnCutFiles'
 import { type RosterEntry, entryHasContent, rosterValue, rosterShirtCount } from '../../../lib/namesNumbers'
 import { orderZones, zoneLabel } from '../../../lib/zones'
@@ -256,9 +255,7 @@ export async function GET(req: NextRequest) {
   const origFolder = uploads.length ? root.folder('Originals')! : null
   const origLines: string[] = []
   const uploadLines: string[] = []
-  const traceLines: string[] = []
   let webFolder: JSZip | null = null
-  let traceFolder: JSZip | null = null
   for (let i = 0; i < uploads.length; i++) {
     const f = uploads[i]
     const base = (f.name || `upload-${i + 1}`).replace(/[/\\]/g, '_')
@@ -280,16 +277,6 @@ export async function GET(req: NextRequest) {
             origFolder!.file(`${i + 1}-${stem}-inverted.png`, inv)
             origLines.push(`  ✓ Originals/${i + 1}-${stem}-inverted.png  (auto-inverted — white/light artwork, for tracing)`)
           }
-        }
-        // Auto-trace artwork -> best-effort cut vector (potrace silhouette). Transparent art (incl.
-        // MULTICOLOR) traces its alpha contour; opaque one-color traces luminance; photos/fuzzy art gate
-        // out. Best-effort: verify in Illustrator; the raster in Originals/ is the source. The island
-        // count = how many separate pieces to weed (the bench's difficulty signal).
-        const { svg: traced, islands } = await traceForCut(bytes)
-        if (traced) {
-          traceFolder ??= root.folder('Auto-Traced')!
-          traceFolder.file(`${i + 1}-${stem}-traced.svg`, traced)
-          traceLines.push(`  ✓ Auto-Traced/${i + 1}-${stem}-traced.svg  (best-effort — verify in Illustrator; ~${islands} pieces to weed)`)
         }
       } else origLines.push(`  ⚠ Originals/${name} — could not fetch`)
     }
@@ -400,15 +387,12 @@ export async function GET(req: NextRequest) {
     `UPLOADS (web-converted, reference)`,
     ...uploadLines,
     ``,
-    `AUTO-TRACED (best-effort vinyl cut vector — one-color art only; VERIFY in Illustrator)`,
-    ...(traceLines.length ? traceLines : ['  (none — no one-color artwork to auto-trace)']),
-    ``,
     `${'-'.repeat(50)}`,
-    `FOLDERS: Cut Files/ = normal-cut vector (adhesive, print-then-cut) · Cut Files`,
-    `(Mirrored)/ = same, flipped for heat-transfer vinyl · Layout/ = to-size map of`,
-    `where every element goes (incl. photos) · Previews/ = the mockup the customer`,
-    `approved · Originals/ = the file to print from · Uploads/ = web renditions ·`,
-    `Auto-Traced/ = best-effort potrace of one-color uploads (verify before cutting).`,
+    `FOLDERS: Cut Files/ = cutter-ready vector — text/clipart PLUS, for a placed image,`,
+    `a Contour (transfer) layer + a Vinyl layer per solid color, all named in one SVG ·`,
+    `Cut Files (Mirrored)/ = same, flipped for heat-transfer vinyl · Layout/ = to-size`,
+    `map of where every element goes (incl. photos) · Previews/ = the mockup the customer`,
+    `approved · Originals/ = the file to print from · Uploads/ = web renditions.`,
     `Cut files are union'd + cropped, cutter-ready (no clip mask). Generated on download.`,
   ]
   root.file('OrderInfo.txt', info.join('\n') + '\n')
