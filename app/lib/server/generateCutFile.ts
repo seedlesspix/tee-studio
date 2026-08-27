@@ -8,9 +8,9 @@ import { getFontBuffer, toArrayBuffer, baseFamily } from './fontBuffer'
 import { boxFromSnapshot, isSnapshot, type CanvasBox } from './cutFileGeometry'
 import { outlineText, curvedTextToCutPath, type TextPlacement, type CutPath, type PhysBox } from './cutFileEngine'
 import { clipartToCutPaths } from './clipartCutEngine'
-import { assembleCutSvgUnioned, type NamedCutLayer } from './cutBoolean'
+import { assembleCutSvgUnioned, type NamedCutLayer, type ImageLayer } from './cutBoolean'
 import { separateRasterForCut } from './rasterSeparate'
-import { placeRasterCutLayers } from './rasterCutPlace'
+import { placeRasterCutLayers, rasterImageMatrix } from './rasterCutPlace'
 
 export type CutGenOptions = { fontOverride?: string | null; mirror?: boolean }
 
@@ -212,7 +212,7 @@ export function vectorCutLayers(paths: CutPath[]): NamedCutLayer[] {
 // re-verified with a FILLED render + bench sign-off. Re-enabled 2026-08-27.
 const RASTER_CUT_ENABLED = true
 
-export type RasterCutResult = { layers: NamedCutLayer[]; phys: PhysBox | null; notes: string[] }
+export type RasterCutResult = { layers: NamedCutLayer[]; imageLayers: ImageLayer[]; phys: PhysBox | null; notes: string[] }
 // Phase 2: SEPARATE + PLACE every raster on a side into physical named cut layers (Contour + one Vinyl per
 // solid color), positioned exactly where the art sits in the print area. Skips converts whose bench
 // cut-source is the raw vector (_cutFromDifferentSource) and any raster that isn't a clean transparent
@@ -220,23 +220,25 @@ export type RasterCutResult = { layers: NamedCutLayer[]; phys: PhysBox | null; n
 // a thrown bundle. Returns phys (for the layered assembly) even when nothing qualifies.
 export async function collectRasterCutLayers(canvasJson: string | null | undefined, snap: unknown): Promise<RasterCutResult> {
   const prep = prepareSide(canvasJson, snap)
-  if (!prep.ok) return { layers: [], phys: null, notes: [] }
+  if (!prep.ok) return { layers: [], imageLayers: [], phys: null, notes: [] }
   const { objects, canvasBox, phys } = prep
   const rasters = objects.filter(o => isRasterObj(o) && o._cutFromDifferentSource !== true)
   // Kill-switch: skip the layered raster cut entirely rather than emit a wrong file (see RASTER_CUT_ENABLED).
   if (!RASTER_CUT_ENABLED) {
-    return { layers: [], phys, notes: rasters.length ? ['a placed image is present — automatic vinyl/contour separation is temporarily OFF for a fix; print it from Originals/ and cut by hand for now'] : [] }
+    return { layers: [], imageLayers: [], phys, notes: rasters.length ? ['a placed image is present — automatic vinyl/contour separation is temporarily OFF for a fix; print it from Originals/ and cut by hand for now'] : [] }
   }
   const layers: NamedCutLayer[] = []
+  const imageLayers: ImageLayer[] = []
   const notes: string[] = []
   let idx = 0
   for (const obj of rasters) {
     const src = String(obj._uploadSrc || obj.src || '')
     if (!/^https?:\/\//.test(src)) { notes.push('a placed image has no hosted source — skipped'); continue }
-    let bytes: Uint8Array
+    let bytes: Uint8Array, ct = ''
     try {
       const res = await fetch(src)
       if (!res.ok) { notes.push(`a placed image could not be fetched (${res.status}) — skipped`); continue }
+      ct = res.headers.get('content-type') || ''
       bytes = new Uint8Array(await res.arrayBuffer())
     } catch { notes.push('a placed image could not be fetched — skipped'); continue }
     const sep = await separateRasterForCut(bytes)
@@ -249,9 +251,19 @@ export async function collectRasterCutLayers(canvasJson: string | null | undefin
     const placed = placeRasterCutLayers(sep, obj, canvasBox, phys, idx)
     if (placed.length) {
       layers.push(...placed)
-      notes.push(`Contour (${sep.islands} pieces) + ${sep.solids.length} vinyl [${sep.solids.map(s => s.color).join(', ')}]`)
+      // PRINT layer (print-and-cut): embed the art at FULL quality as an <image>, placed to register with the
+      // cuts, so the file prints AND cuts in one. Reuse the fetched bytes (no re-fetch); the bundle now streams
+      // its response, so there's no size ceiling to fear.
+      const mime = ct.startsWith('image/') ? ct.split(';')[0]
+        : /\.jpe?g(\?|$)/i.test(src) ? 'image/jpeg' : /\.webp(\?|$)/i.test(src) ? 'image/webp' : 'image/png'
+      const suffix = idx > 0 ? ` ${idx + 1}` : ''
+      imageLayers.push({
+        name: `Print${suffix}`, href: `data:${mime};base64,${Buffer.from(bytes).toString('base64')}`,
+        w: Number(obj.width) || 0, h: Number(obj.height) || 0, matrix: rasterImageMatrix(obj, canvasBox, phys),
+      })
+      notes.push(`Print (full art) + Contour (${sep.islands} pieces) + ${sep.solids.length} vinyl [${sep.solids.map(s => s.color).join(', ')}]`)
       idx++
     }
   }
-  return { layers, phys, notes }
+  return { layers, imageLayers, phys, notes }
 }

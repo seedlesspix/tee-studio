@@ -7,12 +7,36 @@
 import svgpath from 'svgpath'
 import type { CanvasBox } from './cutFileGeometry'
 import type { PhysBox } from './cutFileEngine'
-import type { NamedCutLayer } from './cutBoolean'
+import type { NamedCutLayer, Mat6 } from './cutBoolean'
 import type { SeparateResult } from './rasterSeparate'
 
 type Placement = {
   left: number; top: number; scaleX: number; scaleY: number
   angle: number; width: number; height: number; flipX: boolean; flipY: boolean
+}
+const readPlacement = (obj: Record<string, unknown>): Placement => ({
+  left: Number(obj.left) || 0, top: Number(obj.top) || 0,
+  scaleX: Number(obj.scaleX ?? 1), scaleY: Number(obj.scaleY ?? 1),
+  angle: Number(obj.angle ?? 0),
+  width: Number(obj.width) || 0, height: Number(obj.height) || 0,
+  flipX: obj.flipX === true, flipY: obj.flipY === true,
+})
+
+// 2x3 affine helpers (matrix(a b c d e f): (x,y) -> (a·x+c·y+e, b·x+d·y+f)); mMul(a,b) = a∘b (b applied first).
+const tM = (x: number, y: number): Mat6 => [1, 0, 0, 1, x, y]
+const sM = (x: number, y: number): Mat6 => [x, 0, 0, y, 0, 0]
+const rM = (deg: number): Mat6 => { const r = deg * Math.PI / 180, c = Math.cos(r), s = Math.sin(r); return [c, s, -s, c, 0, 0] }
+const mMul = (a: Mat6, b: Mat6): Mat6 => [a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1], a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3], a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5]]
+
+// Matrix placing [0..width]×[0..height] natural image px into the physical 300-DPI space — the SAME chain as
+// the traced paths (and generateLayout's rasterFragment), so the embedded Print image registers with the cuts.
+export function rasterImageMatrix(obj: Record<string, unknown>, box: CanvasBox, phys: PhysBox, dpi = 300): Mat6 {
+  const p = readPlacement(obj)
+  const uX = (phys.width_in * dpi) / box.width, uY = (phys.height_in * dpi) / box.height
+  return [
+    sM(uX, uY), tM(-box.left, -box.top), tM(p.left, p.top), rM(p.angle),
+    sM(p.scaleX * (p.flipX ? -1 : 1), p.scaleY * (p.flipY ? -1 : 1)), tM(-p.width / 2, -p.height / 2),
+  ].reduce(mMul)
 }
 
 const vbOf = (svg: string) => { const m = svg.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/); return m ? { w: +m[1], h: +m[2] } : null }
@@ -41,13 +65,7 @@ const CONTOUR_FILL = '#808080'
 // Build the named cut layers (Contour + one per vinyl color) for one raster, in physical space.
 // idx > 0 suffixes the names ("Contour 2") when a side carries more than one raster.
 export function placeRasterCutLayers(sep: SeparateResult, obj: Record<string, unknown>, box: CanvasBox, phys: PhysBox, idx = 0): NamedCutLayer[] {
-  const p: Placement = {
-    left: Number(obj.left) || 0, top: Number(obj.top) || 0,
-    scaleX: Number(obj.scaleX ?? 1), scaleY: Number(obj.scaleY ?? 1),
-    angle: Number(obj.angle ?? 0),
-    width: Number(obj.width) || 0, height: Number(obj.height) || 0,
-    flipX: obj.flipX === true, flipY: obj.flipY === true,
-  }
+  const p = readPlacement(obj)
   if (!p.width || !p.height) return []
   const suffix = idx > 0 ? ` ${idx + 1}` : ''
   const layers: NamedCutLayer[] = []

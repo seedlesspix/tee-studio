@@ -218,7 +218,9 @@ export async function GET(req: NextRequest) {
         } else {
           const phys = (c.ok ? c.phys : rc.phys)!
           const allLayers = [...(c.ok ? vectorCutLayers(c.paths) : []), ...rc.layers]
-          cutFolder.file(fn, assembleLayeredCutSvg(allLayers, phys, { mirror: false }))
+          // Print layer (embedded art) only in the NORMAL file — print-and-cut prints face-up; the mirrored
+          // copy is for heat-transfer VINYL (flipped), which doesn't print, so it stays image-free + lean.
+          cutFolder.file(fn, assembleLayeredCutSvg(allLayers, phys, { mirror: false }, rc.imageLayers))
           cutMirrorFolder.file(fn, assembleLayeredCutSvg(allLayers, phys, { mirror: true }))
           cutLines.push(`  ✓ ${fn}  (layered — normal + mirrored)`)
           for (const n of rc.notes) cutLines.push(`    · ${n}`)
@@ -406,7 +408,19 @@ export async function GET(req: NextRequest) {
   ]
   root.file('OrderInfo.txt', info.join('\n') + '\n')
 
-  const body = await zip.generateAsync({ type: 'arraybuffer' }) // plain ArrayBuffer = clean BodyInit
+  // STREAM the zip rather than buffer it: a buffered Response body hits the serverless response-size ceiling
+  // (the earlier prod-bundle-500 territory), so a large bundle — e.g. one carrying an embedded print image —
+  // could fail to download. A streamed body has no such cap. JSZip's internal stream emits chunks; wrap it in
+  // a Web ReadableStream. streamFiles keeps memory bounded per entry too.
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      zip.generateInternalStream({ type: 'uint8array', streamFiles: true })
+        .on('data', (chunk: Uint8Array) => controller.enqueue(chunk))
+        .on('error', (err: Error) => controller.error(err))
+        .on('end', () => controller.close())
+        .resume()
+    },
+  })
   return new NextResponse(body, {
     status: 200,
     headers: {

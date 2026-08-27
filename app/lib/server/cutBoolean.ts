@@ -40,8 +40,19 @@ const closeSubpaths = (d: string): string =>
 // solid (opentype vector paths already wind holes opposite, so they don't need this). paper's reorient()
 // makes nested subpaths wind opposite so nonzero renders the holes correctly AND they survive crop/union.
 export type NamedCutLayer = { name: string; fill: string; d: string; reorient?: boolean }
+// A raster PRINT layer (print-and-cut): the artwork embedded as an <image> so the layered SVG doubles as a
+// self-contained print-and-cut — print this, cut the Contour. `matrix` places [0..w]×[0..h] natural px into
+// the physical 300-DPI space (built by the caller from the raster's Fabric placement).
+export type Mat6 = [number, number, number, number, number, number]
+export type ImageLayer = { name: string; href: string; w: number; h: number; matrix: Mat6 }
+const matMul = (m1: Mat6, m2: Mat6): Mat6 => [
+  m1[0] * m2[0] + m1[2] * m2[1], m1[1] * m2[0] + m1[3] * m2[1],
+  m1[0] * m2[2] + m1[2] * m2[3], m1[1] * m2[2] + m1[3] * m2[3],
+  m1[0] * m2[4] + m1[2] * m2[5] + m1[4], m1[1] * m2[4] + m1[3] * m2[5] + m1[5],
+]
+
 export function assembleLayeredCutSvg(
-  layers: NamedCutLayer[], phys: PhysBox, opts: { dpi?: number; mirror?: boolean } = {},
+  layers: NamedCutLayer[], phys: PhysBox, opts: { dpi?: number; mirror?: boolean } = {}, imageLayers: ImageLayer[] = [],
 ): string {
   const dpi = opts.dpi ?? 300
   const viewW = Math.round(phys.width_in * dpi), viewH = Math.round(phys.height_in * dpi)
@@ -76,9 +87,19 @@ export function assembleLayeredCutSvg(
       i++
     }
     box.remove()
+
+    // PRINT layers (embedded artwork) at the BOTTOM (drawn first) so cut lines read on top. Mirror is baked
+    // into the matrix (flip around viewW/2) so the print flips WITH the cuts in the mirrored file.
+    const rnd = (n: number) => Math.round(n * 1e4) / 1e4
+    const imgOut = imageLayers.filter(im => im.href && im.w && im.h).map(im => {
+      const m = opts.mirror ? matMul([-1, 0, 0, 1, viewW, 0], im.matrix) : im.matrix
+      return `  <g id="${idSafe(im.name)}" data-name="${esc(im.name)}">\n` +
+        `    <image x="0" y="0" width="${im.w}" height="${im.h}" transform="matrix(${m.map(rnd).join(' ')})" preserveAspectRatio="none" xlink:href="${im.href}"/>\n  </g>`
+    })
+
     return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${phys.width_in}in" height="${phys.height_in}in" viewBox="0 0 ${viewW} ${viewH}" preserveAspectRatio="xMidYMid meet">
-${out.join('\n')}
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${phys.width_in}in" height="${phys.height_in}in" viewBox="0 0 ${viewW} ${viewH}" preserveAspectRatio="xMidYMid meet">
+${[...imgOut, ...out].join('\n')}
 </svg>`
   } finally {
     scope.project?.remove()
