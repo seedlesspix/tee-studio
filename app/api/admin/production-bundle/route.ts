@@ -207,14 +207,23 @@ export async function GET(req: NextRequest) {
       const rc = await collectRasterCutLayers(canvasJson, snap)
       const fn = `${orderNo}-${z.key}.svg`
       if (rc.layers.length > 0) {
-        const phys = (c.ok ? c.phys : rc.phys)!
-        const allLayers = [...(c.ok ? vectorCutLayers(c.paths) : []), ...rc.layers]
-        cutFolder.file(fn, assembleLayeredCutSvg(allLayers, phys, { mirror: false }))
-        cutMirrorFolder.file(fn, assembleLayeredCutSvg(allLayers, phys, { mirror: true }))
-        cutLines.push(`  ✓ ${fn}  (layered — normal + mirrored)`)
-        for (const n of rc.notes) cutLines.push(`    · ${n}`)
-        if (c.ok && c.warning) cutLines.push(`    ⚠ ${c.warning}`)
-        else if (!c.ok && (c.reason === 'outline-failed' || c.reason === 'bad-json')) cutLines.push(`    ⚠ vector layer: ${c.message}`)
+        // LOUD-FAIL INVARIANT (must survive the raster path): a vector object that SHOULD cut but couldn't
+        // (a font opentype can't outline, bad json) means this side's cut is incomplete. Never ship a
+        // partial file marked ✓ — emit NO file and the same COULD-NOT-GENERATE + font list the pure-vector
+        // path does, so the bench never presses a garment missing its text. Only combine when the vector
+        // part is OK, or legitimately absent (no-vector: the side is raster-only).
+        if (!c.ok && (c.reason === 'outline-failed' || c.reason === 'bad-json')) {
+          cutLines.push(`  ⚠ COULD NOT GENERATE ${fn}: ${c.message}${c.fonts ? ` [${c.fonts.join('; ')}]` : ''}`)
+          for (const n of rc.notes) cutLines.push(`    · ${n}`)
+        } else {
+          const phys = (c.ok ? c.phys : rc.phys)!
+          const allLayers = [...(c.ok ? vectorCutLayers(c.paths) : []), ...rc.layers]
+          cutFolder.file(fn, assembleLayeredCutSvg(allLayers, phys, { mirror: false }))
+          cutMirrorFolder.file(fn, assembleLayeredCutSvg(allLayers, phys, { mirror: true }))
+          cutLines.push(`  ✓ ${fn}  (layered — normal + mirrored)`)
+          for (const n of rc.notes) cutLines.push(`    · ${n}`)
+          if (c.ok && c.warning) cutLines.push(`    ⚠ ${c.warning}`)
+        }
       } else {
         emitCut(c, fn, cutFolder, cutMirrorFolder, fn)
         for (const n of rc.notes) cutLines.push(`    · ${n}`) // surface why a placed image wasn't cut
