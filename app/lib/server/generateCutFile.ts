@@ -8,7 +8,9 @@ import { getFontBuffer, toArrayBuffer, baseFamily } from './fontBuffer'
 import { boxFromSnapshot, isSnapshot, type CanvasBox } from './cutFileGeometry'
 import { outlineText, curvedTextToCutPath, type TextPlacement, type CutPath, type PhysBox } from './cutFileEngine'
 import { clipartToCutPaths } from './clipartCutEngine'
-import { assembleCutSvgUnioned } from './cutBoolean'
+import { assembleCutSvgUnioned, type NamedCutLayer } from './cutBoolean'
+import { separateRasterForCut } from './rasterSeparate'
+import { placeRasterCutLayers } from './rasterCutPlace'
 
 export type CutGenOptions = { fontOverride?: string | null; mirror?: boolean }
 
@@ -193,4 +195,53 @@ export async function generateCutSvgForSide(
   if (!c.ok) return c
   // Cutter-ready: union per color layer + math crop (no mask) + optional mirror.
   return { ok: true, svg: assembleCutSvgUnioned(c.paths, c.phys, { mirror: opts.mirror }), warning: c.warning }
+}
+
+// Phase 2 (cut model): group vector cut paths (text/clipart) into named per-color layers for the
+// Illustrator-layered SVG that a mixed raster order ships as. Same paths as assembleCutSvgUnioned would
+// group — just carried as explicitly-named layers ("Cut #hex") so they sit beside the raster layers.
+export function vectorCutLayers(paths: CutPath[]): NamedCutLayer[] {
+  const byColor = new Map<string, string[]>()
+  for (const p of paths) { if (!p.d) continue; const a = byColor.get(p.fill) ?? []; a.push(p.d); byColor.set(p.fill, a) }
+  return [...byColor.entries()].map(([fill, ds]) => ({ name: `Cut ${fill}`, fill, d: ds.join(' ') }))
+}
+
+export type RasterCutResult = { layers: NamedCutLayer[]; phys: PhysBox | null; notes: string[] }
+// Phase 2: SEPARATE + PLACE every raster on a side into physical named cut layers (Contour + one Vinyl per
+// solid color), positioned exactly where the art sits in the print area. Skips converts whose bench
+// cut-source is the raw vector (_cutFromDifferentSource) and any raster that isn't a clean transparent
+// silhouette (reason != cuttable) — each with a bench note. Best-effort: a fetch/trace miss is a note, never
+// a thrown bundle. Returns phys (for the layered assembly) even when nothing qualifies.
+export async function collectRasterCutLayers(canvasJson: string | null | undefined, snap: unknown): Promise<RasterCutResult> {
+  const prep = prepareSide(canvasJson, snap)
+  if (!prep.ok) return { layers: [], phys: null, notes: [] }
+  const { objects, canvasBox, phys } = prep
+  const rasters = objects.filter(o => isRasterObj(o) && o._cutFromDifferentSource !== true)
+  const layers: NamedCutLayer[] = []
+  const notes: string[] = []
+  let idx = 0
+  for (const obj of rasters) {
+    const src = String(obj._uploadSrc || obj.src || '')
+    if (!/^https?:\/\//.test(src)) { notes.push('a placed image has no hosted source — skipped'); continue }
+    let bytes: Uint8Array
+    try {
+      const res = await fetch(src)
+      if (!res.ok) { notes.push(`a placed image could not be fetched (${res.status}) — skipped`); continue }
+      bytes = new Uint8Array(await res.arrayBuffer())
+    } catch { notes.push('a placed image could not be fetched — skipped'); continue }
+    const sep = await separateRasterForCut(bytes)
+    if (sep.reason !== 'cuttable') {
+      notes.push(sep.reason === 'opaque_background'
+        ? 'a placed image has no transparent background — remove the background to cut it (left as print/transfer)'
+        : `a placed image is ${sep.reason} — not cut`)
+      continue
+    }
+    const placed = placeRasterCutLayers(sep, obj, canvasBox, phys, idx)
+    if (placed.length) {
+      layers.push(...placed)
+      notes.push(`Contour (${sep.islands} pieces) + ${sep.solids.length} vinyl [${sep.solids.map(s => s.color).join(', ')}]`)
+      idx++
+    }
+  }
+  return { layers, phys, notes }
 }

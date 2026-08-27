@@ -30,6 +30,55 @@ const closeSubpaths = (d: string): string =>
     return !t ? '' : /[Zz]\s*$/.test(t) ? t : t + 'Z'
   }).filter(Boolean).join('')
 
+// Phase 2 (cut model): assemble EXPLICITLY-NAMED layers into ONE Illustrator-ready SVG — so a mixed
+// raster order lands as a single file whose Layers panel reads "Contour", "Vinyl #hex", "Cut #hex", and
+// the bench sees every make-up option in one place (Denise 2026-08-27). Same per-layer union/crop/mirror
+// treatment and the same physical 300-DPI space as assembleCutSvgUnioned; the only difference is the group
+// carries the caller's name instead of one derived from the fill.
+export type NamedCutLayer = { name: string; fill: string; d: string }
+export function assembleLayeredCutSvg(
+  layers: NamedCutLayer[], phys: PhysBox, opts: { dpi?: number; mirror?: boolean } = {},
+): string {
+  const dpi = opts.dpi ?? 300
+  const viewW = Math.round(phys.width_in * dpi), viewH = Math.round(phys.height_in * dpi)
+  const scope = new paper.PaperScope()
+  scope.setup(new scope.Size(Math.max(viewW, 1), Math.max(viewH, 1)))
+  try {
+    const box = new scope.Path.Rectangle(new scope.Rectangle(0, 0, viewW, viewH))
+    const out: string[] = []
+    let i = 0
+    for (const layer of layers) {
+      if (!layer.d) { i++; continue }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const combined: any = scope.PathItem.create(closeSubpaths(layer.d))
+      const selfCrosses = (combined.getCrossings ? combined.getCrossings() : combined.getIntersections()).length > 0
+      const insideBox = box.bounds.contains(combined.bounds)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let region: any = combined
+      if (selfCrosses) { const empty = new scope.Path(); region = region.unite(empty); empty.remove() }
+      if (!insideBox) region = region.intersect(box)
+      if (opts.mirror) region.scale(-1, 1, new scope.Point(viewW / 2, viewH / 2))
+      const d = region.pathData || ''
+      if (region !== combined) combined.remove()
+      region.remove()
+      if (d) {
+        out.push(
+          `  <g id="${idSafe(layer.name)}" data-name="${esc(layer.name)}">\n` +
+          `    <path fill="${layer.fill}" fill-rule="nonzero" d="${d}"/>\n  </g>`,
+        )
+      }
+      i++
+    }
+    box.remove()
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${phys.width_in}in" height="${phys.height_in}in" viewBox="0 0 ${viewW} ${viewH}" preserveAspectRatio="xMidYMid meet">
+${out.join('\n')}
+</svg>`
+  } finally {
+    scope.project?.remove()
+  }
+}
+
 export function assembleCutSvgUnioned(
   paths: CutPath[], phys: PhysBox, opts: { dpi?: number; mirror?: boolean } = {},
 ): string {

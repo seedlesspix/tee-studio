@@ -15,9 +15,9 @@ import JSZip from 'jszip'
 import sharp from 'sharp'
 import { createClient } from '../../../lib/supabase/server'
 import { serviceClient } from '../../../lib/customer-library'
-import { collectCutPaths } from '../../../lib/server/generateCutFile'
+import { collectCutPaths, collectRasterCutLayers, vectorCutLayers } from '../../../lib/server/generateCutFile'
 import { orderFileStem } from '../../../lib/orderFiles'
-import { assembleCutSvgUnioned } from '../../../lib/server/cutBoolean'
+import { assembleCutSvgUnioned, assembleLayeredCutSvg } from '../../../lib/server/cutBoolean'
 import { generateLayoutSvgForSide } from '../../../lib/server/generateLayout'
 import { traceForCut } from '../../../lib/server/autoTrace'
 import { collectNnCutPaths, nnEntryFilename } from '../../../lib/server/nnCutFiles'
@@ -202,7 +202,24 @@ export async function GET(req: NextRequest) {
       }
     } else {
       const c = await collectCutPaths(canvasJson, snap)
-      emitCut(c, `${orderNo}-${z.key}.svg`, cutFolder, cutMirrorFolder, `${orderNo}-${z.key}.svg`)
+      // Phase 2: a placed RASTER contributes a Contour + per-vinyl-color layers (separated + placed). When
+      // any raster qualifies, ship ONE Illustrator-layered SVG combining the vector cuts + the raster layers
+      // (Denise 2026-08-27). A pure-vector side takes the unchanged path below — byte-identical to before.
+      const rc = await collectRasterCutLayers(canvasJson, snap)
+      const fn = `${orderNo}-${z.key}.svg`
+      if (rc.layers.length > 0) {
+        const phys = (c.ok ? c.phys : rc.phys)!
+        const allLayers = [...(c.ok ? vectorCutLayers(c.paths) : []), ...rc.layers]
+        cutFolder.file(fn, assembleLayeredCutSvg(allLayers, phys, { mirror: false }))
+        cutMirrorFolder.file(fn, assembleLayeredCutSvg(allLayers, phys, { mirror: true }))
+        cutLines.push(`  ✓ ${fn}  (layered — normal + mirrored)`)
+        for (const n of rc.notes) cutLines.push(`    · ${n}`)
+        if (c.ok && c.warning) cutLines.push(`    ⚠ ${c.warning}`)
+        else if (!c.ok && (c.reason === 'outline-failed' || c.reason === 'bad-json')) cutLines.push(`    ⚠ vector layer: ${c.message}`)
+      } else {
+        emitCut(c, fn, cutFolder, cutMirrorFolder, fn)
+        for (const n of rc.notes) cutLines.push(`    · ${n}`) // surface why a placed image wasn't cut
+      }
     }
   }
 
