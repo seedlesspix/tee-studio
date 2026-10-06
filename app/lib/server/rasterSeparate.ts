@@ -38,11 +38,17 @@ function potraceTrace(mask: Buffer): Promise<string> {
 const WORK = 2400            // long-edge trace resolution — MATCHES the contour so outlines share a viewBox.
 const CONTOUR_BLUR = 1       // tune #1: same low blur as the vinyl masks → sharp corners hold on the contour.
 const PALETTE = 12           // median-cut target; the photo collapses into a few slots, solids get their own.
-// Anti-aliasing / slight gradients split ONE color into near-identical palette shades that BORDER each other,
-// which tanks avgStep (a black logo's shades touch each other, not just transparency) so a genuine
-// single-color vinyl came out as NO solid. Merge palette colors within this summed-RGB distance into one rep
-// before measuring — distinct brand colors are far apart (blue↔red↔black ≥ 200) and stay separate. TUNABLE.
-const MERGE_DIST = 40
+// NEAR-SHADE MERGE (bench fix 2026-08-28, guarded after the 2026-10-06 review). Quantization splits ONE colour
+// into near-identical shades along its soft edge (anti-alias ring, fuzzy upload) or across pixel noise; those
+// shades border EACH OTHER, which tanked avgStep and lost a genuine single-colour vinyl (and blue/red next to
+// their own dark rings). Fix: merge palette colours that TOUCH and sit within MERGE_DIST of each other,
+// transitively (union-find), so a ramp of shades collapses onto its core. GUARD: merging by colour distance
+// alone also chained a low-contrast photograph's whole palette into one "solid" and emitted the photo as vinyl
+// (review harness, soft_photo_only) — so a set may only grow while its colour span stays ≤ SPAN_MAX. A real
+// photo spans far more than that, so it stays several sets with soft mutual boundaries (= photo); a near-flat
+// region (a pastel sky) still merges into one colour — as vinyl it IS one colour. Both TUNABLE.
+const MERGE_DIST = 40            // summed-RGB between two TOUCHING colours for them to be shades of one colour
+const SPAN_MAX = 100             // widest colour span (max pairwise summed-RGB) a merged set may reach
 const MIN_COVERAGE = 0.02    // a vinyl color must cover ≥2% of the art (drops trivial specks outright).
 const MAX_SOLID_COLORS = 6   // Denise: pull up to ~6 solids before it's really a print job. TUNABLE.
 // KEYSTONE gate: average boundary color-step (0..~300 summed-RGB; transparent neighbour = 300). Solids sit
@@ -125,83 +131,126 @@ export async function separateRasterForCut(bytes: Uint8Array): Promise<SeparateR
     const quantPng = await sharp(buf).resize(WORK, WORK, { fit: 'inside' }).png({ palette: true, colours: PALETTE, dither: 0 }).toBuffer()
     const { data, info } = await sharp(quantPng).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
     const { width: w, height: h, channels: ch } = info
-    const keyAt = (i: number) => data[i + 3] < 128 ? -1 : (data[i] << 16) | (data[i + 1] << 8) | data[i + 2]
+    const N = w * h
 
-    // MERGE near-identical palette shades (the anti-alias/gradient of ONE color) into a single representative,
-    // greedily by coverage, so a single color reads as one solid region on transparency (see MERGE_DIST).
-    // repAt(i) = a pixel's MERGED key — used for every grouping below (coverage, avgStep, photo, masks).
-    const rawCount = new Map<number, number>()
-    for (let p = 0; p < data.length; p += ch) { const k = keyAt(p); if (k >= 0) rawCount.set(k, (rawCount.get(k) ?? 0) + 1) }
-    const cDist = (a: number, b: number) => Math.abs((a >> 16 & 255) - (b >> 16 & 255)) + Math.abs((a >> 8 & 255) - (b >> 8 & 255)) + Math.abs((a & 255) - (b & 255))
-    // UNION-FIND, linking any two colors within MERGE_DIST — TRANSITIVE, so a shade GRADIENT (a black shape →
-    // its anti-alias ring → transparency) collapses to one region even though the endpoints are far apart
-    // (greedy nearest-rep did NOT chain, leaving the core bordering its own ring, not transparency).
-    const colors = [...rawCount.keys()]
-    const parent = new Map<number, number>(colors.map(c => [c, c]))
-    const find = (x: number): number => { let r = x; while (parent.get(r) !== r) r = parent.get(r)!; while (parent.get(x) !== r) { const n = parent.get(x)!; parent.set(x, r); x = n } return r }
-    for (let a = 0; a < colors.length; a++) for (let b = a + 1; b < colors.length; b++) if (cDist(colors[a], colors[b]) <= MERGE_DIST) parent.set(find(colors[a]), find(colors[b]))
-    // representative of each merged set = its HIGHEST-coverage member (that color labels the vinyl layer).
-    const repOfSet = new Map<number, number>()
-    for (const c of colors) { const root = find(c); const cur = repOfSet.get(root); if (cur === undefined || (rawCount.get(c) ?? 0) > (rawCount.get(cur) ?? 0)) repOfSet.set(root, c) }
-    const mergeMap = new Map<number, number>(colors.map(c => [c, repOfSet.get(find(c))!]))
-    const repAt = (i: number) => { const k = keyAt(i); return k < 0 ? -1 : (mergeMap.get(k) ?? k) }
+    // Pass 1 — index every opaque pixel by its RAW palette colour (index into `palette`; NONE = transparent).
+    // Every later pass reads these byte arrays: one typed-array lookup per pixel, no Map, no RGBA unpacking.
+    const NONE = 255
+    const palette: number[] = []              // index → packed 0xRRGGBB
+    const indexOf = new Map<number, number>() // packed rgb → index
+    const idx = new Uint8Array(N)
+    for (let p = 0, q = 0; p < data.length; p += ch, q++) {
+      if (data[p + 3] < 128) { idx[q] = NONE; continue }
+      const k = (data[p] << 16) | (data[p + 1] << 8) | data[p + 2]
+      let i = indexOf.get(k)
+      if (i === undefined) { i = palette.length; palette.push(k); indexOf.set(k, i) }
+      idx[q] = i
+    }
+    const P = palette.length
+    if (P === 0 || P >= NONE) return { ...base, contour, islands } // nothing opaque → contour only
+    const rgbOf = (k: number): [number, number, number] => [(k >> 16) & 255, (k >> 8) & 255, k & 255]
+    const cDist = (a: number, b: number) => { const [ar, ag, ab] = rgbOf(a), [br, bg, bb] = rgbOf(b); return Math.abs(ar - br) + Math.abs(ag - bg) + Math.abs(ab - bb) }
 
-    // ONE pass: per-MERGED-color coverage + average boundary color-step (differing 4-neighbour; transparent=300).
-    const count = new Map<number, number>()
-    const stepSum = new Map<number, number>()
-    const stepN = new Map<number, number>()
+    // Pass 2 — per RAW colour: area, and how often it touches each OPAQUE colour (the merge only joins colours
+    // that actually border each other).
+    const rawCount = new Uint32Array(P), contact = new Uint32Array(P * P)
+    const touch = (a: number, b: number) => { if (b !== a && b !== NONE) contact[a * P + b]++ }
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const q = y * w + x, a = idx[q]
+        if (a === NONE) continue
+        rawCount[a]++
+        if (x + 1 < w) touch(a, idx[q + 1])
+        if (x > 0) touch(a, idx[q - 1])
+        if (y + 1 < h) touch(a, idx[q + w])
+        if (y > 0) touch(a, idx[q - w])
+      }
+    }
+
+    // NEAR-SHADE MERGE (see MERGE_DIST / SPAN_MAX): links = touching pairs within MERGE_DIST, closest first; a
+    // union is taken only while the merged set's colour span stays ≤ SPAN_MAX. Each set's representative = its
+    // highest-coverage member (that colour labels the vinyl layer).
+    const pairStep = new Float64Array(P * P)
+    for (let a = 0; a < P; a++) for (let b = 0; b < P; b++) pairStep[a * P + b] = cDist(palette[a], palette[b])
+    const links: { a: number; b: number; d: number }[] = []
+    for (let a = 0; a < P; a++) for (let b = a + 1; b < P; b++) {
+      if (!contact[a * P + b] && !contact[b * P + a]) continue
+      const d = pairStep[a * P + b]
+      if (d <= MERGE_DIST) links.push({ a, b, d })
+    }
+    links.sort((u, v) => u.d - v.d)
+    const parent = Int32Array.from({ length: P }, (_, i) => i)
+    const find = (x: number): number => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x] } return x }
+    const members: number[][] = Array.from({ length: P }, (_, i) => [i])
+    for (const { a, b } of links) {
+      const ra = find(a), rb = find(b)
+      if (ra === rb) continue
+      let span = 0
+      for (const u of members[ra]) for (const v of members[rb]) span = Math.max(span, pairStep[u * P + v])
+      if (span > SPAN_MAX) continue
+      parent[ra] = rb
+      members[rb].push(...members[ra]); members[ra] = []
+    }
+    const repOf = new Uint8Array(P)
+    {
+      const top = new Int32Array(P).fill(-1)
+      for (let a = 0; a < P; a++) { const r = find(a); if (top[r] < 0 || rawCount[a] > rawCount[top[r]]) top[r] = a }
+      for (let a = 0; a < P; a++) repOf[a] = top[find(a)]
+    }
+    const rep = new Uint8Array(N)
+    for (let q = 0; q < N; q++) rep[q] = idx[q] === NONE ? NONE : repOf[idx[q]]
+
+    // Pass 3 — per MERGED colour: coverage + average boundary colour-step to the neighbouring MERGED colour
+    // (transparent = 300). Rep-to-rep on purpose: a soft ramp between two far-apart regions has a tiny raw pixel
+    // step but real region contrast, and region contrast is the "solid on transparency" vs "photo tone" signal
+    // the keystone gate was calibrated on.
+    const count = new Uint32Array(P), stepSum = new Float64Array(P), stepN = new Uint32Array(P)
+    const bump = (k: number, nk: number) => { if (nk === k) return; stepN[k]++; stepSum[k] += nk === NONE ? 300 : pairStep[k * P + nk] }
     let opaque = 0
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
-        const i = (y * w + x) * ch
-        const k = repAt(i)
-        if (k < 0) continue
-        opaque++
-        count.set(k, (count.get(k) ?? 0) + 1)
-        // Step to the MERGED REP color (not the raw adjacent pixel): a smooth anti-alias ramp between two
-        // far-apart merged regions has a tiny raw step but a real rep-to-rep contrast, and it is the region
-        // contrast that says "solid on transparency/contrast" vs "photo blending into a like tone".
-        const bump = (j: number) => { const nk = repAt(j); if (nk !== k) { stepN.set(k, (stepN.get(k) ?? 0) + 1); stepSum.set(k, (stepSum.get(k) ?? 0) + (nk < 0 ? 300 : cDist(k, nk))) } }
-        if (x + 1 < w) bump(i + ch)
-        if (x - 1 >= 0) bump(i - ch)
-        if (y + 1 < h) bump(i + w * ch)
-        if (y - 1 >= 0) bump(i - w * ch)
+        const q = y * w + x, k = rep[q]
+        if (k === NONE) continue
+        opaque++; count[k]++
+        if (x + 1 < w) bump(k, rep[q + 1])
+        if (x > 0) bump(k, rep[q - 1])
+        if (y + 1 < h) bump(k, rep[q + w])
+        if (y > 0) bump(k, rep[q - w])
       }
     }
     if (!opaque) return { ...base, contour, islands }
+    const stepOf = (k: number) => stepN[k] ? stepSum[k] / stepN[k] : 0
 
-    const stepOf = (k: number) => (stepN.get(k) ?? 0) ? (stepSum.get(k) ?? 0) / (stepN.get(k) ?? 1) : 0
-
-    // Tune #2 — PHOTO REGION: the continuous-tone area is every opaque pixel whose color has a SOFT boundary
+    // Tune #2 — PHOTO REGION: the continuous-tone area is every opaque pixel whose colour has a SOFT boundary
     // (step < SOLID_MIN_STEP). Fill its internal shadow-holes, then subtract it from every vinyl mask.
-    const photoKeys = new Set([...count.keys()].filter(k => stepOf(k) < SOLID_MIN_STEP))
-    const photoBin = new Uint8Array(w * h)
-    for (let p = 0, q = 0; p < data.length; p += ch, q++) {
-      const k = repAt(p)
-      photoBin[q] = (k >= 0 && photoKeys.has(k)) ? 1 : 0
-    }
-    const photoRegion = photoKeys.size ? fillHoles(photoBin, w, h) : photoBin // no photo → nothing to subtract
+    const isPhoto = new Uint8Array(P)
+    let photoAny = false
+    for (let k = 0; k < P; k++) if (count[k] && stepOf(k) < SOLID_MIN_STEP) { isPhoto[k] = 1; photoAny = true }
+    const photoBin = new Uint8Array(N)
+    for (let q = 0; q < N; q++) photoBin[q] = rep[q] !== NONE && isPhoto[rep[q]] ? 1 : 0
+    const photoRegion = photoAny ? fillHoles(photoBin, w, h) : photoBin // no photo → nothing to subtract
 
     // Candidates: cover ≥ MIN_COVERAGE AND sharp boundaries (avg step ≥ SOLID_MIN_STEP) — most-covered first.
-    const candidates = [...count.entries()]
-      .map(([k, n]) => ({ k, coverage: n / opaque, step: stepOf(k) }))
-      .filter(c2 => c2.coverage >= MIN_COVERAGE && c2.step >= SOLID_MIN_STEP)
-      .sort((a, b) => b.coverage - a.coverage)
+    const candidates: { k: number; coverage: number; step: number }[] = []
+    for (let k = 0; k < P; k++) {
+      if (!count[k]) continue
+      const coverage = count[k] / opaque, step = stepOf(k)
+      if (coverage >= MIN_COVERAGE && step >= SOLID_MIN_STEP) candidates.push({ k, coverage, step })
+    }
+    candidates.sort((a, b) => b.coverage - a.coverage)
 
     const solids: SolidCut[] = []
     for (const cand of candidates) {
       if (solids.length >= MAX_SOLID_COLORS) break
-      const r = (cand.k >> 16) & 255, g = (cand.k >> 8) & 255, b = cand.k & 255
-      // Mask for THIS merged color: pixels whose MERGED key is this candidate and NOT in the photo region →
-      // black (potrace traces black); else white. The photo-region subtraction drops shadow-blacks etc.
-      const gray = Buffer.allocUnsafe(w * h)
-      for (let p = 0, q = 0; p < data.length; p += ch, q++) {
-        gray[q] = (repAt(p) === cand.k && !photoRegion[q]) ? 0 : 255
-      }
+      // Mask for THIS merged colour: its pixels that are NOT in the photo region → black (potrace traces black);
+      // else white. The photo-region subtraction drops shadow-blacks etc. from the vinyl.
+      const gray = Buffer.allocUnsafe(N)
+      for (let q = 0; q < N; q++) gray[q] = (rep[q] === cand.k && !photoRegion[q]) ? 0 : 255
       // Light clean (blur+threshold) to kill anti-alias jitter — same low blur as the contour (crisp corners).
       const maskPng = await sharp(gray, { raw: { width: w, height: h, channels: 1 } }).blur(1).threshold(128).png().toBuffer()
       if (await maskPerimeter(maskPng) > OOM_MAX_PERIMETER) continue // OOM backstop only
       const svg = await potraceTrace(maskPng)
+      const [r, g, b] = rgbOf(palette[cand.k])
       solids.push({ color: hex(r, g, b), coverage: cand.coverage, svg })
     }
     return { contour, reason: c.reason, islands, solids }
