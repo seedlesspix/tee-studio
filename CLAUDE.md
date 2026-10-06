@@ -339,10 +339,15 @@ trusting a read, ask "what does this surface refuse to show me?"
   invisible. The build is unaffected (Next 16 doesn't lint on build), which is how it got this way.
   Specific instance found 2026-10-06 while fixing the templates editor: `app/admin/templates/
   PrintAreaEditor.tsx` — the Shopify-aspect effect calls `setShopifyAspect(0)` synchronously in the
-  effect body (`set-state-in-effect`); pre-existing, not from that fix, harmless at runtime. **Decide
-  one of:** (a) a one-session sweep — type the `any`s, restructure the 17 synchronous effect resets
-  (derive from props / key the component on the changing input); or (b) demote the React Compiler
-  rules to `warn` in `eslint.config.mjs` and fix the `any`s, so the run goes green and new errors show.
+  effect body (`set-state-in-effect`); pre-existing, not from that fix, harmless at runtime. **DECIDED
+  2026-10-06 (Denise): demoted to `warn`.** In `eslint.config.mjs`, every React Compiler rule the Next
+  preset had at error (12: config, error-boundaries, gating, globals, immutability,
+  preserve-manual-memoization, purity, refs, set-state-in-effect, set-state-in-render,
+  static-components, use-memo) plus `@typescript-eslint/no-explicit-any` and `ban-ts-comment` — the
+  two non-compiler rules that were also red; without them the run could not go green.
+  `rules-of-hooks` stays an error. `npm run lint` now exits 0 with the 356 listed as warnings, so a
+  NEW error is visible again. **The cleanup is PARKED — fold it into the `DesignerCanvas.tsx` split
+  (325 of the 356 live there), not its own session.**
 
 ### Performance & Optimization
 - **Large bundle size**: All fonts loaded upfront (Google Fonts + local fonts)
