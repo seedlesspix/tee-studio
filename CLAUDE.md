@@ -329,6 +329,20 @@ trusting a read, ask "what does this surface refuse to show me?"
 - **Inconsistent naming**: Snake_case in database, camelCase in components
 - **Hardcoded values**: Color maps, sizes (`SIZES = ['S', 'M', 'L', ...]`), pricing scattered throughout
 - **Magic numbers**: Font sizes, canvas constraints, percentage calculations
+- **`npm run lint` is RED project-wide — logged 2026-10-06 (Denise: "so it doesn't become
+  furniture").** 356 errors, 0 warnings. By rule: 272 `@typescript-eslint/no-explicit-any`, 40
+  `react-hooks/immutability`, 21 `react-hooks/refs`, 17 `react-hooks/set-state-in-effect`, 4
+  `react-hooks/globals`, 1 `react-hooks/purity`, 1 `@typescript-eslint/ban-ts-comment`
+  (`shopify/volume-discount-function/run.js`). 325 of the 356 are in `DesignerCanvas.tsx`. The
+  `react-hooks/*` ones are the React Compiler rule set (eslint-plugin-react-hooks 6+), newer than most
+  of this code. **The real cost:** with the whole run red, a NEW lint error in a changed file is
+  invisible. The build is unaffected (Next 16 doesn't lint on build), which is how it got this way.
+  Specific instance found 2026-10-06 while fixing the templates editor: `app/admin/templates/
+  PrintAreaEditor.tsx` — the Shopify-aspect effect calls `setShopifyAspect(0)` synchronously in the
+  effect body (`set-state-in-effect`); pre-existing, not from that fix, harmless at runtime. **Decide
+  one of:** (a) a one-session sweep — type the `any`s, restructure the 17 synchronous effect resets
+  (derive from props / key the component on the changing input); or (b) demote the React Compiler
+  rules to `warn` in `eslint.config.mjs` and fix the `any`s, so the run goes green and new errors show.
 
 ### Performance & Optimization
 - **Large bundle size**: All fonts loaded upfront (Google Fonts + local fonts)
