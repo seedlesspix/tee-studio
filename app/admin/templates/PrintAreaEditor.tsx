@@ -36,6 +36,9 @@ type Props = {
   supportedMethods: string[]
   methodLabel: (key: string) => string
   onMessage: (text: string, type?: 'success' | 'error') => void
+  // Bumped by the page whenever the Mockups section adds/replaces/deletes a mockup row (import, upload,
+  // delete), so the per-zone drawing reference below reloads IN PLACE — no "back out and reopen" ritual.
+  mockupsVersion?: number
 }
 
 // Fixed on-screen working width for the mockup. Print-area coordinates are
@@ -79,12 +82,17 @@ function aspectMismatch(a: { width_px: number; height_px: number; width_in: numb
 }
 
 export default function PrintAreaEditor({
-  templateId, shopifyProductId, supportedMethods, methodLabel, onMessage,
+  templateId, shopifyProductId, supportedMethods, methodLabel, onMessage, mockupsVersion = 0,
 }: Props) {
   const [images, setImages] = useState<string[]>([])
   const [imgIdx, setImgIdx] = useState(0)
   const [imgError, setImgError] = useState<string | null>(null)
-  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
+  // The measured natural size of the image last loaded, KEYED BY ITS SRC. `natural` (below) is derived
+  // from this + the src now shown, instead of being a bare value reset on every side/image switch. The
+  // old reset dead-ended whenever two zones draw on the SAME image (front + back both on the Shopify
+  // photo until a managed mockup exists): the <img> is keyed by src, so an unchanged src never remounts,
+  // onLoad never re-fires, and the reset null waited forever ("Wait for the mockup image to load first").
+  const [measured, setMeasured] = useState<{ src: string; w: number; h: number } | null>(null)
   // Aspect of the Shopify product photo — the frame a LEGACY (null mockup_natural) front/back box was
   // drawn on, since that's all that existed before managed mockups. The designer anchors such a box to
   // this aspect (toPct's `|| natural.w` fallback), so the drift badge compares it against the managed
@@ -108,19 +116,22 @@ export default function PrintAreaEditor({
     px?: number; py?: number // arc-point drag origin (natural-px)
   }>(null)
 
+  // The drawing background for the current zone: its uploaded mockup wins (single source); front/back
+  // fall back to the Shopify photo until a mockup is uploaded. New zones have no Shopify fallback.
+  const zoneMockup = zoneMockups[side] ?? null
+  const bgSrc = zoneMockup?.url ?? (SHOPIFY_FALLBACK_SIDES.has(side) ? images[imgIdx] : undefined)
+  // Natural size of the image NOW shown: valid only while the measurement's src matches. A switch to a
+  // different image (other zone's mockup, other Shopify thumbnail) yields null until its onLoad measures
+  // it — boxes never render at the previous image's scale — while a switch to the same image keeps it.
+  const natural: { w: number; h: number } | null = measured && measured.src === bgSrc ? measured : null
+
   const displayW = natural ? Math.min(DISPLAY_W, natural.w) : DISPLAY_W
   const scale = natural ? displayW / natural.w : 1
   // Keep the pointer-handler refs in sync with the latest natural size / scale.
   useEffect(() => { naturalRef.current = natural; scaleRef.current = scale }, [natural, scale])
 
-  // The drawing background for the current zone: its uploaded mockup wins (single source); front/back
-  // fall back to the Shopify photo until a mockup is uploaded. New zones have no Shopify fallback.
-  const zoneMockup = zoneMockups[side] ?? null
-  const bgSrc = zoneMockup?.url ?? (SHOPIFY_FALLBACK_SIDES.has(side) ? images[imgIdx] : undefined)
-  // Switch the drawing background (zone or Shopify image) and drop the stale natural size so boxes don't
-  // render at the previous image's scale until the new one's onLoad measures it.
-  const switchSide = (s: string) => { setSide(s); setNatural(null); setSelectedKey(null) }
-  const switchImg = (i: number) => { setImgIdx(i); setNatural(null) }
+  const switchSide = (s: string) => { setSide(s); setSelectedKey(null) }
+  const switchImg = (i: number) => setImgIdx(i)
 
   // Load existing print areas for this template.
   useEffect(() => {
@@ -135,22 +146,25 @@ export default function PrintAreaEditor({
   }, [templateId])
 
   // Load one representative uploaded mockup per zone (the lowest sort_order per zone) as the drawing
-  // reference for that zone. Z0's batch uploader populates product_template_mockups.
+  // reference for that zone. Z0's batch uploader and the Mockups section below populate
+  // product_template_mockups; `mockupsVersion` re-runs this whenever that section changes a row.
   useEffect(() => {
+    let active = true
     supabase
       .from('product_template_mockups')
       .select('color_name, zone, image_url, sort_order')
       .eq('template_id', templateId)
       .order('sort_order')
       .then(({ data }) => {
-        if (!data) return
+        if (!active || !data) return
         const map: Record<string, { url: string; color: string }> = {}
         for (const m of data as { color_name: string; zone: string; image_url: string }[]) {
           if (!map[m.zone]) map[m.zone] = { url: m.image_url, color: m.color_name } // first = the reference
         }
         setZoneMockups(map)
       })
-  }, [templateId])
+    return () => { active = false }
+  }, [templateId, mockupsVersion])
 
   // Load the Shopify product's mockup images (visual reference only — not stored).
   useEffect(() => {
@@ -436,7 +450,7 @@ export default function PrintAreaEditor({
                 src={bgSrc}
                 alt="mockup"
                 draggable={false}
-                onLoad={e => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+                onLoad={e => setMeasured({ src: bgSrc, w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
                 style={{ width: displayW, display: 'block' }}
                 className="rounded border border-gray-200"
               />
@@ -498,7 +512,7 @@ export default function PrintAreaEditor({
               <p className="text-[10px] font-mono text-gray-400 mt-1">
                 {SHOPIFY_FALLBACK_SIDES.has(side)
                   ? 'You can still enter coordinates numerically below.'
-                  : 'Batch-upload a mockup for this zone on the Product Templates list, then reopen this editor.'}
+                  : 'Upload a mockup for this zone in the Mockups section below (or batch-upload on the Product Templates list) — it appears here as soon as it saves.'}
               </p>
             </div>
           )}

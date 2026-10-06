@@ -17,6 +17,9 @@ type Props = {
   templateId: string
   shopifyProductId: string
   onMessage: (text: string, type?: 'success' | 'error') => void
+  // Fired after any base mockup row is added/replaced/deleted (upload, delete, Import, Re-import) so the
+  // sibling PrintAreaEditor can reload its per-zone drawing reference in place.
+  onChanged?: () => void
 }
 
 // Column order for the zones; unknown zones get appended after these.
@@ -60,7 +63,7 @@ const extFromMime = (mime: string) => (mime.split('/')[1] || 'png').toLowerCase(
 
 type ProductImagesResp = ProductResp & { images?: { edges: { node: { url: string } }[] } }
 
-export default function TemplateMockupsEditor({ templateId, shopifyProductId, onMessage }: Props) {
+export default function TemplateMockupsEditor({ templateId, shopifyProductId, onMessage, onChanged }: Props) {
   const [colors, setColors] = useState<string[]>([])
   // color -> zone -> row
   const [mockups, setMockups] = useState<Record<string, Record<string, MockupRow>>>({})
@@ -163,6 +166,7 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
     setMockups(m => ({ ...m, [color]: { ...(m[color] ?? {}), [zone]: data } }))
     setBusy(null)
     onMessage(`${prev ? 'Replaced' : 'Uploaded'} ${color} · ${zoneLabel(zone)}.`)
+    onChanged?.()
   }
 
   const remove = async (color: string, zone: string) => {
@@ -188,6 +192,7 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
     })
     setBusy(null)
     onMessage(`Deleted ${color} · ${zoneLabel(zone)}.`)
+    onChanged?.()
   }
 
   // Layered mockups — attach a FOREGROUND overlay (e.g. hoodie drawstrings) to an existing base row. Renders
@@ -327,6 +332,7 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
     if (!jobs.length) { setImporting(null); onMessage('Nothing to import — Front/Back are already covered (or no matching Shopify photos).'); return }
     const { ok, failures } = await runImportJobs(jobs)
     setImporting(null)
+    if (ok) onChanged?.() // rows landed — let the print-area editor pick up its new drawing references
     if (ok === jobs.length) onMessage(`Imported ${ok} Front/Back mockup${ok === 1 ? '' : 's'} from Shopify.`)
     else onMessage(`Imported ${ok} of ${jobs.length}. First problem — ${failures[0] ?? 'unknown'}`, 'error')
   }
@@ -352,6 +358,7 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
     if (!jobs.length) { onMessage('Nothing to re-import.'); return }
     const { ok, failures } = await runImportJobs(jobs)
     setImporting(null)
+    if (ok) onChanged?.()
     if (ok === jobs.length) onMessage(`Re-imported ${ok} Front/Back mockup${ok === 1 ? '' : 's'} from Shopify.`)
     else onMessage(`Re-imported ${ok} of ${jobs.length}. First problem — ${failures[0] ?? 'unknown'}`, 'error')
   }

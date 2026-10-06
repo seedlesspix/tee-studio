@@ -60,6 +60,9 @@ export default function TemplatesAdmin() {
   // 'list' shows the table; otherwise we're editing an existing template (by id)
   // or creating a new one (id === null).
   const [editing, setEditing] = useState<{ id: string | null } | null>(null)
+  // Bumped whenever the Mockups section changes a row; PrintAreaEditor reloads its per-zone drawing
+  // reference on it (an imported Back mockup shows up for the Back zone without reopening the editor).
+  const [mockupsVersion, setMockupsVersion] = useState(0)
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT)
   const [savingTemplate, setSavingTemplate] = useState(false)
   const [reordering, setReordering] = useState(false)
@@ -563,11 +566,13 @@ export default function TemplatesAdmin() {
                   supportedMethods={editingTemplate.supported_print_methods}
                   methodLabel={labelFor}
                   onMessage={showMessage}
+                  mockupsVersion={mockupsVersion}
                 />
                 <TemplateMockupsEditor
                   templateId={editing.id}
                   shopifyProductId={editingTemplate.shopify_product_id}
                   onMessage={showMessage}
+                  onChanged={() => setMockupsVersion(v => v + 1)}
                 />
                 <TemplateColorsEditor
                   templateId={editing.id}
