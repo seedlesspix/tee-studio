@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { Tables } from '@/types/database'
-import { ZONE_LABELS } from '../../lib/mockupFilename'
+import { ZONE_LABELS, MIN_MOCKUP_PX } from '../../lib/mockupFilename'
 import { bezierControlFromPeak } from '../../lib/curvePath'
 
 type AreaRow = Tables<'product_template_print_areas'>
@@ -124,6 +124,11 @@ export default function PrintAreaEditor({
   // different image (other zone's mockup, other Shopify thumbnail) yields null until its onLoad measures
   // it — boxes never render at the previous image's scale — while a switch to the same image keeps it.
   const natural: { w: number; h: number } | null = measured && measured.src === bgSrc ? measured : null
+  // A swatch-sized image slipped in as a mockup: it measures e.g. 62x62, so displayW collapses to it and
+  // saved boxes (stored in the real 2000px frame) render at ~scale 1 — huge and off the garment. Flag it
+  // loudly and SUPPRESS the misleading boxes rather than silently shrinking the editor. Ingest now blocks
+  // this (MIN_MOCKUP_PX), so it only appears for rows saved before the floor existed.
+  const mockupTooSmall = !!natural && Math.min(natural.w, natural.h) < MIN_MOCKUP_PX
 
   const displayW = natural ? Math.min(DISPLAY_W, natural.w) : DISPLAY_W
   const scale = natural ? displayW / natural.w : 1
@@ -444,6 +449,11 @@ export default function PrintAreaEditor({
                   ⚠ A print box in this zone was drawn on a differently-shaped image. Re-draw it on this mockup (drag the box, then <span className="font-semibold">Save print areas</span>) so it lands where customers see it.
                 </div>
               )}
+              {mockupTooSmall && natural && (
+                <div className="mb-2 rounded-md border border-red-400 bg-red-50 px-3 py-2 text-[11px] leading-snug text-red-700">
+                  ⚠ This mockup is only {natural.w}×{natural.h}px — far too small to use as a print-area background (a real garment photo is ~2000px; this looks like a color swatch). Your saved boxes are fine and are hidden here only because they can’t be shown to scale on an image this size. Fix it in the <span className="font-semibold">Mockups</span> section below — delete this tile and re-import from Shopify, or upload the full-size photo — then this editor shows the boxes correctly. No re-drawing needed.
+                </div>
+              )}
               <div className="relative select-none touch-none" style={{ width: displayW }}>
               <img
                 key={bgSrc}
@@ -454,7 +464,7 @@ export default function PrintAreaEditor({
                 style={{ width: displayW, display: 'block' }}
                 className="rounded border border-gray-200"
               />
-              {natural && visibleAreas.map(a => {
+              {natural && !mockupTooSmall && visibleAreas.map(a => {
                 const isSel = a._key === selectedKey
                 return (
                   <div
@@ -481,7 +491,7 @@ export default function PrintAreaEditor({
                 )
               })}
               {/* Type-on-path (Z-hp): the selected area's drawn arc — preview curve + draggable ends/bulge */}
-              {natural && selected && selectedArc && selectedArcControl && (
+              {natural && !mockupTooSmall && selected && selectedArc && selectedArcControl && (
                 <>
                   <svg width={displayW} height={natural.h * scale}
                     style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none' }}>

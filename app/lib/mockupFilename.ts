@@ -13,6 +13,14 @@ const ZONE_ALIASES: Record<string, string> = {
   hatback: 'hat_back', hatb: 'hat_back',
 }
 
+// Minimum pixel size (shorter side) for an image to be accepted as a print-area MOCKUP. Real garment
+// mockups run ~2000px; a product COLOR SWATCH is ~200px. A swatch-sized image silently accepted as a
+// mockup makes the print-area editor measure e.g. 62x62 and render saved boxes (stored in the real 2000px
+// frame) wildly off the garment. Enforced at every ingest point (manual upload, batch upload, Shopify
+// import) so a too-small image is rejected loudly instead of quietly shrinking the editor. 500 cleanly
+// separates real mockups (~2000) from swatches (~200); nothing in the library today is under 600px.
+export const MIN_MOCKUP_PX = 500
+
 // Human labels for the canonical zones (for admin display).
 export const ZONE_LABELS: Record<string, string> = {
   front: 'Front',

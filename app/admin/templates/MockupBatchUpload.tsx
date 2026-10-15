@@ -1,7 +1,7 @@
 'use client'
 import { useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { parseMockupFilename, normalizeColorKey, ZONE_LABELS } from '../../lib/mockupFilename'
+import { parseMockupFilename, normalizeColorKey, ZONE_LABELS, MIN_MOCKUP_PX } from '../../lib/mockupFilename'
 
 // Print Zones Z0 — global mockup batch uploader. Drop every mockup at once, named
 // `stylenumber_color_position` (e.g. 2001_White_LeftSleeve.png); each file auto-routes to its template
@@ -93,11 +93,13 @@ export default function MockupBatchUpload({
         out.push({ name: file.name, ok: true, detail: `Overlay · ${tmpl.name} · ${color} · ${ZONE_LABELS[parsed.zone] ?? parsed.zone}` })
         continue
       }
+      // SIZE FLOOR: measure before touching storage so a swatch-sized image is rejected, not saved as a mockup.
+      const dims = await naturalSize(file)
+      if (!dims.w || !dims.h || Math.min(dims.w, dims.h) < MIN_MOCKUP_PX) { out.push({ name: file.name, ok: false, detail: `Image is ${dims.w}×${dims.h}px — too small for a mockup (need ≥ ${MIN_MOCKUP_PX}px); looks like a swatch` }); continue }
       const path = `mockups/${tmpl.id}/${slug(color)}_${parsed.zone}.${ext}`
       const { error: upErr } = await supabase.storage.from('garment-swatches').upload(path, file, { upsert: true, contentType: file.type || 'image/png' })
       if (upErr) { out.push({ name: file.name, ok: false, detail: `Upload failed: ${upErr.message}` }); continue }
       const { data } = supabase.storage.from('garment-swatches').getPublicUrl(path)
-      const dims = await naturalSize(file)
       const { error: dbErr } = await supabase.from('product_template_mockups').upsert(
         {
           template_id: tmpl.id,

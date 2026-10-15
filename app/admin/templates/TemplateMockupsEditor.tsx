@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { ZONE_LABELS, normalizeColorKey } from '../../lib/mockupFilename'
+import { ZONE_LABELS, normalizeColorKey, MIN_MOCKUP_PX } from '../../lib/mockupFilename'
 import { buildColorImageMap, getColorImages } from '../../lib/productImages'
 import type { Tables } from '@/types/database'
 
@@ -135,6 +135,14 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
     const key = `${color}::${zone}`
     setBusy(key)
     const prev = mockups[color]?.[zone] ?? null
+    // SIZE FLOOR: measure before touching storage, so a swatch-sized image is rejected loudly instead of
+    // persisted as a mockup (which would shrink the print-area editor and throw saved boxes off the garment).
+    const dims = await naturalSize(file)
+    if (!dims.w || !dims.h || Math.min(dims.w, dims.h) < MIN_MOCKUP_PX) {
+      setBusy(null)
+      onMessage(`That image is ${dims.w}×${dims.h}px — too small for a mockup (need ≥ ${MIN_MOCKUP_PX}px). Looks like a swatch, not a garment photo; upload the full-size mockup.`, 'error')
+      return
+    }
     // Replace targets the existing row's own color_name (updates in place — no dup if that legacy row was
     // stored under a different spelling); a brand-new cell stores the canonical display color.
     const storeColor = prev?.color_name ?? color
@@ -143,7 +151,6 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
     const { error: upErr } = await supabase.storage.from('garment-swatches').upload(path, file, { upsert: true, contentType: file.type || 'image/png' })
     if (upErr) { setBusy(null); onMessage(`Upload failed for ${color} · ${zoneLabel(zone)}: ${upErr.message}`, 'error'); return }
     const { data: pub } = supabase.storage.from('garment-swatches').getPublicUrl(path)
-    const dims = await naturalSize(file)
     const { data, error: dbErr } = await supabase.from('product_template_mockups').upsert(
       {
         template_id: templateId,
@@ -297,6 +304,7 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
         const mime = shirt.match(/^data:([^;]+)/)?.[1] || 'image/png'
         const ext = extFromMime(mime) || 'png'
         const dims = await naturalSizeFromSrc(shirt)
+        if (!dims.w || !dims.h || Math.min(dims.w, dims.h) < MIN_MOCKUP_PX) { failures.push(`${where}: Shopify image is ${dims.w}×${dims.h}px — too small for a mockup (need ≥ ${MIN_MOCKUP_PX}px)`); continue }
         const path = `mockups/${templateId}/${slug(storeColor)}_${zone}.${ext}`
         const { error: upErr } = await supabase.storage.from('garment-swatches').upload(path, blob, { upsert: true, contentType: mime })
         if (upErr) { failures.push(`${where}: upload rejected (${upErr.message})`); continue }
@@ -453,6 +461,12 @@ export default function TemplateMockupsEditor({ templateId, shopifyProductId, on
                               </button>
                               {isBusy && <span className="absolute inset-0 flex items-center justify-center text-[10px] font-mono text-gray-600">…</span>}
                             </div>
+                            {row.natural_w != null && row.natural_h != null && Math.min(row.natural_w, row.natural_h) < MIN_MOCKUP_PX && (
+                              <span className="text-[9px] font-mono text-[#dd3333] leading-tight text-center"
+                                title={`This mockup is only ${row.natural_w}×${row.natural_h}px — too small (need ≥ ${MIN_MOCKUP_PX}px). It will shrink the print-area editor. Replace it with a full-size garment photo.`}>
+                                ⚠ {row.natural_w}×{row.natural_h}
+                              </span>
+                            )}
                             {/* Layered-mockup overlay: a foreground image (e.g. drawstrings) rendered above the art. */}
                             {row.overlay_url ? (
                               <div className="flex items-center gap-0.5 w-full">
