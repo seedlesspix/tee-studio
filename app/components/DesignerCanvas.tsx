@@ -341,6 +341,8 @@ export default function DesignerCanvas({
   // selector (Z2b) + capture (Z3) land.
   const [shirtView, setShirtView] = useState<string>('front')
   const [hasBackImages, setHasBackImages] = useState(false)
+  // Ref mirror so method-reactive callbacks read the back-photo signal without a stale closure.
+  const hasBackImagesRef = useRef(false)
   // Print Zones Z2b: this product's zones in canonical order (front, back, sleeves, hat_back), derived
   // from its template print areas. Drives the zone selector. Default front/back; set at product load.
   const [zones, setZones] = useState<string[]>(['front', 'back'])
@@ -1434,14 +1436,27 @@ export default function DesignerCanvas({
     return false
   }, [])
 
-  // Re-pick the print area for the CURRENT method — fires both when the customer toggles the method AND
-  // when the template finishes loading (templateReadyTick). The latter matters when the resolved method
-  // equals the initial one (setPrintMethod is then a no-op). This is the SINGLE place the templated
-  // print area is applied, so it always matches the live printMethod even if a toggle raced the load.
-  // No-op for non-templated products or before the template loads (applyTemplateAreaForMethod → false).
+  // Zones the customer may design IN A GIVEN METHOD. A templated product offers only the sides that have a
+  // print area for that method (so Embroidery, drawn front-only, drops Back and any print-only sleeve); a
+  // non-templated product keeps the legacy front/back-from-photos behavior. Reads cached refs, so it is
+  // safe to call from the method-reactive effect with no extra deps.
+  const computeZones = useCallback((method: string): string[] => {
+    const tpl = loadedTemplateRef.current
+    const allAreas = (tpl?.product_template_print_areas || []) as any[]
+    const methodSides = allAreas.filter((a: any) => a.print_method === method).map((a: any) => a.side)
+    return deriveProductZones({ areaSides: methodSides, hasBackImages: hasBackImagesRef.current, isTemplated: allAreas.length > 0 })
+  }, [])
+
+  // Re-pick the print area AND the offered zones for the CURRENT method — fires both when the customer
+  // toggles the method AND when the template finishes loading (templateReadyTick). The latter matters when
+  // the resolved method equals the initial one (setPrintMethod is then a no-op). This is the SINGLE place
+  // the templated print area is applied AND the zone list is re-derived, so both always match the live
+  // printMethod even if a toggle raced the load. No-op before a method resolves.
   useEffect(() => {
-    if (printMethod) applyTemplateAreaForMethod(printMethod)
-  }, [printMethod, templateReadyTick, applyTemplateAreaForMethod])
+    if (!printMethod) return
+    applyTemplateAreaForMethod(printMethod)
+    setZones(computeZones(printMethod))
+  }, [printMethod, templateReadyTick, applyTemplateAreaForMethod, computeZones])
 
   // Print Zones Z2b: keep the extra zones' garment image (sleeves / hat) in sync with the selected color,
   // from the per-color per-zone mockup map. Ref write only (switchView reads it imperatively) — no
@@ -1883,6 +1898,7 @@ export default function DesignerCanvas({
             url.split('/').pop()?.toLowerCase().includes('_back')
           )
           setHasBackImages(anyBack)
+          hasBackImagesRef.current = anyBack
           // Parse print method
           // Initial print method from the metafield (default screen_print); the template can override it
           // below. setPrintMethod drives the fetchDesignerConfig effect, which loads fonts/colors/pricing
@@ -1933,7 +1949,14 @@ export default function DesignerCanvas({
               const areas = (tpl?.product_template_print_areas || []) as any[]
               // Print Zones Z2b: derive this product's zones (front, back, sleeves, hat_back) from its
               // print-area sides. A secondary front row (Chest) collapses into 'front' — not a zone.
-              setZones(deriveProductZones({ areaSides: areas.map((a: any) => a.side), hasBackImages: anyBack }))
+              // Method-aware initial zones (the method-reactive effect re-derives on every toggle). Use the
+              // method the product opens on, scoped to that method's areas, so a front-only embroidery
+              // product doesn't flash a Back pill before the effect settles.
+              setZones(deriveProductZones({
+                areaSides: areas.filter((a: any) => a.print_method === method).map((a: any) => a.side),
+                hasBackImages: anyBack,
+                isTemplated: areas.length > 0,
+              }))
               if (tpl) {
                 // The TEMPLATE is the source of truth for the print method (embroidery mode). Keep the
                 // metafield method when the template supports it, else fall to the template default;
@@ -3374,13 +3397,25 @@ export default function DesignerCanvas({
     const toRemove = all.filter((o: any) => (isUpload(o) || isClipart(o)) && !artSurvives(o))
     const uploadsRemoved = toRemove.filter(isUpload).length
     const clipartRemoved = toRemove.filter(isClipart).length
-    const hasText = all.some(isText)
-    const willRestyleText = m === 'embroidery' && hasText
+    // Zones the TARGET method doesn't offer (e.g. Back on a front-only embroidery tee, or a print-only
+    // sleeve): content on one must be removed, with a warning — never silently carried into a method that
+    // has no print area for it (which would still price, capture, and cut it). The active zone's objects
+    // are live on the canvas; every other zone reads its ref.
+    const targetZones = computeZones(m)
+    const zoneObjsNow = (z: string): any[] => (z === shirtView ? (canvas?.getObjects() || []) : zoneObjs(z))
+    const droppedWithContent = zones.filter(z => !targetZones.includes(z) && zoneObjsNow(z).length > 0)
 
-    if (toRemove.length || willRestyleText) {
+    // Restyle/reconcile only text that SURVIVES the switch: text that lives only on a dropped zone (e.g.
+    // back-only text on a front-only embroidery tee) is being REMOVED, so the confirm must not promise to
+    // restyle it and pendingEmbConvert must not run a no-op on it.
+    const hasSurvivingText = zones.some(z => targetZones.includes(z) && zoneObjsNow(z).some(isText))
+    const willRestyleText = m === 'embroidery' && hasSurvivingText
+
+    if (toRemove.length || willRestyleText || droppedWithContent.length) {
       const removeLabel = [
         uploadsRemoved && t('notify.switch_remove_uploads', 'uploaded images'),
         clipartRemoved && format(t('notify.switch_remove_art', "art that isn't available for {method}"), { method: tMethod(m) }),
+        droppedWithContent.length && format(t('notify.switch_remove_zones', '{zones} design (not available for {method})'), { zones: droppedWithContent.map(customerZoneLabel).join(' and '), method: tMethod(m) }),
       ].filter(Boolean).join(' and ')
       const bits = [
         removeLabel && format(t('notify.switch_remove_prefix', 'remove your {items}'), { items: removeLabel }),
@@ -3394,12 +3429,23 @@ export default function DesignerCanvas({
         backObjectsRef.current = backObjectsRef.current.filter((o: any) => !rm.has(o))
         markDirty() // the removal is a design change even when there's no text to restyle (#autodraft)
       }
+      // Clear every dropped zone's content. For the zone currently on screen, empty the LIVE canvas first,
+      // so the switchView below (which saves the live canvas into its slot) can't resurrect it; then drop
+      // every dropped zone's ref slot.
+      if (droppedWithContent.length) {
+        if (droppedWithContent.includes(shirtView) && canvas) canvas.getObjects().slice().forEach((o: any) => canvas.remove(o))
+        droppedWithContent.forEach(z => setZoneObjs(z, []))
+        markDirty()
+      }
       if (willRestyleText) pendingEmbConvertRef.current = true // text re-styled once embroidery config loads
     }
+    // If the current view is a zone the target method drops, land back on Front. Any content there was
+    // cleared above, so switchView saves an empty canvas into the dropped slot (no resurrection).
+    if (!targetZones.includes(shirtView) && shirtView !== 'front') switchView('front')
     // Reverse: switching to a PRINT method flags the reconcile effect to reset any embroidery-only font
     // (cut-outliner-incompatible) back to the print default once the print font list loads. Silent (a
     // repair, only invalid fonts), so no confirm — unlike the forward restyle which is a visible change.
-    if (m !== 'embroidery' && hasText) pendingPrintReconcileRef.current = true
+    if (m !== 'embroidery' && hasSurvivingText) pendingPrintReconcileRef.current = true
     // Land on a still-visible tool (Upload/Names are hidden in embroidery).
     if (m === 'embroidery' && HIDDEN_FOR_EMBROIDERY.includes(activeTab)) setActiveTab('text')
 
@@ -4778,8 +4824,11 @@ export default function DesignerCanvas({
   // sides (the old `printPricing[sidesCount]` charged a 2-sided design the
   // single Back-row price, e.g. $12 instead of $12 + $12 = $24).
   const zoneCharge = (zone: string) => zoneHasContent(zone) ? (zonePricing[zone] ?? 0) : 0
-  const frontCharge = frontHasContent ? (zonePricing['front'] ?? 12) : 0
-  const backCharge = backHasContent ? (zonePricing['back'] ?? 12) : 0
+  // Fallback 0, not 12: a side with no designer_pricing row for the active method charges nothing, so it
+  // matches printCharge (which sums zoneCharge, already ?? 0) and can't invent a $12 back charge for a
+  // method that has no back row. A configured row always wins.
+  const frontCharge = frontHasContent ? (zonePricing['front'] ?? 0) : 0
+  const backCharge = backHasContent ? (zonePricing['back'] ?? 0) : 0
   // Total print charge = every zone this product offers that has content (front/back today; + sleeves/hat
   // once the selector is live). Gated zones never gain content, so this equals front+back until cutover.
   const printCharge = zones.reduce((sum, z) => sum + zoneCharge(z), 0)
@@ -5425,8 +5474,10 @@ export default function DesignerCanvas({
     <div className="absolute bottom-5 flex flex-col items-center gap-2">
       <div className="flex gap-2 items-center">
         {mainZones.map(zonePill)}
-        {/* Copy-to-Back/Front carried over from the classic toggle (front↔back convenience). */}
-        {hasBackImages && shirtView === 'front' && frontHasContent && (
+        {/* Copy-to-Back/Front carried over from the classic toggle (front↔back convenience). Gated on Back
+            being an ACTIVE zone for the current method (not merely a back photo existing), so Embroidery —
+            which offers no Back — never shows a Copy-to-Back. */}
+        {zones.includes('back') && shirtView === 'front' && frontHasContent && (
           <button
             onClick={() => {
               const canvas = fabricCanvasRef.current
@@ -5440,7 +5491,7 @@ export default function DesignerCanvas({
             {t('designer.copy_to_back', 'Copy to Back')}
           </button>
         )}
-        {hasBackImages && shirtView === 'back' && backHasContent && (
+        {zones.includes('back') && shirtView === 'back' && backHasContent && (
           <button
             onClick={() => {
               const canvas = fabricCanvasRef.current
@@ -5736,7 +5787,7 @@ export default function DesignerCanvas({
             {/* #26: appears as soon as the FRONT has content (reactive frontHasContent, not the stale
                 ref). On click, freshen the front ref from the LIVE canvas first so the copy includes
                 content just placed, then clone it into the back slot. */}
-            {hasBackImages && shirtView === 'front' && frontHasContent && (
+            {zones.includes('back') && shirtView === 'front' && frontHasContent && (
               <button
                 onClick={() => {
                   const canvas = fabricCanvasRef.current
@@ -5751,7 +5802,7 @@ export default function DesignerCanvas({
               </button>
             )}
             {/* #26: appears as soon as the BACK has content; freshen from live, clone into the front slot. */}
-            {hasBackImages && shirtView === 'back' && backHasContent && (
+            {zones.includes('back') && shirtView === 'back' && backHasContent && (
               <button
                 onClick={() => {
                   const canvas = fabricCanvasRef.current
@@ -5765,7 +5816,7 @@ export default function DesignerCanvas({
                 {t('designer.copy_to_front', 'Copy to Front')}
               </button>
             )}
-            {hasBackImages && (
+            {zones.includes('back') && (
               <button
                 onClick={() => switchView('back')}
                 className={`px-4 py-1.5 rounded-full text-xs font-mono tracking-widest transition-all ${

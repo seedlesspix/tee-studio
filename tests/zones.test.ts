@@ -68,3 +68,44 @@ describe('zone classification helpers', () => {
     expect(zoneLabel('weird')).toBe('weird')
   })
 })
+
+describe('deriveProductZones — method-aware (templated products)', () => {
+  // The designer passes the ACTIVE method's area sides + isTemplated:true, so a product offers only the
+  // zones its active method can actually print. Covers the four-product review spread.
+
+  it('single-method tee, Print: front+back areas → [front, back] (unchanged)', () => {
+    expect(deriveProductZones({ areaSides: ['front', 'back'], hasBackImages: true, isTemplated: true }))
+      .toEqual(['front', 'back'])
+  })
+
+  it('dual-method tee in EMBROIDERY (front-only areas) → [front] — Back dropped even with a back photo', () => {
+    expect(deriveProductZones({ areaSides: ['front'], hasBackImages: true, isTemplated: true }))
+      .toEqual(['front'])
+  })
+
+  it('same dual-method tee back in PRINT (front+back areas) → [front, back] — Back restored', () => {
+    expect(deriveProductZones({ areaSides: ['front', 'back'], hasBackImages: true, isTemplated: true }))
+      .toEqual(['front', 'back'])
+  })
+
+  it('hat with front + hat_back areas in the active method → [front, hat_back] (unaffected)', () => {
+    expect(deriveProductZones({ areaSides: ['front', 'hat_back'], hasBackImages: false, isTemplated: true }))
+      .toEqual(['front', 'hat_back'])
+  })
+
+  it('print-only sleeve is dropped in a method whose areas lack it', () => {
+    // active method has only front → no sleeve, no back, even though other methods/photos exist
+    expect(deriveProductZones({ areaSides: ['front'], hasBackImages: true, isTemplated: true }))
+      .toEqual(['front'])
+    // active method includes the sleeve → it appears
+    expect(deriveProductZones({ areaSides: ['front', 'left_sleeve'], hasBackImages: true, isTemplated: true }))
+      .toEqual(['front', 'left_sleeve'])
+  })
+
+  it('non-templated (legacy) product still uses the back-photo signal', () => {
+    expect(deriveProductZones({ areaSides: [], hasBackImages: true, isTemplated: false }))
+      .toEqual(['front', 'back'])
+    expect(deriveProductZones({ areaSides: [], hasBackImages: false, isTemplated: false }))
+      .toEqual(['front'])
+  })
+})

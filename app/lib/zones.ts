@@ -39,19 +39,26 @@ export function orderZones(zones: Iterable<string>): string[] {
   })
 }
 
-// Which zones a product actually offers, in canonical order. Front is always present (every garment has a
-// front). Back is present if the product has back imagery OR a back print area (matches today's Back-button
-// gate, which keys off hasBackImages). Any other zone (sleeves, hat) is present iff it has a print area
-// defined — you can't design where there's no box. Deliberately conservative: a zone with no print area is
-// never offered, so a half-configured template can't strand the customer on an un-drawable zone.
+// Which zones a product offers IN THE ACTIVE PRINT METHOD, in canonical order. Front is always present
+// (every garment has a front). The caller passes the sides of the print areas FOR THE ACTIVE METHOD, so a
+// product whose Embroidery areas are front-only drops Back (and any print-only sleeve) the moment the
+// customer switches to Embroidery — a zone with no print area in the active method is never offered, so it
+// can't be designed, priced, captured, or cut for a method that can't print it.
+//
+// `isTemplated` distinguishes a real template (drive zones strictly from the active method's areas) from a
+// legacy, non-templated Shopify-metafield product (no per-method areas at all) — the latter still falls
+// back to the back-photo signal, unchanged, so nothing about those products moves.
 export function deriveProductZones(opts: {
-  areaSides: Iterable<string>       // distinct `side` values from product_template_print_areas
-  hasBackImages?: boolean           // a back garment photo exists (legacy signal, still gates Back)
+  areaSides: Iterable<string>       // `side` values from the ACTIVE method's print areas (empty if none)
+  hasBackImages?: boolean           // a back garment photo exists (legacy signal; non-templated only)
+  isTemplated?: boolean             // the product has a template with >= 1 print area (any method)
 }): string[] {
   const areas = new Set(opts.areaSides)
   const zones = new Set<string>(['front']) // front is universal
-  if (opts.hasBackImages || areas.has('back')) zones.add('back')
-  // Every non-front/back zone appears only when it has a print area.
+  // Back: a templated product must have a back area in the ACTIVE method; a non-templated product has no
+  // per-method areas, so it keeps the legacy back-photo gate.
+  if (areas.has('back') || (!opts.isTemplated && opts.hasBackImages)) zones.add('back')
+  // Every non-front/back zone appears only when it has a print area in the active method.
   areas.forEach(side => { if (side !== 'front' && side !== 'back') zones.add(side) })
   return orderZones(zones)
 }
