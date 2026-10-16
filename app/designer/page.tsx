@@ -1,13 +1,27 @@
 'use client'
 
 import { useSearchParams } from 'next/navigation'
-import { Suspense } from 'react'
-import DesignerCanvas from '../components/DesignerCanvas'
+import { Suspense, useEffect, useState } from 'react'
+import DesignerCanvas, { type PlaceDecal } from '../components/DesignerCanvas'
+
+// Grab 'n Go deep link (2026-10-16): what /api/deep-link resolves ?design= / ?garment= into.
+type DeepLinkResolved = {
+  design: PlaceDecal | null
+  garment: { templateId: string; productId: string; gid: string; title: string; matched: boolean } | null
+}
+
+function Loading() {
+  return (
+    <div className="h-screen w-screen flex items-center justify-center bg-[#0d0d0d] text-white">
+      Loading designer...
+    </div>
+  )
+}
 
 function DesignerContent() {
   const searchParams = useSearchParams()
   
-  const productId = searchParams.get('product_id') || ''
+  const productIdParam = searchParams.get('product_id') || ''
   const variantId = searchParams.get('variant_id') || ''
   const price = searchParams.get('price') || '0'
   const quantity = searchParams.get('quantity') || ''
@@ -25,6 +39,38 @@ function DesignerContent() {
   const replaceCart = searchParams.get('replace_cart') || ''
   // …and the exact cart line KEY to remove first-party on finish (seamless replace, no duplicate line).
   const replaceLine = searchParams.get('replace_line') || ''
+  // Grab 'n Go deep link: ?design=T2491 (the Art library design number) places that design on open;
+  // ?garment=3001 (a template style number) picks the garment, else the default garment + the picker.
+  // An edit / restore owns the canvas, so the deep link is ignored alongside design_id / restore.
+  const designParam = searchParams.get('design') || ''
+  const garmentParam = searchParams.get('garment') || ''
+  const deepLinkActive = !!designParam.trim() && !designId && !restoreId
+
+  // Resolve the deep link before the canvas mounts, so DesignerCanvas keeps its product-first lifecycle
+  // untouched (it just receives a product_id + "place this art" + "open the picker" like any other entry).
+  const [resolved, setResolved] = useState<DeepLinkResolved | null>(null)
+  useEffect(() => {
+    if (!deepLinkActive) return
+    let alive = true
+    const q = new URLSearchParams({ design: designParam })
+    if (garmentParam) q.set('garment', garmentParam)
+    fetch(`/api/deep-link?${q.toString()}`, { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .then((body: DeepLinkResolved | null) => { if (alive) setResolved(body ?? { design: null, garment: null }) })
+      // Resolution failed → open normally (never an error page for a deep link).
+      .catch(() => { if (alive) setResolved({ design: null, garment: null }) })
+    return () => { alive = false }
+  }, [deepLinkActive, designParam, garmentParam])
+
+  if (deepLinkActive && !resolved) return <Loading />
+
+  // A product in the URL always wins (that's the post-pick navigation, and every pre-existing entry path);
+  // the resolver's garment is only the fallback for a bare ?design= link.
+  const productId = productIdParam || (deepLinkActive ? resolved?.garment?.productId ?? '' : '')
+  // The picker opens on load only when nobody chose the garment: no product in the URL and no ?garment=
+  // that resolved (decision 5: a resolved &garment= skips the picker — the choice was made store-side).
+  const openPickerOnLoad = deepLinkActive && !productIdParam && !resolved?.garment?.matched
+  const placeDecal = deepLinkActive ? resolved?.design ?? undefined : undefined
   
   // Safely decode title - handle any encoding issues
   let title = 'Custom Product'
@@ -34,6 +80,7 @@ function DesignerContent() {
   } catch {
     title = searchParams.get('title') || 'Custom Product'
   }
+  if (!searchParams.get('title') && deepLinkActive && !productIdParam && resolved?.garment?.title) title = resolved.garment.title
 
   return (
     <main className="w-screen lg:h-screen lg:overflow-hidden bg-[#0d0d0d]">
@@ -49,6 +96,8 @@ function DesignerContent() {
         initialColor={initialColor}
         replaceCart={replaceCart}
         replaceLine={replaceLine}
+        placeDecal={placeDecal}
+        openPickerOnLoad={openPickerOnLoad}
       />
     </main>
   )
@@ -56,11 +105,7 @@ function DesignerContent() {
 
 export default function DesignerPage() {
   return (
-    <Suspense fallback={
-      <div className="h-screen w-screen flex items-center justify-center bg-[#0d0d0d] text-white">
-        Loading designer...
-      </div>
-    }>
+    <Suspense fallback={<Loading />}>
       <DesignerContent />
     </Suspense>
   )

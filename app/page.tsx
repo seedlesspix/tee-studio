@@ -1,7 +1,24 @@
 import Image from "next/image";
+import { redirect } from "next/navigation";
 import { CustomerAuthButton } from "./components/CustomerAuthButton";
 
-export default function Home() {
+// Grab 'n Go deep links (2026-10-16): the Shopify theme may link to the site ROOT with ?design=T2491
+// (optionally &garment=3001&color=Black). Forward every such link to the designer with its query
+// intact — the designer owns the resolution (see app/lib/deepLink.ts). Plain visits still get this page.
+export default async function Home({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const params = (await searchParams) ?? {};
+  if (typeof params.design === "string" && params.design.trim()) {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (typeof v === "string") qs.set(k, v);
+      else if (Array.isArray(v) && typeof v[0] === "string") qs.set(k, v[0]);
+    }
+    redirect(`/designer?${qs.toString()}`);
+  }
   return (
     <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
       <div className="w-full max-w-3xl px-16 pt-4 flex justify-end">

@@ -861,6 +861,62 @@ enhancement):
   net-new features that deserve dedicated discovery conversations before scoping.
   Not "small fixes" — set expectations accordingly.
 
+## Grab 'n Go deep links (cross-site, 2026-10-16)
+
+Grab 'n Go designs are **designs, not products** on the Shopify side: one mockup on the
+product page and a **"Put it on something"** button that opens the designer with the
+design already placed. The theme stores the design id in a `custom.design_id` product
+metafield (`"T2491"`) and builds the link from it. **The URL contract the theme hardcodes:**
+
+```
+https://create.tshirtdeli.com/designer?design=T2491
+https://create.tshirtdeli.com/designer?design=T2491&garment=3001&color=Black
+https://create.tshirtdeli.com/?design=T2491            (root alias — forwards to /designer)
+```
+
+| Param | Example | Meaning | Rules |
+|---|---|---|---|
+| `design` | `T2491` | Art library **design number** (`clipart_items.decal_number`) | **The T is display-only; the number is the identity** (Denise, 2026-10-16). Parser accepts `T2491` / `t2491` / `2491` / `T-2491` / leading zeros. Unknown or inactive → designer opens normally (silently) on the default garment with the picker open. |
+| `garment` | `3001` | Product template **style number** (`product_templates.style_number`) | Optional. Same token the mockup-filename convention uses. Also accepts a template uuid or a Shopify product id. Unknown or incompatible → default garment + picker. A resolved `garment` **skips the picker** (the choice was made store-side). |
+| `color` | `Black` | Garment color, exact Shopify name | Optional; pre-existing designer param. |
+
+**How it works** (`app/lib/deepLink.ts` pure helpers + `GET /api/deep-link` resolver +
+`app/designer/page.tsx` + `DesignerCanvas` `placeDecal` / `openPickerOnLoad` props):
+the designer page resolves the link BEFORE the canvas mounts, so `DesignerCanvas` keeps its
+product-first lifecycle untouched. Once the garment + print box are on screen, the art is
+placed through **`handleClipartSelect` — the exact path as tapping it in the Art panel**
+(centered in the box, ≤ half the box width, `_decalNumber` stamped → `decals_used`
+sell-through capture for free). The `design`/`garment` params are then **stripped from the
+address** (same trick as `?restore=`) so a refresh never places a second copy; placement also
+never happens over restored content, and is skipped alongside `design_id` / `restore`.
+
+**Default garment = first active template in the admin's picker order** (`sort_order`, ties →
+oldest; decision 4). **Compatibility (decision 6):** the resolver and the picker's `choose`
+mode only offer garments whose `supported_print_methods` intersect the art's
+`supported_methods`, AND whose Shopify product is live (same `getFeaturedImages` availability
+check as the switch picker) — no dead ends. Picking a garment in the on-load picker
+navigates to `/designer?product_id=…&design=N` and places the art **fresh** there (not the
+re-fit path — nothing has been edited yet, and no draft row is written). Editing first and
+then switching uses the Products rail = the normal snapshot + re-fit path.
+
+**Data rules this depends on:** design numbers must be **unique** (decision 2 — unique
+partial index; the admin surfaces "Design #N is already used" on a 23505) and every active
+template needs a **style number** (the templates list flags "⚠ no style number" and
+"⚠ duplicate style number"). Both were data-checked 2026-10-16: 1 of 398 art items had a
+number (0 duplicates); all 33 templates had style numbers but **6 EmergenTee templates
+duplicate their base garment's style number** (3001/3010/3480/3501/4400/6400) and 8
+templates share `sort_order` 0 — Denise owns both cleanups.
+
+**Build 2 (later): `/mockup/T2491.png`** — a ~1200px catalog PNG of the design composited
+on a default garment (decided: **3001 Unisex Cotton T-shirt in Natural**; white/light art
+needs a darker color rule), mockup's own background, **placeholder image never 404**, 24h
+edge cache (no purge-on-edit for v1). Needs `outputFileTracingIncludes` SHARP_NATIVE for the
+route + live-Vercel verification (the known sharp trap).
+
+**Collision guard:** the theme's pet-photo-upload edge function (`pet-photos` bucket,
+`pet_photo_uploads` table) lives in the same Supabase project and is **not referenced
+anywhere in this repo** — leave it untouched.
+
 ## Named Future Features
 
 Real projects, not backlog bullets. Each needs a discovery conversation and

@@ -62,6 +62,8 @@ import {
 } from 'lucide-react'
 import MyDesignsDrawer, { type SavedDesign } from './MyDesignsDrawer'
 import ProductPickerModal, { type TemplateProduct } from './ProductPickerModal'
+import { stripDeepLinkParams, methodsCompatible, bareProductId } from '../lib/deepLink'
+import { normalizeShopifyProductId } from '../lib/productImages'
 import PrintSizePreview, { type PrintPreviewData } from './PrintSizePreview'
 import { useCustomerSession } from '../hooks/useCustomerSession'
 import { knockoutColorGlobal, knockoutWhiteFromEdges, elementToImageData, imageDataToPngDataUrl, sampleColorAt, cropToDataUrl } from '../lib/imageEdit'
@@ -162,7 +164,17 @@ interface Props {
   replaceCart?: string
   // …and the exact cart line KEY, so the order page can remove that line first-party (seamless replace).
   replaceLine?: string
+  // Grab 'n Go deep link (2026-10-16): a library design (by its design number) to place on open through
+  // the normal Art-panel spawn path, once the garment + print box are on screen. Resolved by the designer
+  // page from ?design=T2491 via /api/deep-link.
+  placeDecal?: PlaceDecal
+  // …and whether the garment picker should open on load ("Put it on something") — true when the link
+  // chose no garment, so the FIRST decision is the garment.
+  openPickerOnLoad?: boolean
 }
+
+// Grab 'n Go deep link: the art to place on open. Mirrors ClipartPanel's ArtMeta (decal + methods).
+export type PlaceDecal = { number: number; name: string; fileUrl: string; fileType: string; supportedMethods?: string[] }
 
 const COLOR_HEX_MAP: Record<string, string> = {
   'Black': '#1a1a1a',
@@ -316,7 +328,8 @@ function getImageNaturalSize(url: string): Promise<{ w: number; h: number } | nu
 }
 
 export default function DesignerCanvas({
-  productId, variantId, productTitle, productPrice, designId = '', restoreId = '', initialQuantity = '', refit = false, initialColor = '', replaceCart = '', replaceLine = ''
+  productId, variantId, productTitle, productPrice, designId = '', restoreId = '', initialQuantity = '', refit = false, initialColor = '', replaceCart = '', replaceLine = '',
+  placeDecal, openPickerOnLoad = false,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const shirtImgRef = useRef<HTMLImageElement>(null)
@@ -1348,6 +1361,10 @@ export default function DesignerCanvas({
   // D2.5 switch-garment: the Products rail opens the picker; on pick we snapshot the CURRENT draft and
   // re-open it on the chosen product via the same design_id+refit path (switch = quick re-open).
   const [switchOpen, setSwitchOpen] = useState(false)
+  // Grab 'n Go deep link: the on-load garment picker ("Put it on something"). Initial state comes from the
+  // prop because the designer page only mounts this component after the link is resolved.
+  const [chooseOpen, setChooseOpen] = useState<boolean>(!!openPickerOnLoad)
+  const deepLinkPlacedRef = useRef(false)
   // The design currently being edited (set on restore, and after a save) so
   // re-saving updates it in place instead of forking a copy.
   const currentDesignIdRef = useRef<string | null>(null)
@@ -5130,6 +5147,64 @@ export default function DesignerCanvas({
     })
   }
 
+  // ── Grab 'n Go deep link (2026-10-16) ─────────────────────────────────────────────────────────────
+  // Strip ?design= / ?garment= from the address once handled, so a refresh never places a second copy
+  // (the autodraft restore owns reloads) — same trick the ?restore= login round-trip uses.
+  const stripDeepLinkUrl = () => {
+    try {
+      const u = stripDeepLinkParams(new URL(window.location.href))
+      window.history.replaceState({}, '', u.pathname + u.search)
+    } catch { /* ignore */ }
+  }
+
+  // Place the linked design once the garment + print box are on screen — through handleClipartSelect,
+  // the SAME path as tapping it in the Art panel (centered in the box, ≤ half the box width, decal number
+  // stamped so the order records it). Runs once; never over restored content; skipped alongside an
+  // edit/restore (design_id / restore own the canvas).
+  useEffect(() => {
+    if (!placeDecal || deepLinkPlacedRef.current) return
+    if (!fabricCanvas || !product || !printArea) return
+    if (designId || restoreId) { deepLinkPlacedRef.current = true; stripDeepLinkUrl(); return }
+    // Method first: if this art can't be produced with the method the product opened on but the product
+    // offers one that can, switch (the print box follows the method) and let this effect re-run.
+    const artMethods = placeDecal.supportedMethods ?? []
+    if (printMethod && !methodsCompatible(artMethods, [printMethod])) {
+      const offered: string[] = (loadedTemplateRef.current?.supported_print_methods as string[] | null) || supportedMethods
+      const fix = artMethods.find(m => offered.includes(m))
+      if (fix) { handleMethodSwitch(fix); return }
+    }
+    deepLinkPlacedRef.current = true
+    if (fabricCanvas.getObjects().length > 0) { stripDeepLinkUrl(); return } // restored work wins — never stack a copy on it
+    // The spawn measures the [data-print-area] overlay; give it a frame (bounded) to mount after printArea set.
+    let tries = 0
+    const place = () => {
+      if (!document.querySelector('[data-print-area]') && tries++ < 30) { requestAnimationFrame(place); return }
+      handleClipartSelect(placeDecal.fileUrl, placeDecal.fileType, {
+        decal: { number: placeDecal.number, name: placeDecal.name },
+        supportedMethods: placeDecal.supportedMethods,
+      })
+      stripDeepLinkUrl()
+    }
+    requestAnimationFrame(place)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placeDecal, fabricCanvas, product, printArea, printMethod, designId, restoreId])
+
+  // "Put it on something": picking a garment re-opens the designer on it with the same ?design= so the art
+  // is placed FRESH there (nothing has been edited yet — a fresh spawn fits the new box better than a
+  // re-fit of a spawn, and writes no draft row). Picking the garment already on screen just closes the
+  // picker. Editing first and then switching uses the Products rail = the normal snapshot + re-fit path.
+  const chooseProduct = (target: TemplateProduct) => {
+    setChooseOpen(false)
+    const targetGid = normalizeShopifyProductId(target.shopify_product_id)
+    const currentGid = product?.id ? normalizeShopifyProductId(product.id) : null
+    if (targetGid && currentGid && targetGid === currentGid) return
+    const params = new URLSearchParams()
+    params.set('product_id', bareProductId(target.shopify_product_id))
+    params.set('title', target.name)
+    if (placeDecal) params.set('design', String(placeDecal.number))
+    window.location.href = `/designer?${params.toString()}`
+  }
+
   // D0 ActionBar extraction: the header's Next Step onClick, lifted VERBATIM into
   // a named handler (cross-side validation + save/add-to-cart + the browser-Back
   // replaceState rehydration + navigate) and passed to <ActionBar> as onNextStep.
@@ -5927,6 +6002,21 @@ export default function DesignerCanvas({
         preferCategory={loadedTemplateRef.current?.category ?? null}
         subtitle={t('designer.switch_subtitle', 'Switch this design to another garment — it re-fits onto:')}
         onPick={(target) => { void switchToProduct(target) }}
+      />
+
+      {/* Grab 'n Go deep link: "Put it on something" — the garment picker that opens on load so the FIRST
+          decision is the garment. Lists only garments that can produce the linked design (incl. the one on
+          screen, tagged); picking one places the design fresh there. */}
+      <ProductPickerModal
+        open={chooseOpen}
+        mode="choose"
+        onClose={() => setChooseOpen(false)}
+        currentProductId={product?.id ?? null}
+        allowedMethods={placeDecal?.supportedMethods ?? null}
+        preferCategory={loadedTemplateRef.current?.category ?? null}
+        title={t('designer.choose_title', 'Put it on something')}
+        subtitle={t('designer.choose_subtitle', 'Pick the garment for this design. You can switch again any time from Products.')}
+        onPick={chooseProduct}
       />
 
       {/* "Preview at print size" (Lens 1): the selected raster upload rendered at true print scale. */}

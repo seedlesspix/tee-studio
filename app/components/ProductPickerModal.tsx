@@ -3,11 +3,18 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { getFeaturedImages } from '../lib/shopify'
 import { normalizeShopifyProductId } from '../lib/productImages'
+import { methodsCompatible } from '../lib/deepLink'
 import { useT } from './StringsProvider'
 
 // D2 Design Portability — pick a target garment to re-fit a saved design onto ("Use on another
 // product"). Lists the active templated products (the only ones the designer + cut pipeline
 // understand); on pick the caller navigates to the designer with ?design_id=…&refit=1.
+//
+// mode="choose" (Grab 'n Go deep link, 2026-10-16): the picker that opens ON LOAD when a design arrives via
+// ?design=T2491 with no garment chosen ("Put it on something"). Differences from the default "switch" mode:
+// the garment already on screen stays in the list (tagged, listed first — picking it just closes), only
+// garments that can produce the design are offered (allowedMethods ∩ supported_print_methods), and the
+// re-fit hint is dropped (the design is placed fresh, nothing is re-fit).
 
 export type TemplateProduct = {
   id: string
@@ -16,10 +23,11 @@ export type TemplateProduct = {
   category?: string | null // BETA #24 — used to list same-category products first
   image?: string | null // representative garment photo (first template color's swatch), when present
   hex?: string | null   // fallback color square when there's no photo
+  supported_print_methods?: string[] | null // for the choose-mode compatibility filter
 }
 
 export default function ProductPickerModal({
-  open, onClose, onPick, excludeProductId, subtitle, preferCategory,
+  open, onClose, onPick, excludeProductId, subtitle, preferCategory, mode = 'switch', title, currentProductId, allowedMethods,
 }: {
   open: boolean
   onClose: () => void
@@ -27,6 +35,10 @@ export default function ProductPickerModal({
   excludeProductId?: string | null // hide the design's origin product (GID)
   subtitle?: string
   preferCategory?: string | null // BETA #24 — the current garment's category; list its category first
+  mode?: 'switch' | 'choose'
+  title?: string // header override (choose mode: "Put it on something")
+  currentProductId?: string | null // choose mode: the garment on screen — kept in the list, tagged, first
+  allowedMethods?: string[] | null // choose mode: only garments offering one of these print methods
 }) {
   const [products, setProducts] = useState<TemplateProduct[]>([])
   const [loading, setLoading] = useState(true)
@@ -43,17 +55,17 @@ export default function ProductPickerModal({
     setAvailable(null)
     supabase
       .from('product_templates')
-      .select('id, name, shopify_product_id, category, product_template_colors(hex, sort_order)')
+      .select('id, name, shopify_product_id, category, supported_print_methods, product_template_colors(hex, sort_order)')
       .eq('is_active', true)
       .order('sort_order')
       .then(({ data }) => {
         if (!alive) return
         type ColorRow = { hex: string | null; sort_order: number | null }
-        const rows = (data as Array<{ id: string; name: string; shopify_product_id: string; category: string | null; product_template_colors: ColorRow[] | null }> | null) ?? []
+        const rows = (data as Array<{ id: string; name: string; shopify_product_id: string; category: string | null; supported_print_methods: string[] | null; product_template_colors: ColorRow[] | null }> | null) ?? []
         const mapped = rows.map(r => {
           // hex of the first color = the fallback square until the real photo arrives (or if it can't).
           const colors = [...(r.product_template_colors ?? [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-          return { id: r.id, name: r.name, shopify_product_id: r.shopify_product_id, category: r.category, image: null as string | null, hex: colors[0]?.hex ?? null }
+          return { id: r.id, name: r.name, shopify_product_id: r.shopify_product_id, category: r.category, supported_print_methods: r.supported_print_methods, image: null as string | null, hex: colors[0]?.hex ?? null }
         })
         setProducts(mapped)
         setLoading(false)
@@ -80,26 +92,32 @@ export default function ProductPickerModal({
   // Exclude the design's ORIGIN garment. Normalize BOTH sides — the saved-design caller passes a bare
   // numeric productId while product_templates.shopify_product_id is a GID, so a raw !== never matched
   // and you could "port" onto the same product. normalizeShopifyProductId canonicalizes both to the GID.
-  const exGid = excludeProductId ? normalizeShopifyProductId(excludeProductId) : null
+  const choose = mode === 'choose'
+  const exGid = !choose && excludeProductId ? normalizeShopifyProductId(excludeProductId) : null
+  const curGid = choose && currentProductId ? normalizeShopifyProductId(currentProductId) : null
   const filtered = products.filter(p => {
     const gid = normalizeShopifyProductId(p.shopify_product_id)
     if (exGid && gid === exGid) return false                    // hide the design's origin garment
     if (available && gid && !available.has(gid)) return false   // hide deleted/unpublished (fail open if null / unparseable id)
+    if (choose && !methodsCompatible(allowedMethods, p.supported_print_methods)) return false // can't produce this design
     return true
   })
   // BETA #24 — list the current garment's category first (advise), preserving the admin sort_order
   // within each group (stable sort). No preferred category → plain sort_order order.
   const prefer = preferCategory?.trim() || null
-  const list = prefer
+  const sorted = prefer
     ? [...filtered].sort((a, b) => (b.category === prefer ? 1 : 0) - (a.category === prefer ? 1 : 0))
     : filtered
+  // Choose mode: the garment already on screen leads the list (stable).
+  const isCurrent = (p: TemplateProduct) => !!curGid && normalizeShopifyProductId(p.shopify_product_id) === curGid
+  const list = curGid ? [...sorted].sort((a, b) => (isCurrent(b) ? 1 : 0) - (isCurrent(a) ? 1 : 0)) : sorted
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
-      <div role="dialog" aria-label="Use on another product" className="relative w-full max-w-sm rounded-xl bg-white shadow-2xl">
+      <div role="dialog" aria-label={title ?? t('designer.product_picker.title', 'Use on another product')} className="relative w-full max-w-sm rounded-xl bg-white shadow-2xl">
         <header className="flex items-center justify-between px-4 h-12 border-b border-gray-200">
-          <span className="text-xs font-mono uppercase tracking-widest text-gray-900">{t('designer.product_picker.title', 'Use on another product')}</span>
+          <span className="text-xs font-mono uppercase tracking-widest text-gray-900">{title ?? t('designer.product_picker.title', 'Use on another product')}</span>
           <button onClick={onClose} aria-label={t('designer.close', 'Close')} className="flex h-7 w-7 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">✕</button>
         </header>
         <div className="p-3">
@@ -107,7 +125,7 @@ export default function ProductPickerModal({
           {loading ? (
             <p className="py-8 text-center font-mono text-xs text-gray-400">{t('designer.product_picker.loading', 'Loading…')}</p>
           ) : list.length === 0 ? (
-            <p className="py-8 text-center text-xs text-gray-500">{t('designer.product_picker.empty', 'No other products available.')}</p>
+            <p className="py-8 text-center text-xs text-gray-500">{choose ? t('designer.choose_empty', 'No garments can take this design right now.') : t('designer.product_picker.empty', 'No other products available.')}</p>
           ) : (
             <ul className="flex flex-col gap-1.5">
               {list.map(p => (
@@ -127,14 +145,21 @@ export default function ProductPickerModal({
                         style={{ background: p.hex || '#e5e7eb' }} aria-hidden="true" />
                     )}
                     <span className="min-w-0 truncate">{p.name}</span>
+                    {isCurrent(p) && (
+                      <span className="ml-auto shrink-0 rounded-full border border-gray-300 bg-gray-50 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-gray-600">
+                        {t('designer.choose_current', 'Shown now')}
+                      </span>
+                    )}
                   </button>
                 </li>
               ))}
             </ul>
           )}
-          <p className="mt-3 text-[11px] leading-snug text-gray-400">
-            {t('designer.product_picker.refit_hint', 'Your design re-fits onto the new garment automatically — a starting point you can nudge.')}
-          </p>
+          {!choose && (
+            <p className="mt-3 text-[11px] leading-snug text-gray-400">
+              {t('designer.product_picker.refit_hint', 'Your design re-fits onto the new garment automatically — a starting point you can nudge.')}
+            </p>
+          )}
         </div>
       </div>
     </div>

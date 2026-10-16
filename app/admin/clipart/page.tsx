@@ -86,7 +86,10 @@ export default function ClipartAdmin() {
     const patch = { tags, decal_number: raw ? parseInt(raw, 10) : null }
     const { error } = await supabase.from('clipart_items').update(patch).eq('id', itemId)
     setSaving(null)
-    if (error) showMessage('Error saving: ' + error.message, 'error')
+    // 23505 = unique violation: design numbers are unique (Grab 'n Go deep links + sell-through treat the
+    // number as the art's identity), so say WHICH number is taken instead of echoing the DB error.
+    if (error?.code === '23505') showMessage(`Design #${raw} is already used by another item — pick a different number.`, 'error')
+    else if (error) showMessage('Error saving: ' + error.message, 'error')
     else {
       setItems(prev => prev.map(i => i.id === itemId ? { ...i, ...patch } : i))
       showMessage('Saved!')

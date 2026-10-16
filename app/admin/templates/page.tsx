@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { normalizeShopifyProductId } from '../../lib/productImages'
+import { normalizeStyleToken } from '../../lib/deepLink'
 import { normalizeTiers, type VolumeTier } from '../../lib/volumeTiers'
 import { useT } from '../../components/StringsProvider'
 import type { Tables } from '@/types/database'
@@ -364,6 +365,24 @@ export default function TemplatesAdmin() {
                             title="This template is Active but its Shopify product is unpublished or unavailable — a customer opening it would hit a broken designer (and cart-add would fail). Publish the product in Shopify, or turn this template Off."
                             className="ml-2 align-middle text-[10px] font-bold px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-300 whitespace-nowrap">
                             ⚠ unavailable in Shopify
+                          </span>
+                        )}
+                        {/* Grab 'n Go deep links identify the garment by STYLE NUMBER (&garment=3001), so an active
+                            template without one can't be deep-linked, and two sharing one are ambiguous (the link
+                            would land on whichever sorts first). Same loud-badge spirit as "⚠ 0 areas". */}
+                        {t.is_active && !normalizeStyleToken(t.style_number ?? '') && (
+                          <span
+                            title="No style number — Grab 'n Go links name the garment by its style number (&garment=3001), so this product can't be deep-linked. Set it in Edit."
+                            className="ml-2 align-middle text-[10px] font-bold px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-300 whitespace-nowrap">
+                            ⚠ no style number
+                          </span>
+                        )}
+                        {t.is_active && !!normalizeStyleToken(t.style_number ?? '') && templates.some(o =>
+                          o.id !== t.id && o.is_active && normalizeStyleToken(o.style_number ?? '') === normalizeStyleToken(t.style_number ?? '')) && (
+                          <span
+                            title="Another active template has the same style number. A Grab 'n Go link using it is ambiguous and lands on whichever template sorts first. Give each template its own style number."
+                            className="ml-2 align-middle text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300 whitespace-nowrap">
+                            ⚠ duplicate style number
                           </span>
                         )}
                       </td>
