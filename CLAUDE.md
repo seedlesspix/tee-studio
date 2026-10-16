@@ -899,6 +899,18 @@ navigates to `/designer?product_id=…&design=N` and places the art **fresh** th
 re-fit path — nothing has been edited yet, and no draft row is written). Editing first and
 then switching uses the Products rail = the normal snapshot + re-fit path.
 
+**Browser Back through the flow (grounded 2026-10-16, Denise's ask from the Shopify side):** every
+entry shape leaves the Grab 'n Go page as the immediately previous history entry. Direct link = one
+entry (the designer). Root alias = a **server 307**, which adds no entry. Picking a garment in the
+on-load picker uses **`location.replace`**, not a push — the default-garment-plus-picker screen is an
+intermediate step, so Back from the chosen garment goes to the Grab 'n Go page, not back to that
+screen. The param strip is a `replaceState` (no entry) and **re-asserts `product_id` + `title`** when
+the link carried none, so a reload / Back onto the stripped entry never opens a product-less designer.
+After Next Step the pre-existing order-page rewrite applies (Back → designer with `design_id`, Back
+again → Grab 'n Go page). An explicit `&back=` "← Back to designs" link was judged **not needed** for
+correctness; if ever added it must accept ONLY store-origin URLs (`NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN` /
+`*.tshirtdeli.com`) or a store-relative path, rendered as a plain link — never an open redirect.
+
 **Data rules this depends on:** design numbers must be **unique** (decision 2 — unique
 partial index; the admin surfaces "Design #N is already used" on a 23505) and every active
 template needs a **style number** (the templates list flags "⚠ no style number" and

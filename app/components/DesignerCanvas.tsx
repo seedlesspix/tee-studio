@@ -5149,10 +5149,16 @@ export default function DesignerCanvas({
 
   // ── Grab 'n Go deep link (2026-10-16) ─────────────────────────────────────────────────────────────
   // Strip ?design= / ?garment= from the address once handled, so a refresh never places a second copy
-  // (the autodraft restore owns reloads) — same trick the ?restore= login round-trip uses.
+  // (the autodraft restore owns reloads) — same trick the ?restore= login round-trip uses. A bare
+  // ?design= link carries NO product, so the stripped address must still name the garment on screen
+  // (product_id + title) — otherwise a reload or a Back onto this entry would open a product-less designer.
   const stripDeepLinkUrl = () => {
     try {
       const u = stripDeepLinkParams(new URL(window.location.href))
+      if (!u.searchParams.get('product_id') && product?.id) {
+        u.searchParams.set('product_id', bareProductId(product.id))
+        if (!u.searchParams.get('title') && productTitle) u.searchParams.set('title', productTitle)
+      }
       window.history.replaceState({}, '', u.pathname + u.search)
     } catch { /* ignore */ }
   }
@@ -5202,7 +5208,10 @@ export default function DesignerCanvas({
     params.set('product_id', bareProductId(target.shopify_product_id))
     params.set('title', target.name)
     if (placeDecal) params.set('design', String(placeDecal.number))
-    window.location.href = `/designer?${params.toString()}`
+    // REPLACE the history entry rather than push one: the default-garment-plus-picker screen is an
+    // intermediate step (a dialog, not a destination), so browser Back from the chosen garment returns
+    // to the Grab 'n Go page the customer came from — not to that intermediate screen.
+    window.location.replace(`/designer?${params.toString()}`)
   }
 
   // D0 ActionBar extraction: the header's Next Step onClick, lifted VERBATIM into
