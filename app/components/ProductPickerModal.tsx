@@ -83,9 +83,14 @@ export default function ProductPickerModal({
 
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    // CAPTURE phase + stopPropagation: an open picker owns Escape. The designer's own window keydown
+    // handler (bubble phase) deselects the active canvas object on Escape, and the React re-render that
+    // follows re-registers THIS listener mid-dispatch, so a bubble-phase listener here never saw the same
+    // keypress whenever art was selected (the deep-link placement arrives selected) — it took two Escapes
+    // to close the picker. Capture runs first and the canvas keeps its selection, as a modal should.
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
   }, [open, onClose])
 
   if (!open) return null
@@ -113,21 +118,25 @@ export default function ProductPickerModal({
   const list = curGid ? [...sorted].sort((a, b) => (isCurrent(b) ? 1 : 0) - (isCurrent(a) ? 1 : 0)) : sorted
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
-      <div role="dialog" aria-label={title ?? t('designer.product_picker.title', 'Use on another product')} className="relative w-full max-w-sm rounded-xl bg-white shadow-2xl">
-        <header className="flex items-center justify-between px-4 h-12 border-b border-gray-200">
+    <div className={`fixed inset-0 z-[60] flex items-center p-4 ${choose ? 'justify-center lg:justify-end lg:pr-10' : 'justify-center'}`}>
+      {/* Choose mode dims less: the design is already placed on the garment behind this list — let it show. */}
+      <div className={`absolute inset-0 ${choose ? 'bg-black/25' : 'bg-black/50'}`} onClick={onClose} aria-hidden="true" />
+      {/* Bounded to the viewport with the LIST scrolling inside: the designer locks the page to the viewport on
+          desktop, so an unbounded dialog with 30+ garments overflowed it — header and ✕ pushed off-screen, nothing
+          scrollable, nothing dismissable. The header + footer stay put; only the list scrolls. */}
+      <div role="dialog" aria-label={title ?? t('designer.product_picker.title', 'Use on another product')} className="relative flex w-full max-w-sm max-h-[min(85vh,760px)] flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+        <header className="flex h-12 shrink-0 items-center justify-between border-b border-gray-200 px-4">
           <span className="text-xs font-mono uppercase tracking-widest text-gray-900">{title ?? t('designer.product_picker.title', 'Use on another product')}</span>
           <button onClick={onClose} aria-label={t('designer.close', 'Close')} className="flex h-7 w-7 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100">✕</button>
         </header>
-        <div className="p-3">
-          {subtitle && <p className="mb-2 text-[11px] text-gray-500">{subtitle}</p>}
+        <div className="flex min-h-0 flex-1 flex-col p-3">
+          {subtitle && <p className="mb-2 shrink-0 text-[11px] text-gray-500">{subtitle}</p>}
           {loading ? (
             <p className="py-8 text-center font-mono text-xs text-gray-400">{t('designer.product_picker.loading', 'Loading…')}</p>
           ) : list.length === 0 ? (
             <p className="py-8 text-center text-xs text-gray-500">{choose ? t('designer.choose_empty', 'No garments can take this design right now.') : t('designer.product_picker.empty', 'No other products available.')}</p>
           ) : (
-            <ul className="flex flex-col gap-1.5">
+            <ul className="-mx-1 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-1 pb-1">
               {list.map(p => (
                 <li key={p.id}>
                   <button
@@ -156,8 +165,13 @@ export default function ProductPickerModal({
             </ul>
           )}
           {!choose && (
-            <p className="mt-3 text-[11px] leading-snug text-gray-400">
+            <p className="mt-3 shrink-0 text-[11px] leading-snug text-gray-400">
               {t('designer.product_picker.refit_hint', 'Your design re-fits onto the new garment automatically — a starting point you can nudge.')}
+            </p>
+          )}
+          {choose && (
+            <p className="mt-3 shrink-0 text-[11px] leading-snug text-gray-400">
+              {t('designer.choose_hint', 'Your design is already on the garment behind this list. Keep it, or pick another garment.')}
             </p>
           )}
         </div>

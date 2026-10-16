@@ -218,6 +218,7 @@ export const UI_STRINGS = {
   'designer.choose_subtitle': { default: "Pick the garment for this design. You can switch again any time from Products.", group: "Designer — General", desc: "Help text under the header of the Grab 'n Go garment picker." },
   'designer.choose_current': { default: "Shown now", group: "Designer — General", desc: "Small tag on the garment currently on screen inside the Grab 'n Go garment picker (picking it just closes the picker)." },
   'designer.choose_empty': { default: "No garments can take this design right now.", group: "Designer — General", desc: "Shown in the Grab 'n Go garment picker when no active product can produce the linked design (print method mismatch or products unavailable)." },
+  'designer.choose_hint': { default: "Your design is already on the garment behind this list. Keep it, or pick another garment.", group: "Designer — General", desc: "Footer hint in the Grab 'n Go garment picker, telling the customer the design is already placed behind the list." },
 
   // ── Designer — Upload ──
   'designer.upload.artwork_label': { default: "Upload Artwork", group: "Designer — Upload", desc: "Label above the file-upload dropzone." },

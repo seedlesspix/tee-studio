@@ -338,7 +338,7 @@ export default function TemplatesAdmin() {
               <table className="w-full text-sm font-mono">
                 <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
                   <tr>
-                    <th className="text-left px-2 py-3" title="Order shown in the designer's product picker">Order</th>
+                    <th className="text-left px-2 py-3" title="Order shown in the designer's product picker. The FIRST active garment here is also the default garment a Grab 'n Go link (?design=…) opens on when the link names no garment.">Order</th>
                     <th className="text-left px-4 py-3">Name</th>
                     <th className="text-left px-4 py-3">Shopify product</th>
                     <th className="text-left px-4 py-3">Methods</th>

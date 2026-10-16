@@ -911,6 +911,25 @@ again → Grab 'n Go page). An explicit `&back=` "← Back to designs" link was 
 correctness; if ever added it must accept ONLY store-origin URLs (`NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN` /
 `*.tshirtdeli.com`) or a store-relative path, rendered as a plain link — never an open redirect.
 
+**Preview-test findings (Denise, Safari, 2026-10-16) and what they taught:**
+- **The picked garment opened BLANK** (the design did not carry). Root cause: **Next.js wires
+  `useSearchParams` to the native History API**, so the designer's own `history.replaceState` strip of
+  `?design=` re-rendered the designer page with the param gone, and a `placeDecal` prop derived from
+  the live URL was dropped BEFORE the customer picked a garment — `chooseProduct` then navigated
+  without `?design=`. Fix: the designer page derives `placeDecal` from the resolved result, not the
+  live URL (the result is only ever set by a deep link). **Rule: anything that strips its own URL
+  params must not also derive state from those params.** Found by reproducing in headless Chromium
+  against the dev server (Playwright in the session scratchpad), not by reading.
+- **Picker unusable on desktop** (31 garments overflowed the viewport-locked designer: no scroll,
+  header + ✕ pushed off-screen, design hidden behind it). The dialog is now bounded
+  (`max-h-[min(85vh,760px)]`) with only the LIST scrolling; choose mode docks to the right on `lg:`
+  and dims the backdrop less so the placed design stays visible.
+- **"Default garment ≠ predicted"** was data, not code: between the morning data check and the
+  test, the EmergenTee templates got `-ET` style numbers and explicit picker positions 0–6, so
+  "first in picker order" correctly resolved to Baby Onesie EmergenTee. The Templates admin's
+  Order column tooltip now says the first garment is also the deep-link default.
+- Art-load failures in `handleClipartSelect` were a silent no-op (no `.catch`); they now log.
+
 **Data rules this depends on:** design numbers must be **unique** (decision 2 — unique
 partial index; the admin surfaces "Design #N is already used" on a 23505) and every active
 template needs a **style number** (the templates list flags "⚠ no style number" and

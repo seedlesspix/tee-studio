@@ -5144,7 +5144,7 @@ export default function DesignerCanvas({
         setSelectedSvgColor('#000000')
         fabricCanvas.renderAll()
       }
-    })
+    }).catch((e: unknown) => console.error('[designer] art failed to load:', url, e)) // never a silent no-op
   }
 
   // ── Grab 'n Go deep link (2026-10-16) ─────────────────────────────────────────────────────────────

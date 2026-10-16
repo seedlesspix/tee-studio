@@ -70,7 +70,14 @@ function DesignerContent() {
   // The picker opens on load only when nobody chose the garment: no product in the URL and no ?garment=
   // that resolved (decision 5: a resolved &garment= skips the picker — the choice was made store-side).
   const openPickerOnLoad = deepLinkActive && !productIdParam && !resolved?.garment?.matched
-  const placeDecal = deepLinkActive ? resolved?.design ?? undefined : undefined
+  // NOT gated on deepLinkActive: Next.js wires useSearchParams to the native History API, so the
+  // designer's own strip of ?design= (history.replaceState after placement) re-renders this page with
+  // deepLinkActive=false. The resolved design must outlive that strip — the on-load picker reads it
+  // when the customer picks a garment (chooseProduct carries ?design= to the new garment). Gating it on
+  // the live URL dropped the prop between placement and the pick, so the picked garment opened blank
+  // (found on the branch preview, 2026-10-16). `resolved` is only ever set by a deep link, so this is
+  // still undefined on every other entry path.
+  const placeDecal = resolved?.design ?? undefined
   
   // Safely decode title - handle any encoding issues
   let title = 'Custom Product'
