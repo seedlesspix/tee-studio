@@ -599,6 +599,48 @@ export type Database = {
           },
         ]
       }
+      pet_photo_uploads: {
+        Row: {
+          bytes: number | null
+          created_at: string
+          id: string
+          mime_type: string | null
+          notes: string | null
+          original_name: string | null
+          product_handle: string | null
+          public_url: string
+          shopify_order_name: string | null
+          storage_path: string
+          variant_title: string | null
+        }
+        Insert: {
+          bytes?: number | null
+          created_at?: string
+          id?: string
+          mime_type?: string | null
+          notes?: string | null
+          original_name?: string | null
+          product_handle?: string | null
+          public_url: string
+          shopify_order_name?: string | null
+          storage_path: string
+          variant_title?: string | null
+        }
+        Update: {
+          bytes?: number | null
+          created_at?: string
+          id?: string
+          mime_type?: string | null
+          notes?: string | null
+          original_name?: string | null
+          product_handle?: string | null
+          public_url?: string
+          shopify_order_name?: string | null
+          storage_path?: string
+          variant_title?: string | null
+        }
+        Relationships: []
+      }
       product_template_colors: {
         Row: {
           color_name: string
