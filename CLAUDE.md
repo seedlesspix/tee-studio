@@ -368,10 +368,13 @@ trusting a read, ask "what does this surface refuse to show me?"
   and locked N&N stacks already round-trip through them); the cost is (a) capturing every mutation path
   as a debounced step (object:added/removed/modified, text + style changes, recolor, curve, zone switch,
   N&N, image edits — fold the per-image stack into the one history), (b) re-syncing React state and the
-  selection after each apply, (c) memory on phones: snapshots carry the hi-res clipart data URLs today
-  (dehydrate like the upload fix, or do it after the true-vector refactor), (d) Cmd/Ctrl+Z shortcuts
-  next to the existing Cmd+D. Quick win available any time: hide the arrows on desktop when no editable
-  image is selected (mobile already does), so disabled buttons stop looking broken.
+  selection after each apply, (c) memory on phones: snapshots carry the hi-res clipart data URLs today,
+  (d) Cmd/Ctrl+Z shortcuts next to the existing Cmd+D.
+  **DECIDED (Denise, 2026-10-17): canvas-wide undo/redo is APPROVED in principle and SEQUENCED AFTER the
+  true-vector clipart refactor** (see "Multi-color recolorable SVGs"), because that refactor removes the
+  hi-res clipart data URLs from every snapshot — history gets light first, then gets built. Don't
+  re-debate the order. **Quick win SHIPPED 2026-10-17:** the desktop arrows are hidden (not just
+  disabled) when no image with edit history is selected, matching mobile.
 - **No save drafts**: Designs only saved at checkout
 - **No design sharing**: No public gallery or social sharing
 - **Webhook**: `shopify-webhook/route.ts` updates `design_orders` on Shopify `order/paid` — sets `status='completed'`, customer info, shipping. Not pointed at by Shopify yet — register the webhook URL in Shopify admin to activate.
@@ -1163,6 +1166,8 @@ Attributes export). Denise is rebuilding the library to those rules now, so dete
 
 **Size:** A + B ≈ **4–6 dev-days** for library art; C ≈ **+2–3 d**. Needs a discovery pass on the
 slot UI (chips vs. a list) before build; not a tweak. Related: [[project_clipart_heavy_413]].
+**Sequencing (Denise, 2026-10-17):** this refactor comes BEFORE canvas-wide undo/redo — the true-vector
+load is what makes design snapshots light enough for a history stack (see Known Issues → undo/redo).
 
 ### Recolorable single-color vector uploads (post-Phase-3 candidate)
 

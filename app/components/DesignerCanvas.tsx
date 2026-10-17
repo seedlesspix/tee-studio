@@ -5794,11 +5794,15 @@ export default function DesignerCanvas({
           {!isMobile && (
           <div className="shrink-0 flex items-center gap-1 mb-2 px-1 flex-wrap">
             {/* Undo/Redo for image editing (Phase 5) — enabled when the selected image has edit
-                history. editHistTick forces this to re-evaluate after each edit/undo/redo. */}
+                history. editHistTick forces this to re-evaluate after each edit/undo/redo.
+                Hidden entirely (not just disabled) when nothing editable is selected — same rule as
+                mobile — so the arrows never sit there looking broken (Denise, 2026-10-17). They come
+                back the moment an image with crop / background-removal history is selected. */}
             {(() => {
               const im: any = editHistTick >= 0 ? fabricCanvas?.getActiveObject() : null
               const canU = !!(im?._editHist && im._editIdx > 0)
               const canR = !!(im?._editHist && im._editIdx < im._editHist.length - 1)
+              if (!canU && !canR) return null
               return (
                 <>
                   <button title={t('designer.undo_image_edit', 'Undo image edit')} disabled={!canU || imageEditBusy}
