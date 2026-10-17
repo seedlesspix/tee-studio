@@ -911,6 +911,20 @@ again → Grab 'n Go page). An explicit `&back=` "← Back to designs" link was 
 correctness; if ever added it must accept ONLY store-origin URLs (`NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN` /
 `*.tshirtdeli.com`) or a store-relative path, rendered as a plain link — never an open redirect.
 
+**Landing color (Denise, 2026-10-17 — three rules, all decided):** (1) a deep-linked garment opens in
+the **admin's first template color** (Templates → Colors order), never Shopify's first option value
+(which landed the Cotton T on Columbia Blue by accident and would land a white design on White for
+3501 / the tote / every EmergenTee). (2) An art item flagged **"Light artwork — show on a dark
+garment"** (`clipart_items.is_light`, Art Library checkbox, human-set on purpose: a full server-side
+luminance scan of 398 items found 1 clearly light + 3 borderline half-white flags) opens on the
+garment's **darkest color by hex luminance** (`pickLandingColor` in `deepLink.ts`; bad hex = mid-grey,
+can never win). Build 2 renders flagged art on a black tee from the SAME flag, so the two can't drift;
+auto-detection is deferred to Build 2 where the image engine lives. (3) A theme `?color=` overrides
+both. The resolver returns `garment.color`; the designer page carries it through the existing
+`initialColor` prop (not URL-gated, same reason as `placeDecal`), and resolves the garment that is
+actually ON SCREEN (`?garment=`, else the URL's `product_id` after a pick) so the color is computed for
+the right template. Templates with no admin colors (e.g. 3901) keep the Shopify fallback.
+
 **Preview-test findings (Denise, Safari, 2026-10-16) and what they taught:**
 - **The picked garment opened BLANK** (the design did not carry). Root cause: **Next.js wires
   `useSearchParams` to the native History API**, so the designer's own `history.replaceState` strip of

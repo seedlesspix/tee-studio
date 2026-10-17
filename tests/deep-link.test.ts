@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   parseDesignNumber, formatDesignNumber, parseGarmentRef, normalizeStyleToken, styleTokensOf, matchesStyle,
-  methodsCompatible, stripDeepLinkParams, compareTemplates, bareProductId,
+  methodsCompatible, stripDeepLinkParams, compareTemplates, bareProductId, hexLuminance, pickLandingColor,
 } from '../app/lib/deepLink'
 
 describe('parseDesignNumber — "T2491" on the site means decal_number 2491', () => {
@@ -102,5 +102,36 @@ describe('bareProductId', () => {
   it('strips the gid prefix', () => {
     expect(bareProductId('gid://shopify/Product/123')).toBe('123')
     expect(bareProductId('')).toBe('')
+  })
+})
+
+describe('landing color — admin order first, darkest for light art', () => {
+  const cottonT = [
+    { color_name: 'Natural', hex: '#e8dcc8', sort_order: 0 },
+    { color_name: 'Columbia Blue', hex: '#9bb9d9', sort_order: 1 },
+    { color_name: 'Black', hex: '#000000', sort_order: 2 },
+    { color_name: 'Navy', hex: '#262f41', sort_order: 3 },
+  ]
+  it('luminance: black 0, white 1, short hex ok, junk null', () => {
+    expect(hexLuminance('#000000')).toBe(0)
+    expect(hexLuminance('#ffffff')).toBeCloseTo(1, 5)
+    expect(hexLuminance('fff')).toBeCloseTo(1, 5)
+    expect(hexLuminance('#e8dcc8')!).toBeGreaterThan(0.7)
+    expect(hexLuminance('not-a-hex')).toBeNull()
+    expect(hexLuminance(null)).toBeNull()
+  })
+  it('rule 1: normal art lands on the ADMIN first color regardless of array order', () => {
+    expect(pickLandingColor([...cottonT].reverse(), false)).toBe('Natural')
+  })
+  it('rule 2: light art lands on the darkest color', () => {
+    expect(pickLandingColor(cottonT, true)).toBe('Black')
+  })
+  it('a bad hex cannot win darkest; ties keep admin order', () => {
+    expect(pickLandingColor([{ color_name: 'Mystery', hex: '??', sort_order: 0 }, { color_name: 'Navy', hex: '#262f41', sort_order: 1 }], true)).toBe('Navy')
+    expect(pickLandingColor([{ color_name: 'Black A', hex: '#000', sort_order: 0 }, { color_name: 'Black B', hex: '#000000', sort_order: 1 }], true)).toBe('Black A')
+  })
+  it('no colors → null (caller keeps the Shopify fallback)', () => {
+    expect(pickLandingColor([], false)).toBeNull()
+    expect(pickLandingColor(null, true)).toBeNull()
   })
 })

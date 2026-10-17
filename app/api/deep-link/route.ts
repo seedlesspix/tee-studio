@@ -4,7 +4,8 @@ import { getFeaturedImages } from '../../lib/shopify'
 import { normalizeShopifyProductId } from '../../lib/productImages'
 import { rateLimit, clientIp } from '../../lib/server/rateLimit'
 import {
-  parseDesignNumber, parseGarmentRef, matchesStyle, methodsCompatible, compareTemplates, bareProductId,
+  parseDesignNumber, parseGarmentRef, matchesStyle, methodsCompatible, compareTemplates, bareProductId, pickLandingColor,
+  type TemplateColor,
 } from '../../lib/deepLink'
 
 // Grab 'n Go deep-link resolver (2026-10-16). Turns the theme's ?design=T2491[&garment=3001] into what
@@ -14,8 +15,12 @@ import {
 // an unparseable or unknown design/garment is simply null in the response.
 //
 //   GET /api/deep-link?design=T2491&garment=3001
-//   → { design: { number, name, fileUrl, fileType, supportedMethods } | null,
-//       garment: { templateId, productId (bare), gid, title, matched } | null }
+//   → { design: { number, name, fileUrl, fileType, supportedMethods, isLight } | null,
+//       garment: { templateId, productId (bare), gid, title, matched, color } | null }
+//
+// garment.color = the color to LAND on (Denise, 2026-10-17): the admin's first template color, or the
+// darkest one when the design is flagged light artwork; null when the template has no colors (the
+// designer then keeps its Shopify-first fallback). A theme ?color= overrides it (designer page).
 //
 // garment.matched = true when ?garment= resolved to a usable template; false when this is the default
 // (first in the admin's picker order — decision 4) so the designer knows to open the picker.
@@ -26,6 +31,7 @@ export const dynamic = 'force-dynamic'
 type Tpl = {
   id: string; name: string; style_number: string | null; shopify_product_id: string
   supported_print_methods: string[] | null; sort_order: number | null; created_at: string | null
+  product_template_colors: TemplateColor[] | null
 }
 
 export async function GET(request: NextRequest) {
@@ -41,11 +47,11 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient()
 
     // ---- The design (art) ----
-    let design: { number: number; name: string; fileUrl: string; fileType: string; supportedMethods: string[] } | null = null
+    let design: { number: number; name: string; fileUrl: string; fileType: string; supportedMethods: string[]; isLight: boolean } | null = null
     if (designNumber != null) {
       const { data } = await supabase
         .from('clipart_items')
-        .select('id, name, file_url, file_type, decal_number, supported_methods, sort_order')
+        .select('id, name, file_url, file_type, decal_number, supported_methods, sort_order, is_light')
         .eq('decal_number', designNumber)
         .eq('is_active', true)
         .order('sort_order', { ascending: true })
@@ -58,6 +64,7 @@ export async function GET(request: NextRequest) {
           fileUrl: row.file_url,
           fileType: row.file_type ?? 'image',
           supportedMethods: row.supported_methods ?? [],
+          isLight: row.is_light === true,
         }
       }
     }
@@ -65,7 +72,7 @@ export async function GET(request: NextRequest) {
     // ---- The garment ----
     const { data: tplRows } = await supabase
       .from('product_templates')
-      .select('id, name, style_number, shopify_product_id, supported_print_methods, sort_order, created_at')
+      .select('id, name, style_number, shopify_product_id, supported_print_methods, sort_order, created_at, product_template_colors(color_name, hex, sort_order)')
       .eq('is_active', true)
     const templates = ((tplRows ?? []) as Tpl[])
       .filter(t => !!t.shopify_product_id)
@@ -98,7 +105,10 @@ export async function GET(request: NextRequest) {
 
     const gid = picked ? gidOf(picked) : null
     const garment = picked && gid
-      ? { templateId: picked.id, productId: bareProductId(gid), gid, title: picked.name, matched }
+      ? {
+          templateId: picked.id, productId: bareProductId(gid), gid, title: picked.name, matched,
+          color: pickLandingColor(picked.product_template_colors, design?.isLight === true),
+        }
       : null
 
     return NextResponse.json({ design, garment }, { headers: { 'Cache-Control': 'no-store' } })

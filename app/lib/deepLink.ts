@@ -109,3 +109,38 @@ export function compareTemplates<T extends { sort_order?: number | null; created
 export function bareProductId(gid: string): string {
   return (gid || '').split('/').pop() || ''
 }
+
+// ── Landing color (Denise, 2026-10-17) ───────────────────────────────────────────────────────────────
+// Which color a deep-linked garment opens in. Rule 1: the ADMIN's first color on the template (Templates →
+// Colors order), never Shopify's first option value (which landed the Cotton T on Columbia Blue by
+// accident). Rule 2: a design flagged "light artwork" opens on the garment's DARKEST color (by hex
+// luminance) so a white design is never invisible on arrival — the same rule Build 2 uses for its
+// catalog render (light art → black tee). A theme ?color= overrides both (handled by the caller).
+
+// Relative luminance of a #rrggbb hex (0 = black, 1 = white), or null when unparseable.
+export function hexLuminance(hex: string | null | undefined): number | null {
+  const h = (hex || '').trim().replace(/^#/, '')
+  const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h
+  if (!/^[0-9a-f]{6}$/i.test(full)) return null
+  const [r, g, b] = [0, 2, 4].map(i => parseInt(full.slice(i, i + 2), 16) / 255)
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+export type TemplateColor = { color_name: string; hex: string | null; sort_order?: number | null }
+
+// The color name to land on, or null when the template has no colors (caller keeps today's fallback).
+// lightArt → darkest by luminance (ties → admin order); else → the admin's first color. Colors with an
+// unparseable hex are treated as mid-grey so a bad hex can never win "darkest" by accident.
+export function pickLandingColor(colors: readonly TemplateColor[] | null | undefined, lightArt: boolean): string | null {
+  const ordered = [...(colors ?? [])]
+    .filter(c => !!c.color_name)
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+  if (!ordered.length) return null
+  if (!lightArt) return ordered[0].color_name
+  let best = ordered[0], bestL = hexLuminance(ordered[0].hex) ?? 0.5
+  for (const c of ordered.slice(1)) {
+    const L = hexLuminance(c.hex) ?? 0.5
+    if (L < bestL) { best = c; bestL = L }
+  }
+  return best.color_name
+}

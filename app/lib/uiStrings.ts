@@ -35,6 +35,7 @@ export const UI_STRINGS = {
 
   // ── Admin — Art library ──────────────────────────────────────────────────────
   'admin.design_number': { default: 'Design #', group: 'Admin — Art', desc: 'Label for an art item’s design number in the Art admin (was "Decal #" — BETA #22).' },
+  'admin.light_artwork': { default: 'Light artwork — show on a dark garment', group: 'Admin — Art', desc: 'Checkbox label on an art item. When ticked, a Grab ’n Go link opens the garment in its darkest color (and the catalog image renders on a black tee) so white designs are visible on arrival.' },
   'admin.designs_used': { default: 'Designs Used', group: 'Admin — Orders', desc: 'Heading over the list of design numbers used on an order (was "Decals Used").' },
   'admin.desired_by_label': { default: 'Desired by', group: 'Admin — Orders', desc: 'Label for the customer-requested "desired by" date shown on an order in admin (BETA #30).' },
   'admin.acknowledged_label': { default: 'Design acknowledged', group: 'Admin — Orders', desc: 'Label shown with the timestamp of when the customer ticked the pre-cart design acknowledgment (BETA #32).' },

@@ -7,7 +7,7 @@ import DesignerCanvas, { type PlaceDecal } from '../components/DesignerCanvas'
 // Grab 'n Go deep link (2026-10-16): what /api/deep-link resolves ?design= / ?garment= into.
 type DeepLinkResolved = {
   design: PlaceDecal | null
-  garment: { templateId: string; productId: string; gid: string; title: string; matched: boolean } | null
+  garment: { templateId: string; productId: string; gid: string; title: string; matched: boolean; color: string | null } | null
 }
 
 function Loading() {
@@ -53,14 +53,17 @@ function DesignerContent() {
     if (!deepLinkActive) return
     let alive = true
     const q = new URLSearchParams({ design: designParam })
+    // Resolve the garment that will actually be ON SCREEN: the link's ?garment=, else the product already in
+    // the URL (post-pick navigation) — so the landing color below is computed for that garment, not the default.
     if (garmentParam) q.set('garment', garmentParam)
+    else if (productIdParam) q.set('garment', productIdParam)
     fetch(`/api/deep-link?${q.toString()}`, { cache: 'no-store' })
       .then(r => (r.ok ? r.json() : null))
       .then((body: DeepLinkResolved | null) => { if (alive) setResolved(body ?? { design: null, garment: null }) })
       // Resolution failed → open normally (never an error page for a deep link).
       .catch(() => { if (alive) setResolved({ design: null, garment: null }) })
     return () => { alive = false }
-  }, [deepLinkActive, designParam, garmentParam])
+  }, [deepLinkActive, designParam, garmentParam, productIdParam])
 
   if (deepLinkActive && !resolved) return <Loading />
 
@@ -78,6 +81,9 @@ function DesignerContent() {
   // (found on the branch preview, 2026-10-16). `resolved` is only ever set by a deep link, so this is
   // still undefined on every other entry path.
   const placeDecal = resolved?.design ?? undefined
+  // Landing color (2026-10-17): a theme ?color= wins; else the resolver's pick — the admin's first template
+  // color, or the darkest one for light artwork. Same "survives the strip" reasoning as placeDecal.
+  const landingColor = initialColor || resolved?.garment?.color || ''
   
   // Safely decode title - handle any encoding issues
   let title = 'Custom Product'
@@ -100,7 +106,7 @@ function DesignerContent() {
         restoreId={restoreId}
         initialQuantity={quantity}
         refit={refit}
-        initialColor={initialColor}
+        initialColor={landingColor}
         replaceCart={replaceCart}
         replaceLine={replaceLine}
         placeDecal={placeDecal}

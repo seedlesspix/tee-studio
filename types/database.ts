@@ -89,6 +89,7 @@ export type Database = {
           file_url: string
           id: string
           is_active: boolean | null
+          is_light: boolean
           name: string
           print_method_key: string | null
           sort_order: number | null
@@ -104,6 +105,7 @@ export type Database = {
           file_url: string
           id?: string
           is_active?: boolean | null
+          is_light?: boolean
           name: string
           print_method_key?: string | null
           sort_order?: number | null
@@ -119,6 +121,7 @@ export type Database = {
           file_url?: string
           id?: string
           is_active?: boolean | null
+          is_light?: boolean
           name?: string
           print_method_key?: string | null
           sort_order?: number | null

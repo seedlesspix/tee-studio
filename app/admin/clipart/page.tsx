@@ -107,6 +107,17 @@ export default function ClipartAdmin() {
     else setItems(prev => prev.map(i => i.id === item.id ? { ...i, supported_methods: next } : i))
   }
 
+  // "Light artwork" flag (Denise, 2026-10-17) — persists immediately. A flagged design opens a Grab 'n Go
+  // landing on the garment's DARKEST color (else the admin's first color) so white art is never invisible
+  // on arrival; Build 2 renders it on a black tee. Human-set on purpose: 4 of 398 items qualify today and
+  // the borderline ones (half-white flags) are judgment calls.
+  const toggleLight = async (item: ClipartItem) => {
+    const next = !item.is_light
+    const { error } = await supabase.from('clipart_items').update({ is_light: next }).eq('id', item.id)
+    if (error) showMessage('Error: ' + error.message, 'error')
+    else setItems(prev => prev.map(i => i.id === item.id ? { ...i, is_light: next } : i))
+  }
+
   // Category membership toggle — persists immediately. Removing the CURRENTLY selected category drops
   // the art from this list (it now lives elsewhere).
   const toggleCategory = async (item: ClipartItem, catId: string) => {
@@ -351,6 +362,14 @@ export default function ClipartAdmin() {
                       inputMode="numeric"
                       className="w-full bg-white border border-emerald-300 rounded px-2 py-1 text-[10px] text-black outline-none focus:border-emerald-500 font-mono placeholder-gray-400"
                     />
+
+                    {/* Light artwork → deep links land on the garment's darkest color; Build 2 renders on black. */}
+                    <label
+                      title="Tick for white or very light designs. A Grab 'n Go link then opens the garment in its darkest color so the design is visible on arrival, and the catalog image renders it on a black tee."
+                      className="flex items-center gap-1.5 text-[10px] font-mono text-black cursor-pointer">
+                      <input type="checkbox" checked={!!item.is_light} onChange={() => toggleLight(item)} className="accent-[#dd3333]" />
+                      {t('admin.light_artwork', 'Light artwork — show on a dark garment')}
+                    </label>
 
                     {/* Categories — an art can be in several. Click to expand the checklist. */}
                     <button
