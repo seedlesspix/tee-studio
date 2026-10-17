@@ -1106,6 +1106,52 @@ restructure being done component-first. Scoped INTO the desktop-redesign build
 sequence (see BUILD_PLAN → "Desktop redesign — grounded build sequence"). Awaiting
 Denise's re-fit-rule decision (visual aid published) before build.
 
+### Multi-color recolorable SVGs — true-vector clipart (scoped 2026-10-17, NOT built)
+
+**The ask (Denise):** a two-color design (text + stars) where the customer recolors each color
+group independently — "change the text color, the stars stay put." **Grounded:** today
+`loadSvgHiRes` rasterizes SVG clipart to a hi-res PNG data URL ("interim fix" so it stays crisp when
+enlarged) and `recolorSvg` tints that raster one color with a BlendColor filter (`_currentColor`);
+the cut engine (`clipartCutEngine.ts`) re-parses the SOURCE SVG via `_svgOrigSrc` and applies
+`currentColor` as a whole-shape tint, else the SVG's own per-path fills, then `cutFileEngine.ts`
+emits **one layer per fill color** — so multi-color is already a concept server-side. **Per-slot
+recolor cannot be done on the raster path** (a pixel color-key hack fringes on anti-aliased edges
+and only works on flat art), so this IS the reason to do the parked true-vector load — which also
+retires the crisp-when-enlarged hack and the clipart-heavy 413 risk (no more hi-res data URL in
+`canvas_json`; see the `project_clipart_heavy_413` memory).
+
+**Library reality (scan of all 390 SVGs, 2026-10-17):** 357 single-fill, 32 with no fill written
+(reads as black), **1 two-color (T4025)**, 1 live `<text>` (Sledding), 1 stroke, 0 gradients / images
+/ CSS classes / `<use>` / filters. Median 1 shape (max 109), median 3 KB (max 69 KB) → vector groups
+are cheap to render, serialize and restore. The **file-prep rules that make slot detection reliable
+are in SHOP_MANUAL.md → Art Library → "SVG file prep"** (explicit fill on every shape, one exact hex
+per group, no strokes/text/gradients/masks/images, nonzero holes, tight artboard, Presentation
+Attributes export). Denise is rebuilding the library to those rules now, so detection can assume them.
+
+**Build shape (two phases + a sibling):**
+- **A. True-vector load (foundation, ~2–3 d):** `loadSVGFromURL` → Fabric Group of paths instead of
+  the raster; keep `_isSvg` + `_svgOrigSrc`; groups serialize/restore natively (`enlivenObjects`),
+  ride `scaleX/scaleY` like today (the D2 re-fit engine already treats `_isSvg` as the `image` kind
+  → unchanged), constrain/align/handles are generic, `exportCanvasPNG` draws the canvas unchanged.
+  The embroidery look wraps `_render` (not an image filter) so it works on a group; its
+  `preserveColor` mode gives per-slot thread colors for free. Mobile: Fabric object caching keeps
+  drag cheap; cap path count at upload (rule 10/13). **Regression sweep is the cost:** spawn, restore,
+  autodraft, re-fit, export PNG/SVG, embroidery, Names & Numbers untouched.
+- **B. Color slots + per-slot recolor (~2–3 d):** slot = all paths sharing an effective fill
+  (resolve inheritance anyway; optional near-shade merge); persist `_svgColorMap` {originalHex →
+  chosenHex} in `CANVAS_CUSTOM_PROPS` (single-color art = one slot; migrate `_currentColor` →
+  {all → color}); UI = one swatch chip per slot in `SelectionPanel` + `MobileArtBand`, each opening the
+  print palette, labelled from the source layer `id` when present (rule 12), else "Color 1/2"; cut
+  engine applies the map per path fill (replacing the whole-tint) → layers per CHOSEN color.
+- **C. Recolorable vector UPLOADS (sibling, +2–3 d, supersedes the single-color note below):**
+  same engine on customer SVGs — keep the vector (bypass the Cloudinary flatten for SVG; AI/EPS→SVG is
+  an open question), plus **SVG sanitization** (strip scripts/external refs/`foreignObject`, size and
+  path-count caps) because uploads are untrusted; the "what if it's multi-color" question answers
+  itself (N slots).
+
+**Size:** A + B ≈ **4–6 dev-days** for library art; C ≈ **+2–3 d**. Needs a discovery pass on the
+slot UI (chips vs. a list) before build; not a tweak. Related: [[project_clipart_heavy_413]].
+
 ### Recolorable single-color vector uploads (post-Phase-3 candidate)
 
 A customer uploads a **one-colour vector** (SVG/AI/EPS) and can then recolour it
@@ -1117,7 +1163,7 @@ about artwork being *adaptable* rather than frozen at upload.
 Needs: detecting that an upload really is single-colour; keeping the vector as a
 vector (today AI/EPS are flattened to a delivery PNG — see the uploaded-originals
 note under designer_pricing); and deciding what happens to a multi-colour file
-(refuse to recolour? recolour the dominant ink?). Not scoped.
+(refuse to recolour? recolour the dominant ink?). **Scoped 2026-10-17 as phase C of "Multi-color recolorable SVGs" above** — the same slot engine answers the multi-colour question (N slots).
 
 ### Designer on Mobile — 🚨 LAUNCH GATE (see BUILD_PLAN.md → BLOCKER-2)
 
