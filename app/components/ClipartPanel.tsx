@@ -160,8 +160,9 @@ export default function ClipartPanel({ printMethod, onSelect, horizontal = false
               title={item.name}
               className="flex w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white p-1.5 shadow-sm active:border-gray-400"
             >
-              <img src={item.file_url} alt={item.name} className="h-10 w-10 object-contain" decoding="async" />
-              <span className="w-full truncate text-center font-mono text-[8px] leading-tight text-gray-500">{item.name}</span>
+              {/* Tiles show the art only (Denise, 2026-10-17: cleaner browsing). The name stays as the
+                  tooltip + alt text, and search still matches it. */}
+              <img src={item.file_url} alt={item.name} className="h-12 w-12 object-contain" decoding="async" />
             </button>
           ))}
         </div>
@@ -174,15 +175,13 @@ export default function ClipartPanel({ printMethod, onSelect, horizontal = false
               title={item.name}
               className="bg-white border border-gray-200 rounded-lg p-2 hover:border-[#dd3333] transition-all flex flex-col items-center gap-1"
             >
+              {/* Art only — no caption (Denise, 2026-10-17). Name = tooltip + alt; search matches it. */}
               <img
                 src={item.file_url}
                 alt={item.name}
-                className="w-12 h-12 object-contain"
+                className="w-14 h-14 object-contain"
                 decoding="async"
               />
-              <span className="text-[9px] text-gray-600 font-mono text-center leading-tight truncate w-full">
-                {item.name}
-              </span>
             </button>
           ))}
         </div>

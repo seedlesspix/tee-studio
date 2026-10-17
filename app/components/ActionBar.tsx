@@ -32,6 +32,7 @@ export default function ActionBar({
   onBeforeLogin,
   onNextStep,
   pricePerItem,
+  onDownloadPng,
 }: {
   productTitle: string
   onSave: () => Promise<{ restoreUrl: string } | null>
@@ -42,6 +43,10 @@ export default function ActionBar({
   onBeforeLogin: () => Promise<string | null>
   onNextStep: () => void
   pricePerItem?: number
+  // Staff only (Denise, 2026-10-17): present only when the designer detected an admin session. Desktop
+  // cluster only — a bench/office tool, not a phone one. 'mockup' = garment + design as shown;
+  // 'artwork' = the design alone, transparent, 2×.
+  onDownloadPng?: (kind: 'mockup' | 'artwork') => void
 }) {
   // Mobile (BLOCKER-2 condensed-top-bar pass): the wordmark/title/Save/My Designs/
   // Log-in collapse into a ☰ menu below the lg breakpoint; price + Next Step stay
@@ -49,6 +54,7 @@ export default function ActionBar({
   // identical — every desktop element is `hidden lg:*` (shows ≥1024 exactly as
   // before) and every mobile element is `lg:hidden` (display:none on desktop).
   const [menuOpen, setMenuOpen] = useState(false)
+  const [dlOpen, setDlOpen] = useState(false)
   const t = useT()
   return (
     <header className="sticky lg:relative top-0 lg:top-auto z-30 lg:z-auto flex items-center px-6 h-14 bg-white border-b border-gray-200 shrink-0">
@@ -76,6 +82,35 @@ export default function ActionBar({
         {/* Desktop-only controls — these live in the ☰ menu on mobile */}
         {/* Order (Denise #25a): Log in / Save Design / My Designs */}
         <div className="hidden lg:flex items-center gap-3">
+          {onDownloadPng && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setDlOpen(o => !o)}
+                aria-haspopup="menu"
+                aria-expanded={dlOpen}
+                title={t('designer.download_png_hint', 'Staff only — customers never see this button')}
+                className="px-3 py-1.5 rounded text-sm border border-dashed border-gray-400 text-gray-800 hover:border-[#dd3333] hover:text-[#dd3333] transition-colors whitespace-nowrap"
+              >
+                {t('designer.download_png', 'Download PNG')} ▾
+              </button>
+              {dlOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setDlOpen(false)} aria-hidden="true" />
+                  <div role="menu" className="absolute right-0 top-full z-50 mt-1 w-64 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                    <button role="menuitem" type="button" onClick={() => { setDlOpen(false); onDownloadPng('mockup') }}
+                      className="block w-full px-4 py-2 text-left text-sm text-gray-800 hover:bg-gray-50">
+                      {t('designer.download_png_mockup', 'Mockup — garment + design, as shown')}
+                    </button>
+                    <button role="menuitem" type="button" onClick={() => { setDlOpen(false); onDownloadPng('artwork') }}
+                      className="block w-full px-4 py-2 text-left text-sm text-gray-800 hover:bg-gray-50">
+                      {t('designer.download_png_artwork', 'Artwork only — transparent, 2× size')}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           <CustomerAuthButton variant="quiet" onBeforeLogin={onBeforeLogin} />
           <SaveDesignControl onSave={onSave} loggedIn={loggedIn} dirty={dirty} />
           <button

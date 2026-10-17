@@ -220,6 +220,12 @@ export const UI_STRINGS = {
   'designer.choose_current': { default: "Shown now", group: "Designer — General", desc: "Small tag on the garment currently on screen inside the Grab 'n Go garment picker (picking it just closes the picker)." },
   'designer.choose_empty': { default: "No garments can take this design right now.", group: "Designer — General", desc: "Shown in the Grab 'n Go garment picker when no active product can produce the linked design (print method mismatch or products unavailable)." },
   'designer.choose_hint': { default: "Your design is already on the garment behind this list. Keep it, or pick another garment.", group: "Designer — General", desc: "Footer hint in the Grab 'n Go garment picker, telling the customer the design is already placed behind the list." },
+  // Staff-only Download PNG (desktop action bar; shown only to a signed-in admin).
+  'designer.download_png': { default: "Download PNG", group: "Designer — General", desc: "Staff-only button in the designer's top bar (admins only; customers never see it). Opens a two-option menu." },
+  'designer.download_png_hint': { default: "Staff only — customers never see this button", group: "Designer — General", desc: "Tooltip on the staff-only Download PNG button." },
+  'designer.download_png_mockup': { default: "Mockup — garment + design, as shown", group: "Designer — General", desc: "Download PNG menu option: the on-screen side with the garment, exactly as the customer sees it." },
+  'designer.download_png_artwork': { default: "Artwork only — transparent, 2× size", group: "Designer — General", desc: "Download PNG menu option: the design alone on a transparent background at double size." },
+  'designer.download_png_failed': { default: "Couldn't build the PNG — try again.", group: "Designer — General", desc: "Shown to staff if a Download PNG export fails." },
 
   // ── Designer — Upload ──
   'designer.upload.artwork_label': { default: "Upload Artwork", group: "Designer — Upload", desc: "Label above the file-upload dropzone." },

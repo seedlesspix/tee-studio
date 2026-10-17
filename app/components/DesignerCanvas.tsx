@@ -66,6 +66,7 @@ import { stripDeepLinkParams, methodsCompatible, bareProductId } from '../lib/de
 import { normalizeShopifyProductId } from '../lib/productImages'
 import PrintSizePreview, { type PrintPreviewData } from './PrintSizePreview'
 import { useCustomerSession } from '../hooks/useCustomerSession'
+import { useAdminSession } from '../hooks/useAdminSession'
 import { knockoutColorGlobal, knockoutWhiteFromEdges, elementToImageData, imageDataToPngDataUrl, sampleColorAt, cropToDataUrl } from '../lib/imageEdit'
 
 // Uploads a File/Blob/data-URI to Cloudinary (unsigned preset) and returns the
@@ -5214,6 +5215,50 @@ export default function DesignerCanvas({
     window.location.replace(`/designer?${params.toString()}`)
   }
 
+  // ── Staff-only "Download PNG" (Denise, 2026-10-17) ─────────────────────────────────────────────────
+  // Gated on an admin Supabase session (customers sign in through Shopify and never have one), rendered
+  // only in the desktop action bar. 'mockup' = the on-screen side exactly as the customer sees it (garment
+  // + design + overlay, via the same exportCanvasPNG the order preview uses); 'artwork' = the design alone
+  // on a transparent background at 2× (the same render as the order's canvas_png). File name =
+  // product-color-side-kind.png. Selection is dropped first so no handles bake into the file.
+  const { isAdmin } = useAdminSession()
+  const downloadPng = async (kind: 'mockup' | 'artwork') => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    canvas.discardActiveObject()
+    canvas.renderAll()
+    const slug = (s: string) => (s || '').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase()
+    const fileName = [slug(productTitle || 'design'), slug(selectedColor), shirtView, kind].filter(Boolean).join('-') + '.png'
+    let href: string | null = null
+    try {
+      if (kind === 'mockup') {
+        const blob = await exportCanvasPNG(
+          canvas,
+          zoneGarmentUrl(shirtView, selectedColor, colorImageMap) || undefined,
+          zoneOverlayUrl(shirtView, selectedColor) || undefined,
+        )
+        if (!blob) { alert(t('designer.download_png_failed', "Couldn't build the PNG — try again.")); return }
+        href = URL.createObjectURL(blob)
+      } else {
+        // Transparent: lift any canvas background for the export, then put it back.
+        const bg = canvas.backgroundColor
+        canvas.backgroundColor = ''
+        try { href = canvas.toDataURL({ format: 'png', multiplier: 2 }) }
+        finally { canvas.backgroundColor = bg; canvas.renderAll() }
+      }
+      if (!href) return
+      const a = document.createElement('a')
+      a.href = href; a.download = fileName
+      document.body.appendChild(a); a.click(); a.remove()
+    } catch (e) {
+      console.error('[designer] download png failed:', e)
+      alert(t('designer.download_png_failed', "Couldn't build the PNG — try again."))
+    } finally {
+      const url = href
+      if (url && url.startsWith('blob:')) setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    }
+  }
+
   // D0 ActionBar extraction: the header's Next Step onClick, lifted VERBATIM into
   // a named handler (cross-side validation + save/add-to-cart + the browser-Back
   // replaceState rehydration + navigate) and passed to <ActionBar> as onNextStep.
@@ -5641,6 +5686,7 @@ export default function DesignerCanvas({
         onBeforeLogin={prepareLoginRedirect}
         onNextStep={handleNextStep}
         pricePerItem={pricePerItem}
+        onDownloadPng={isAdmin ? downloadPng : undefined}
       />
 
       {/* Progress strip under the top bar — Build It (here) → Order It → Pick Up/Ship.

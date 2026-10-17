@@ -359,7 +359,19 @@ trusting a read, ask "what does this surface refuse to show me?"
 ### Features & Missing Pieces
 - **Incomplete print methods**: Code references `printMethod` but configuration unclear
 - **Back image support**: Logic for front/back shirt designs exists but incomplete
-- **No undo/redo**: Canvas doesn't track action history
+- **No canvas-wide undo/redo** (grounded 2026-10-17): the Undo/Redo arrows in the stage toolbar are the
+  Phase-5 **image-edit** history only (crop / background removal; `_editHist` on the image object), so
+  they are disabled unless the selected image has edit history — which reads as "they do nothing".
+  No history engine exists for add/move/delete/text/style/recolor. **Scoped, not built (~3–4 dev-days):**
+  snapshot history on top of the existing, battle-tested `snapshotDesignState()` / `applyDesignState()`
+  pair (undo = apply the previous whole-design snapshot, all zones, roster included — curved-text bakes
+  and locked N&N stacks already round-trip through them); the cost is (a) capturing every mutation path
+  as a debounced step (object:added/removed/modified, text + style changes, recolor, curve, zone switch,
+  N&N, image edits — fold the per-image stack into the one history), (b) re-syncing React state and the
+  selection after each apply, (c) memory on phones: snapshots carry the hi-res clipart data URLs today
+  (dehydrate like the upload fix, or do it after the true-vector refactor), (d) Cmd/Ctrl+Z shortcuts
+  next to the existing Cmd+D. Quick win available any time: hide the arrows on desktop when no editable
+  image is selected (mobile already does), so disabled buttons stop looking broken.
 - **No save drafts**: Designs only saved at checkout
 - **No design sharing**: No public gallery or social sharing
 - **Webhook**: `shopify-webhook/route.ts` updates `design_orders` on Shopify `order/paid` — sets `status='completed'`, customer info, shipping. Not pointed at by Shopify yet — register the webhook URL in Shopify admin to activate.
