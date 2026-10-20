@@ -142,17 +142,21 @@ export default function ColorsAdmin() {
   // Move a color up/down within its method group. Reindexes the whole group to
   // a clean 0..n-1 sequence (normalizing any ties/gaps in existing data) and
   // persists only the rows whose sort_order actually changes.
-  const moveColor = async (row: ColorRow, direction: 'up' | 'down') => {
+  // ▲▼ step one; ⤒⤓ jump to the top / bottom (Denise, 2026-10-20 — "moving far takes a lot of clicks").
+  // A jump MOVES the row (everything in between shifts by one) and then rides the same resequence +
+  // changed-rows-only persist as a step.
+  const moveColor = async (row: ColorRow, direction: 'up' | 'down' | 'top' | 'bottom') => {
     if (reordering) return
     const group = colors
       .filter(c => c.print_method_key === row.print_method_key)
       .sort(byOrder)
     const idx = group.findIndex(c => c.id === row.id)
-    const swapWith = direction === 'up' ? idx - 1 : idx + 1
-    if (swapWith < 0 || swapWith >= group.length) return
+    const target = direction === 'up' ? idx - 1 : direction === 'down' ? idx + 1 : direction === 'top' ? 0 : group.length - 1
+    if (idx < 0 || target === idx || target < 0 || target >= group.length) return
 
     const reordered = [...group]
-    ;[reordered[idx], reordered[swapWith]] = [reordered[swapWith], reordered[idx]]
+    reordered.splice(idx, 1)
+    reordered.splice(target, 0, group[idx])
     const updates = reordered
       .map((c, i) => ({ id: c.id, to: i }))
       .filter((u, i) => (reordered[i].sort_order ?? 0) !== u.to)
@@ -195,7 +199,7 @@ export default function ColorsAdmin() {
       <div className="max-w-3xl mx-auto">
         <div className="mb-8">
           <h1 className="text-2xl font-mono font-bold text-black">Colors</h1>
-          <p className="text-gray-600 text-sm font-mono mt-1">Manage the color palette shown in the designer, per print method. Use ▲▼ to reorder.</p>
+          <p className="text-gray-600 text-sm font-mono mt-1">Manage the color palette shown in the designer, per print method. ▲▼ move one step; ⤒⤓ jump to the top or bottom.</p>
         </div>
 
         {message && (
@@ -231,12 +235,18 @@ export default function ColorsAdmin() {
                       <div key={row.id} className={`bg-white border rounded-lg p-3 ${row.is_active ? 'border-gray-200' : 'border-red-300 opacity-60'}`}>
                         <div className="flex items-center gap-3">
                           <div className="flex flex-col shrink-0">
+                            <button onClick={() => moveColor(row, 'top')} disabled={i === 0 || reordering}
+                              title="Move to top"
+                              className="px-1 leading-none text-xs text-gray-500 hover:text-[#dd3333] disabled:opacity-25 disabled:hover:text-gray-500 transition-all">⤒</button>
                             <button onClick={() => moveColor(row, 'up')} disabled={i === 0 || reordering}
                               title="Move up"
                               className="px-1 leading-none text-xs text-gray-500 hover:text-[#dd3333] disabled:opacity-25 disabled:hover:text-gray-500 transition-all">▲</button>
                             <button onClick={() => moveColor(row, 'down')} disabled={i === arr.length - 1 || reordering}
                               title="Move down"
                               className="px-1 leading-none text-xs text-gray-500 hover:text-[#dd3333] disabled:opacity-25 disabled:hover:text-gray-500 transition-all">▼</button>
+                            <button onClick={() => moveColor(row, 'bottom')} disabled={i === arr.length - 1 || reordering}
+                              title="Move to bottom"
+                              className="px-1 leading-none text-xs text-gray-500 hover:text-[#dd3333] disabled:opacity-25 disabled:hover:text-gray-500 transition-all">⤓</button>
                           </div>
                           <input
                             type="color"

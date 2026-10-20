@@ -136,15 +136,18 @@ export default function FontsAdmin() {
 
   // Move a font up/down within its method group. Reindexes the group to a clean
   // 0..n-1 sequence and persists only the rows whose sort_order changes.
-  const moveFont = async (row: FontRow, direction: 'up' | 'down') => {
+  // ▲▼ step one; ⤒⤓ jump to the top / bottom (Denise, 2026-10-20). A jump MOVES the row (everything in
+  // between shifts by one) and then rides the same resequence + changed-rows-only persist as a step.
+  const moveFont = async (row: FontRow, direction: 'up' | 'down' | 'top' | 'bottom') => {
     if (reordering) return
     const group = fonts.filter(f => f.print_method_key === row.print_method_key).sort(byOrder)
     const idx = group.findIndex(f => f.id === row.id)
-    const swapWith = direction === 'up' ? idx - 1 : idx + 1
-    if (swapWith < 0 || swapWith >= group.length) return
+    const target = direction === 'up' ? idx - 1 : direction === 'down' ? idx + 1 : direction === 'top' ? 0 : group.length - 1
+    if (idx < 0 || target === idx || target < 0 || target >= group.length) return
 
     const reordered = [...group]
-    ;[reordered[idx], reordered[swapWith]] = [reordered[swapWith], reordered[idx]]
+    reordered.splice(idx, 1)
+    reordered.splice(target, 0, group[idx])
     const updates = reordered
       .map((f, i) => ({ id: f.id, to: i }))
       .filter((u, i) => (reordered[i].sort_order ?? 0) !== u.to)
@@ -186,7 +189,7 @@ export default function FontsAdmin() {
         <div className="mb-8">
           <h1 className="text-2xl font-mono font-bold text-black">Fonts</h1>
           <p className="text-gray-600 text-sm font-mono mt-1">
-            Manage the fonts shown in the designer, per print method. Use ▲▼ to reorder.
+            Manage the fonts shown in the designer, per print method. ▲▼ move one step; ⤒⤓ jump to the top or bottom.
           </p>
         </div>
 
@@ -258,12 +261,18 @@ export default function FontsAdmin() {
                       <div key={row.id} className={`bg-white border rounded-lg p-3 ${row.is_active ? 'border-gray-200' : 'border-red-300 opacity-60'}`}>
                         <div className="flex items-center gap-3">
                           <div className="flex flex-col shrink-0">
+                            <button onClick={() => moveFont(row, 'top')} disabled={i === 0 || reordering}
+                              title="Move to top"
+                              className="px-1 leading-none text-xs text-gray-500 hover:text-[#dd3333] disabled:opacity-25 disabled:hover:text-gray-500 transition-all">⤒</button>
                             <button onClick={() => moveFont(row, 'up')} disabled={i === 0 || reordering}
                               title="Move up"
                               className="px-1 leading-none text-xs text-gray-500 hover:text-[#dd3333] disabled:opacity-25 disabled:hover:text-gray-500 transition-all">▲</button>
                             <button onClick={() => moveFont(row, 'down')} disabled={i === arr.length - 1 || reordering}
                               title="Move down"
                               className="px-1 leading-none text-xs text-gray-500 hover:text-[#dd3333] disabled:opacity-25 disabled:hover:text-gray-500 transition-all">▼</button>
+                            <button onClick={() => moveFont(row, 'bottom')} disabled={i === arr.length - 1 || reordering}
+                              title="Move to bottom"
+                              className="px-1 leading-none text-xs text-gray-500 hover:text-[#dd3333] disabled:opacity-25 disabled:hover:text-gray-500 transition-all">⤓</button>
                           </div>
 
                           {/* Live preview: the label rendered in its own font */}

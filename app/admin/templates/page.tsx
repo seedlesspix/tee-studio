@@ -76,13 +76,16 @@ export default function TemplatesAdmin() {
   // Reorder the product list (drives the designer's product picker order). ▲▼ swaps two rows and
   // reindexes sort_order to a clean 0..n-1, persisting only the rows whose value actually changed
   // (mirrors the admin colors/fonts reorder). Optimistic; re-syncs from the server on error.
-  const moveTemplate = async (row: Template, dir: 'up' | 'down') => {
+  // ▲▼ step one; ⤒⤓ jump to the top / bottom (Denise, 2026-10-20) — top matters here: position #1 is the
+  // default garment for every Grab 'n Go deep link. A jump MOVES the row (rows in between shift by one).
+  const moveTemplate = async (row: Template, dir: 'up' | 'down' | 'top' | 'bottom') => {
     const idx = templates.findIndex(t => t.id === row.id)
-    const swapWith = dir === 'up' ? idx - 1 : idx + 1
-    if (idx < 0 || swapWith < 0 || swapWith >= templates.length) return
+    const target = dir === 'up' ? idx - 1 : dir === 'down' ? idx + 1 : dir === 'top' ? 0 : templates.length - 1
+    if (idx < 0 || target === idx || target < 0 || target >= templates.length) return
     setReordering(true)
     const arr = [...templates]
-    ;[arr[idx], arr[swapWith]] = [arr[swapWith], arr[idx]]
+    arr.splice(idx, 1)
+    arr.splice(target, 0, templates[idx])
     const next = arr.map((t, i) => ({ ...t, sort_order: i }))
     const toPersist = next.filter(t => (templates.find(o => o.id === t.id)?.sort_order ?? -1) !== t.sort_order)
     setTemplates(next) // optimistic
@@ -352,10 +355,14 @@ export default function TemplatesAdmin() {
                     <tr key={t.id} className={`border-t border-gray-100 ${t.is_active ? '' : 'opacity-60'}`}>
                       <td className="px-2 py-3">
                         <div className="flex flex-col leading-none">
+                          <button onClick={() => moveTemplate(t, 'top')} disabled={i === 0 || reordering} title="Move to top (position #1 = the deep-link default garment)"
+                            className="px-1 text-xs text-gray-500 hover:text-[#dd3333] disabled:opacity-25 disabled:hover:text-gray-500">⤒</button>
                           <button onClick={() => moveTemplate(t, 'up')} disabled={i === 0 || reordering} title="Move up"
                             className="px-1 text-xs text-gray-500 hover:text-[#dd3333] disabled:opacity-25 disabled:hover:text-gray-500">▲</button>
                           <button onClick={() => moveTemplate(t, 'down')} disabled={i === templates.length - 1 || reordering} title="Move down"
                             className="px-1 text-xs text-gray-500 hover:text-[#dd3333] disabled:opacity-25 disabled:hover:text-gray-500">▼</button>
+                          <button onClick={() => moveTemplate(t, 'bottom')} disabled={i === templates.length - 1 || reordering} title="Move to bottom"
+                            className="px-1 text-xs text-gray-500 hover:text-[#dd3333] disabled:opacity-25 disabled:hover:text-gray-500">⤓</button>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-black">
