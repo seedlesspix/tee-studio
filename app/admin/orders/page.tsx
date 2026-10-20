@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { Tables } from '@/types/database'
 import { useT } from '../../components/StringsProvider'
+import { displayStatusKey, cancelReasonLabel } from '../../lib/orderStatus'
 import { orderZones, zoneLabel } from '../../lib/zones'
 
 // First zone (sleeve/hat) preview PNG on an order, or null — so the admin thumbnail + the Design-Files /
@@ -131,6 +132,7 @@ const STATUS_COLORS: Record<string, string> = {
   ordering: 'bg-blue-100 text-blue-800',
   cart_created: 'bg-orange-100 text-orange-800',
   completed: 'bg-green-100 text-green-800',
+  cancelled: 'bg-red-100 text-red-800', // derived: a PAID row with cancelled_at set (status unchanged)
 }
 
 // DISPLAY-ONLY label for the stored status. The stored value 'completed'
@@ -144,9 +146,12 @@ const STATUS_LABELS: Record<string, string> = {
   ordering: 'Ordering',
   cart_created: 'In Cart',
   completed: 'Paid',
+  cancelled: 'Cancelled',
 }
-const statusLabel = (status: string | null) =>
-  STATUS_LABELS[status ?? 'draft'] ?? status ?? 'Draft'
+// Display key = the stored status, except a paid row Shopify has CANCELLED (cancelled_at stamped by the
+// orders/cancelled webhook) shows as "Cancelled". The stored status stays 'completed' on purpose — see
+// app/lib/orderStatus.ts.
+const statusLabel = (key: string) => STATUS_LABELS[key] ?? key
 
 export default function OrdersAdmin() {
   const t = useT()
@@ -171,7 +176,7 @@ export default function OrdersAdmin() {
   }, [])
 
   const rowMatches = (o: Order) => {
-    const matchStatus = filter === 'all' || o.status === filter
+    const matchStatus = filter === 'all' || displayStatusKey(o) === filter
     const q = search.toLowerCase()
     const matchSearch = !search ||
       (o.product_title?.toLowerCase().includes(q) ?? false) ||
@@ -293,7 +298,8 @@ export default function OrdersAdmin() {
 
   const orderCounts = {
     all: orders.length,
-    completed: orders.filter(o => o.status === 'completed').length,
+    completed: orders.filter(o => displayStatusKey(o) === 'completed').length,
+    cancelled: orders.filter(o => displayStatusKey(o) === 'cancelled').length,
     cart_created: orders.filter(o => o.status === 'cart_created').length,
     draft: orders.filter(o => o.status === 'draft').length,
   }
@@ -310,6 +316,7 @@ export default function OrdersAdmin() {
             {[
               { key: 'all', label: `All (${orderCounts.all})` },
               { key: 'completed', label: `Paid (${orderCounts.completed})` },
+              { key: 'cancelled', label: `Cancelled (${orderCounts.cancelled})` },
               { key: 'cart_created', label: `In Cart (${orderCounts.cart_created})` },
               { key: 'draft', label: `Draft (${orderCounts.draft})` },
             ].map(({ key, label }) => (
@@ -395,8 +402,8 @@ export default function OrdersAdmin() {
                           </span>
                         ) : null
                       })()}
-                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono uppercase ${STATUS_COLORS[first.status ?? 'draft'] || 'bg-gray-200 text-gray-800'}`}>
-                        {statusLabel(first.status)}
+                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono uppercase ${STATUS_COLORS[displayStatusKey(first)] || 'bg-gray-200 text-gray-800'}`}>
+                        {statusLabel(displayStatusKey(first))}
                       </span>
                     </div>
                   </div>
@@ -469,9 +476,15 @@ export default function OrdersAdmin() {
                       {fulfillment.isPickup ? '🏬 Pickup' : '📦 Ship'}
                     </span>
                   )}
-                  <span className={`px-3 py-1.5 rounded-full text-xs font-mono uppercase font-bold ${STATUS_COLORS[first.status ?? 'draft'] || 'bg-gray-200 text-gray-800'}`}>
-                    {statusLabel(first.status)}
+                  <span className={`px-3 py-1.5 rounded-full text-xs font-mono uppercase font-bold ${STATUS_COLORS[displayStatusKey(first)] || 'bg-gray-200 text-gray-800'}`}>
+                    {statusLabel(displayStatusKey(first))}
                   </span>
+                  {first.cancelled_at && (
+                    <span className="px-3 py-1.5 rounded-full text-xs font-mono bg-red-50 text-red-800 border border-red-200"
+                      title="Cancelled in Shopify. The order record, customer details and artwork are kept.">
+                      Cancelled {new Date(first.cancelled_at).toLocaleDateString()} · {cancelReasonLabel(first.cancel_reason)}
+                    </span>
+                  )}
                   {first.shopify_cart_url && first.status !== 'completed' && (
                     <a href={first.shopify_cart_url} target="_blank" rel="noreferrer"
                       className="px-3 py-1.5 rounded-full text-xs font-mono bg-[#dd3333] text-white hover:bg-red-700 transition-all">

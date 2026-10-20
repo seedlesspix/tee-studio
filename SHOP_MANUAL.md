@@ -204,6 +204,14 @@ so a customer who checks out late is never stranded. Anything backing a saved
 design ("My Designs") is never touched by either job. Paid orders are never
 deleted by anything.
 
+**Cancelled orders:** when an order is cancelled in Shopify, it shows as
+**Cancelled** here (red pill, its own filter tab) with the date and reason.
+Nothing is removed — the customer details, the design and the artwork stay,
+because refunds and reprints may still need them. For this to work, Shopify
+must send us cancellations: Shopify admin → Settings → Notifications →
+Webhooks → Create webhook → Event "Order cancellation", Format JSON, URL =
+the same URL as the existing "Order payment" webhook. (One-time setup.)
+
 - **The 🚨 red warning on delete means STOP:** that draft backs a customer's
   SAVED design — deleting destroys their saved work, silently, forever.
   Plain confirm = safe to delete.

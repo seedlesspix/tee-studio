@@ -377,7 +377,15 @@ trusting a read, ask "what does this surface refuse to show me?"
   disabled) when no image with edit history is selected, matching mobile.
 - **No save drafts**: Designs only saved at checkout
 - **No design sharing**: No public gallery or social sharing
-- **Webhook**: `shopify-webhook/route.ts` updates `design_orders` on Shopify `order/paid` — sets `status='completed'`, customer info, shipping. Not pointed at by Shopify yet — register the webhook URL in Shopify admin to activate.
+- **Webhook**: `shopify-webhook/route.ts` handles two Shopify topics at one URL (both registered by
+  hand in Shopify admin → Settings → Notifications → Webhooks; admin-created webhooks are invisible to the
+  app's API — see the blind-surfaces rule). `orders/paid` sets `status='completed'`, customer info,
+  shipping, charged total. **`orders/cancelled` (2026-10-20) STAMPS `cancelled_at` + `cancel_reason` on
+  the paid row(s) and changes nothing else** — status stays `completed` so every rule keyed on it
+  (admin-only access, no cart link, not re-orderable) keeps applying; customer/shipping details and
+  artwork are kept (refunds, records, indefinite reprints); the checkout product ages out via retention.
+  The admin derives the "Cancelled" label (`app/lib/orderStatus.ts`). Refunds / `orders/updated` are
+  deliberately NOT handled (a partial refund is not a cancellation); Shopify can't un-cancel.
 - **Volume discount removed (2026-05-02)**: The order page UI used to apply 10/15/20% off at 6/12/24 shirts, but Shopify wasn't honoring it at checkout — the discount was UI-only math, never sent to Shopify. After Print Charges became real cart line items, the UI total would have undercharged customers visibly, so the discount feature was removed entirely from `app/order/page.tsx` and `app/components/DesignerCanvas.tsx`. **To reintroduce:** use Shopify automatic discounts (admin → Discounts → Automatic) keyed off cart quantity, not custom UI math. This avoids the UI/checkout pricing-mismatch bug.
 
 ### Documentation

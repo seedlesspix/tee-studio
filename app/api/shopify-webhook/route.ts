@@ -61,8 +61,57 @@ export async function POST(request: NextRequest) {
   }
   console.log(`Webhook: HMAC verified via ${matched[0]}`)
 
-  // 4. Only act on orders/paid. ACK other topics with 200 so Shopify stops retrying.
+  // 4. Topics we act on: orders/paid (below) and orders/cancelled (here). Everything else is ACKed
+  // with 200 so Shopify stops retrying.
   const topic = request.headers.get('x-shopify-topic')
+
+  if (topic === 'orders/cancelled') {
+    // A cancellation STAMPS the paid design row(s) — cancelled_at + cancel_reason — and changes nothing
+    // else (Denise, 2026-10-20). Status stays 'completed' so the row remains admin-only, un-re-orderable
+    // and cart-link-free; customer/shipping details stay for refunds and records; artwork is never
+    // touched (reprints are indefinite); the checkout product ages out via the retention cron as usual.
+    // Idempotent: re-delivery re-stamps the same values. Refunds and orders/updated are NOT handled here
+    // on purpose — a partial refund is not a cancellation.
+    let cancelBody: any
+    try { cancelBody = JSON.parse(rawBody) } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
+    const cancelledOrderId = cancelBody?.id != null ? String(cancelBody.id) : ''
+    const cancelledAt: string = typeof cancelBody?.cancelled_at === 'string' && cancelBody.cancelled_at ? cancelBody.cancelled_at : new Date().toISOString()
+    const cancelReason: string | null = typeof cancelBody?.cancel_reason === 'string' && cancelBody.cancel_reason ? cancelBody.cancel_reason : null
+    if (!cancelledOrderId) return NextResponse.json({ error: 'Missing order id' }, { status: 400 })
+    const sb = createClient(supabaseUrl, serviceRoleKey)
+    // Match the rows the paid webhook linked to this Shopify order. If the paid webhook was never
+    // received (nothing to cancel on our side), fall back to the line items' _design_order_id — but
+    // still only stamp rows that are actually paid; an unpaid In Cart row is left to the cleanup crons.
+    let { data: rows, error: findErr } = await sb
+      .from('design_orders').select('id, status').eq('shopify_order_id', cancelledOrderId)
+    if (!findErr && (rows ?? []).length === 0) {
+      const ids = [...new Set(((cancelBody?.line_items || []) as any[])
+        .map((item) => (item.properties || []).find((p: any) => p.name === '_design_order_id')?.value)
+        .filter((v: any): v is string => typeof v === 'string' && v.length > 0))]
+      if (ids.length) ({ data: rows, error: findErr } = await sb.from('design_orders').select('id, status').in('id', ids))
+    }
+    if (findErr) {
+      console.error('Webhook: orders/cancelled lookup failed:', findErr)
+      return NextResponse.json({ error: 'Lookup failed' }, { status: 500 }) // 500 → Shopify retries
+    }
+    const paidRows = (rows ?? []).filter((r) => r.status === 'completed')
+    if (paidRows.length === 0) {
+      console.log(`Webhook: orders/cancelled for Shopify order ${cancelledOrderId} matched no paid design rows — nothing to stamp`)
+      return NextResponse.json({ message: 'No paid design rows for this order — skipped' }, { status: 200 })
+    }
+    const { error: stampErr } = await sb
+      .from('design_orders')
+      .update({ cancelled_at: cancelledAt, cancel_reason: cancelReason })
+      .in('id', paidRows.map((r) => r.id))
+      .eq('status', 'completed')
+    if (stampErr) {
+      console.error('Webhook: orders/cancelled stamp failed:', stampErr)
+      return NextResponse.json({ error: 'Update failed' }, { status: 500 })
+    }
+    console.log(`Webhook: orders/cancelled → stamped ${paidRows.length} design row(s) for Shopify order ${cancelledOrderId} (${cancelReason ?? 'no reason'})`)
+    return NextResponse.json({ message: `Cancelled ${paidRows.length} design(s)` }, { status: 200 })
+  }
+
   if (topic !== 'orders/paid') {
     return NextResponse.json({ message: `Ignored topic: ${topic}` }, { status: 200 })
   }
