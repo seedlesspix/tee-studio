@@ -377,9 +377,17 @@ trusting a read, ask "what does this surface refuse to show me?"
   disabled) when no image with edit history is selected, matching mobile.
 - **No save drafts**: Designs only saved at checkout
 - **No design sharing**: No public gallery or social sharing
-- **Webhook**: `shopify-webhook/route.ts` handles two Shopify topics at one URL (both registered by
-  hand in Shopify admin → Settings → Notifications → Webhooks; admin-created webhooks are invisible to the
-  app's API — see the blind-surfaces rule). `orders/paid` sets `status='completed'`, customer info,
+- **Webhook**: `shopify-webhook/route.ts` handles two Shopify topics at one URL. **Both are APP
+  subscriptions created through the Admin API by the custom app** (`ORDERS_PAID` 2026-07-16,
+  `ORDERS_CANCELLED` 2026-10-20, api 2026-07, callback `https://create.tshirtdeli.com/api/shopify-webhook`)
+  — so Shopify admin → Settings → Notifications → Webhooks shows NOTHING (that page lists only hand-made
+  webhooks; the blind-surfaces rule in the other direction). List/create them with
+  `node scripts/shopify-webhooks.cjs list|create` (same client-credentials auth as `shopify-admin.ts`).
+  **App subscriptions are signed with the app's client secret** (`SHOPIFY_ADMIN_CLIENT_SECRET`), the
+  route's first HMAC candidate; `SHOPIFY_WEBHOOK_SECRET` is the second candidate for any hand-made one.
+  Verified 2026-10-20 by a signed synthetic `orders/cancelled` delivery to production (200, row
+  stamped; bad signature → 401). Orders themselves stay invisible to the app's API, so a real
+  end-to-end check means cancelling a test order in Shopify admin by hand. `orders/paid` sets `status='completed'`, customer info,
   shipping, charged total. **`orders/cancelled` (2026-10-20) STAMPS `cancelled_at` + `cancel_reason` on
   the paid row(s) and changes nothing else** — status stays `completed` so every rule keyed on it
   (admin-only access, no cart link, not re-orderable) keeps applying; customer/shipping details and

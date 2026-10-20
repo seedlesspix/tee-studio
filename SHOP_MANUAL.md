@@ -207,10 +207,11 @@ deleted by anything.
 **Cancelled orders:** when an order is cancelled in Shopify, it shows as
 **Cancelled** here (red pill, its own filter tab) with the date and reason.
 Nothing is removed — the customer details, the design and the artwork stay,
-because refunds and reprints may still need them. For this to work, Shopify
-must send us cancellations: Shopify admin → Settings → Notifications →
-Webhooks → Create webhook → Event "Order cancellation", Format JSON, URL =
-the same URL as the existing "Order payment" webhook. (One-time setup.)
+because refunds and reprints may still need them. Nothing to set up: the app
+registered the "order cancelled" notification with Shopify itself on
+2026-10-20, next to the "order paid" one. (Shopify's Settings → Notifications
+→ Webhooks page will always look EMPTY — it only lists hand-made webhooks,
+not the app's. That's normal.)
 
 - **The 🚨 red warning on delete means STOP:** that draft backs a customer's
   SAVED design — deleting destroys their saved work, silently, forever.
