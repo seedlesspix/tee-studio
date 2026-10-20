@@ -235,3 +235,37 @@ export async function deleteDesignProduct(productId: string): Promise<void> {
 // channel, so a server-created Storefront cart could never merge with the
 // customer's real Online Store cart. The cart handoff now happens in
 // /api/design-orders/[id]/add-to-cart via the customer's own session.
+
+// Every ephemeral design product on the store (paginated, capped), with the design_orders id parsed
+// from its `design_order:<uuid>` tag. Shared by the retention cron (which deletes aged products) and the
+// stale-carts cron (which must NOT delete a row whose product still exists — a live cart could still
+// check it out). Throws on any Shopify error so callers can fail closed.
+export type DesignProductNode = {
+  id: string; title: string; handle: string; createdAt: string; tags: string[]; designOrderId: string | null
+}
+export async function listDesignProducts(maxPages = 10): Promise<DesignProductNode[]> {
+  const products: DesignProductNode[] = []
+  let cursor: string | null = null
+  for (let page = 0; page < maxPages; page++) {
+    const data: {
+      products: {
+        nodes: Array<{ id: string; title: string; handle: string; createdAt: string; tags: string[] }>
+        pageInfo: { hasNextPage: boolean; endCursor: string | null }
+      }
+    } = await adminGraphQL(
+      `query($q: String!, $cursor: String) {
+        products(first: 100, query: $q, after: $cursor) {
+          nodes { id title handle createdAt tags }
+          pageInfo { hasNextPage endCursor }
+        }
+      }`,
+      { q: `tag:${DESIGN_PRODUCT_TAG}`, cursor }
+    )
+    for (const n of data.products.nodes) {
+      products.push({ ...n, designOrderId: n.tags.find((t) => t.startsWith('design_order:'))?.slice('design_order:'.length) ?? null })
+    }
+    if (!data.products.pageInfo.hasNextPage) break
+    cursor = data.products.pageInfo.endCursor
+  }
+  return products
+}

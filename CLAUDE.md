@@ -511,11 +511,17 @@ signs the customer out at Shopify and bounces back to
   cookies clear. **No functional impact in Phase 1** — we make no authenticated
   Shopify calls that could 401. Revisit for **Phase 4** cart binding (verify
   against Shopify on sensitive actions, or shorten the access-token lifetime).
-- **Draft rows accumulate.** Every login-from-designer (and every "Next Step")
-  writes a `status='draft'` row to `design_orders`; abandoned ones are never
-  cleaned up today. **Phase 4/5 should add a nightly cron** that deletes
-  `WHERE status='draft' AND created_at < now() - interval '7 days'`. The
-  `created_at` column is set explicitly on draft insert so the job can find them.
+- **Draft rows accumulate → handled by the cleanup-cron family (Vercel Cron, `vercel.json`).**
+  `/api/cron/drafts` (09:15 daily) deletes `status='draft'` rows older than 7 days.
+  **`/api/cron/stale-carts` (09:30 daily, added 2026-10-20)** deletes abandoned `cart_created` ("In
+  Cart") and `ordering` rows — but **NOT on a 7-day window**: an In Cart row can still complete while
+  its ephemeral product sits in a live Shopify cart (guest carts live ~10 days), and the paid webhook
+  looks the row up by id — delete it early and a paid order lands with no design data. So a row is
+  deleted only when it is older than `STALE_CART_MIN_AGE_DAYS` (15 = product retention 14 + 1) AND its
+  product is confirmed gone from the store (live tagged listing; fails closed) AND it backs no saved
+  design (fails closed). Constants in `app/lib/retention.ts`; decision logic pure in
+  `app/lib/staleOrders.ts` (tested). All three jobs: Bearer `CRON_SECRET`, `?dry_run=1`, per-run cap,
+  status re-asserted at delete time.
   > **🚨 THE CRON MUST EXCLUDE SAVED DESIGNS 🚨** — a customer's "My Designs"
   > entry (Day 8) points at a `design_orders` row that is *still* `status='draft'`,
   > and `saved_designs.design_order_id` is **`ON DELETE CASCADE`**. A naive

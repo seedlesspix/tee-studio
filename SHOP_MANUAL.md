@@ -197,6 +197,13 @@ auto-curves along it, fixed letter height, text-only zone.
 
 ## Orders admin
 
+**Housekeeping that runs by itself (every morning):** abandoned Drafts older
+than 7 days are cleared; abandoned In Cart / Ordering rows are cleared only
+once they're over 15 days old AND their checkout product is gone from Shopify,
+so a customer who checks out late is never stranded. Anything backing a saved
+design ("My Designs") is never touched by either job. Paid orders are never
+deleted by anything.
+
 - **The 🚨 red warning on delete means STOP:** that draft backs a customer's
   SAVED design — deleting destroys their saved work, silently, forever.
   Plain confirm = safe to delete.

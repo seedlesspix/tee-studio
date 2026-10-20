@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { timingSafeEqual } from 'node:crypto'
 import { serviceClient } from '../../../lib/customer-library'
-import { adminGraphQL } from '../../../lib/shopify-admin'
-import { deleteDesignProduct, DESIGN_PRODUCT_TAG } from '../../../lib/design-products'
+import { deleteDesignProduct, listDesignProducts, type DesignProductNode as ProductNode } from '../../../lib/design-products'
+import { RETENTION_DAYS } from '../../../lib/retention'
 
 export const runtime = 'nodejs'
 // Paginated Shopify reads + per-order lookups can take a moment.
@@ -36,7 +36,7 @@ export const maxDuration = 300
 // Runs on Vercel Cron. Auth: Authorization: Bearer CRON_SECRET (fails closed
 // when unset). ?dry_run=1 reports every decision without deleting anything.
 
-const RETENTION_DAYS = 14
+// RETENTION_DAYS lives in app/lib/retention.ts (shared with the stale-carts cron, which must wait for it).
 const MAX_DELETES_PER_RUN = 50
 
 function authorized(request: NextRequest): boolean {
@@ -47,14 +47,6 @@ function authorized(request: NextRequest): boolean {
   const a = Buffer.from(header)
   const b = Buffer.from(expected)
   return a.length === b.length && timingSafeEqual(a, b)
-}
-
-type ProductNode = {
-  id: string
-  title: string
-  handle: string
-  createdAt: string
-  tags: string[]
 }
 
 type Decision = {
@@ -73,28 +65,8 @@ export async function GET(request: NextRequest) {
   const dryRun = new URL(request.url).searchParams.get('dry_run') === '1'
   const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000
 
-  // 1. Every design product on the store (paginated).
-  const products: ProductNode[] = []
-  let cursor: string | null = null
-  for (let page = 0; page < 10; page++) {
-    const data: {
-      products: {
-        nodes: ProductNode[]
-        pageInfo: { hasNextPage: boolean; endCursor: string | null }
-      }
-    } = await adminGraphQL(
-      `query($q: String!, $cursor: String) {
-        products(first: 100, query: $q, after: $cursor) {
-          nodes { id title handle createdAt tags }
-          pageInfo { hasNextPage endCursor }
-        }
-      }`,
-      { q: `tag:${DESIGN_PRODUCT_TAG}`, cursor }
-    )
-    products.push(...data.products.nodes)
-    if (!data.products.pageInfo.hasNextPage) break
-    cursor = data.products.pageInfo.endCursor
-  }
+  // 1. Every design product on the store (paginated; shared helper, same query as before).
+  const products: ProductNode[] = await listDesignProducts()
 
   // 2. Their design rows, one query.
   const designIds = products
