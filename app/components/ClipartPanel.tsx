@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useT } from './StringsProvider'
+import { matchesArtSearch } from '../lib/artSearch'
 import type { Tables } from '@/types/database'
 
 type Category = Pick<Tables<'clipart_categories'>, 'id' | 'name'>
@@ -72,14 +73,11 @@ export default function ClipartPanel({ printMethod, onSelect, horizontal = false
     ? selectedCategory
     : (visibleCategories[0]?.id ?? '')
 
-  // Search matches name, tags, OR Decal # (type a number to jump to that design).
+  // Search matches name, tags, OR Design # (type a number to jump to that design) — the same matcher the
+  // Art Library admin uses (app/lib/artSearch.ts), so "search" means one thing everywhere.
   const q = search.trim().toLowerCase()
   const filtered = q
-    ? allItems.filter(i =>
-        i.name.toLowerCase().includes(q) ||
-        (i.decal_number != null && String(i.decal_number).includes(q)) ||
-        (i.tags && i.tags.some((tag: string) => tag.toLowerCase().includes(q)))
-      )
+    ? allItems.filter(i => matchesArtSearch(i, q))
     : allItems.filter(i => (i.category_ids || []).includes(effectiveCategory))
 
   // Metadata to stamp on a placement: decal number (for order sell-through, when the art has one) +

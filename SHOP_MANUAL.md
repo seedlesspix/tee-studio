@@ -87,6 +87,11 @@ Where the library stood on 2026-10-17 (scan of all 390 SVGs): 357 one-color,
 stroke, 0 gradients / images / CSS classes. In good shape; the rules above keep
 it that way.
 
+**Finding art in the admin:** each category has a search box (name, tag, or
+Design #, the same matching customers get) and a Sort menu: Newest first (the
+default — a fresh upload batch lands at the top), Oldest first, Name A–Z, or
+Design #. Your sort choice sticks on that computer.
+
 **Design numbers (T-numbers):**
 - Only SHOP-MADE designs get numbers. Generic clipart stays unnumbered.
 - The number is the identity everywhere: sell-through tracking on orders,

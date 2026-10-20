@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useT } from '../../components/StringsProvider'
 import type { Tables } from '@/types/database'
+import { matchesArtSearch, sortArt, ART_SORTS, type ArtSort } from '../../lib/artSearch'
 
 type Category = Tables<'clipart_categories'>
 type ClipartItem = Tables<'clipart_items'>
@@ -29,6 +30,22 @@ export default function ClipartAdmin() {
   const [openCategoriesFor, setOpenCategoriesFor] = useState<string | null>(null)
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Find things fast (Denise, 2026-10-20): search this category by name / tag / Design # (the same matcher
+  // the customer Art panel uses) and sort it. Default NEWEST FIRST so a freshly uploaded batch lands at the
+  // top instead of under hundreds of older tiles; the chosen sort sticks across reloads (this browser).
+  const SORT_KEY = 'admin.art.sort'
+  const [search, setSearch] = useState('')
+  const [sortBy, setSortBy] = useState<ArtSort>(() => {
+    try {
+      const v = typeof window !== 'undefined' ? window.localStorage.getItem(SORT_KEY) : null
+      return ART_SORTS.some(s => s.key === v) ? (v as ArtSort) : 'newest'
+    } catch { return 'newest' }
+  })
+  const changeSort = (v: ArtSort) => {
+    setSortBy(v)
+    try { window.localStorage.setItem(SORT_KEY, v) } catch { /* private mode etc. — just don't persist */ }
+  }
+  const visibleItems = sortArt(items.filter(i => matchesArtSearch(i, search)), sortBy)
 
   const showMessage = (text: string, type: 'success' | 'error' = 'success') => {
     setMessage({ text, type })
@@ -318,14 +335,44 @@ export default function ClipartAdmin() {
               )}
             </div>
 
+            {/* Search + sort (this category) */}
+            {items.length > 0 && (
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <div className="relative flex-1 min-w-[14rem]">
+                  <input
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    placeholder="Search this category — name, tag, or Design #"
+                    className="w-full bg-white border border-gray-300 rounded px-3 py-1.5 pr-8 text-sm text-black outline-none focus:border-[#dd3333] font-mono placeholder-gray-400"
+                  />
+                  {search && (
+                    <button type="button" onClick={() => setSearch('')} aria-label="Clear search"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded text-gray-500 hover:bg-gray-100">✕</button>
+                  )}
+                </div>
+                <label className="flex items-center gap-2 text-xs font-mono text-gray-600">
+                  Sort
+                  <select value={sortBy} onChange={e => changeSort(e.target.value as ArtSort)}
+                    className="bg-white border border-gray-300 rounded px-2 py-1.5 text-sm text-black outline-none focus:border-[#dd3333]">
+                    {ART_SORTS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+                  </select>
+                </label>
+                <span className="text-xs font-mono text-gray-500 tabular-nums">
+                  {search.trim() ? `${visibleItems.length} of ${items.length}` : `${items.length} items`}
+                </span>
+              </div>
+            )}
+
             {/* Items grid */}
             {loading ? (
               <p className="text-gray-600 font-mono text-sm text-center py-12">Loading...</p>
             ) : items.length === 0 ? (
               <p className="text-gray-600 font-mono text-sm text-center py-12">No art in this category yet. Upload some above!</p>
+            ) : visibleItems.length === 0 ? (
+              <p className="text-gray-600 font-mono text-sm text-center py-12">No art in this category matches &ldquo;{search.trim()}&rdquo;.</p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                {items.map(item => (
+                {visibleItems.map(item => (
                   <div key={item.id} className={`bg-white border rounded-lg p-3 flex flex-col gap-2 ${
                     item.is_active ? 'border-gray-200' : 'border-red-300 opacity-60'
                   }`}>
