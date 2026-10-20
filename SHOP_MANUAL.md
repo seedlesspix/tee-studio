@@ -92,6 +92,19 @@ Design #, the same matching customers get) and a Sort menu: Newest first (the
 default — a fresh upload batch lands at the top), Oldest first, Name A–Z, or
 Design #. Your sort choice sticks on that computer.
 
+**Categories (the left-hand list in the Art Library):**
+- **Rename** with the ✎ pencil. It is live for customers the moment you press
+  Enter — no publish step. Design numbers, links and orders are untouched.
+- **Add** with "+ New"; it goes to the bottom of the order.
+- **Order** with ⤒ ▲ ▼ ⤓. Customers see categories in this order.
+- **Turn off** with ●. Off means GONE for customers: the category disappears,
+  and any art that lives ONLY in that category disappears from browsing and
+  search too. Nothing is deleted — the admin still shows it all (dimmed, marked
+  "off") so you can move it or turn it back on. The confirm tells you how many
+  pieces have no other home before you do it.
+- **Delete** (🗑) only works on an empty category. If it still has art, turn it
+  off instead, or move the art first.
+
 **Design numbers (T-numbers):**
 - Only SHOP-MADE designs get numbers. Generic clipart stays unnumbered.
 - The number is the identity everywhere: sell-through tracking on orders,

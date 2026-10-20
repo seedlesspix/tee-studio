@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useT } from './StringsProvider'
-import { matchesArtSearch } from '../lib/artSearch'
+import { matchesArtSearch, hasActiveCategory } from '../lib/artSearch'
 import type { Tables } from '@/types/database'
 
 type Category = Pick<Tables<'clipart_categories'>, 'id' | 'name'>
@@ -37,14 +37,18 @@ export default function ClipartPanel({ printMethod, onSelect, horizontal = false
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
 
-  // Category names (labels). Art references categories by id (category_ids); we map id → name here.
+  // Category names (labels) in the ADMIN's order (sort_order, then name). Art references categories by id
+  // (category_ids); we map id → name here. Only ON categories are fetched — and below, only art with at
+  // least one ON category is offered at all ("off means gone", Denise 2026-10-20).
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false)
   useEffect(() => {
     supabase
       .from('clipart_categories')
       .select('id, name')
       .eq('is_active', true)
+      .order('sort_order')
       .order('name')
-      .then(({ data }) => setCategories(data || []))
+      .then(({ data }) => { setCategories(data || []); setCategoriesLoaded(true) })
   }, [])
 
   // All art available for the product's current method — one fetch drives category browse + search.
@@ -63,9 +67,14 @@ export default function ClipartPanel({ printMethod, onSelect, horizontal = false
       })
   }, [printMethod])
 
+  // Off means gone: art whose every category is turned off is not offered (browsing OR search). Until the
+  // category list has loaded we don't filter, so a slow category fetch can't blank the panel.
+  const activeCategoryIds = new Set(categories.map(c => c.id))
+  const offeredItems = categoriesLoaded ? allItems.filter(i => hasActiveCategory(i, activeCategoryIds)) : allItems
+
   // Only show categories that actually contain art for this method — no empty buckets.
   const usedCategoryIds = new Set<string>()
-  allItems.forEach(i => (i.category_ids || []).forEach(id => usedCategoryIds.add(id)))
+  offeredItems.forEach(i => (i.category_ids || []).forEach(id => usedCategoryIds.add(id)))
   const visibleCategories = categories.filter(c => usedCategoryIds.has(c.id))
 
   // Keep a valid selection without an effect: fall back to the first visible category.
@@ -77,8 +86,8 @@ export default function ClipartPanel({ printMethod, onSelect, horizontal = false
   // Art Library admin uses (app/lib/artSearch.ts), so "search" means one thing everywhere.
   const q = search.trim().toLowerCase()
   const filtered = q
-    ? allItems.filter(i => matchesArtSearch(i, q))
-    : allItems.filter(i => (i.category_ids || []).includes(effectiveCategory))
+    ? offeredItems.filter(i => matchesArtSearch(i, q))
+    : offeredItems.filter(i => (i.category_ids || []).includes(effectiveCategory))
 
   // Metadata to stamp on a placement: decal number (for order sell-through, when the art has one) +
   // which methods the art supports (so a method switch keeps art that's valid in the new method).

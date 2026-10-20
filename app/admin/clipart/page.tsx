@@ -6,6 +6,7 @@ import type { Tables } from '@/types/database'
 import { matchesArtSearch, sortArt, ART_SORTS, type ArtSort } from '../../lib/artSearch'
 
 type Category = Tables<'clipart_categories'>
+const BTN_CAT = 'px-1 leading-none text-[11px] hover:text-[#dd3333] disabled:opacity-25 transition-all'
 type ClipartItem = Tables<'clipart_items'>
 
 const METHODS: { key: string; label: string }[] = [
@@ -56,6 +57,7 @@ export default function ClipartAdmin() {
     supabase
       .from('clipart_categories')
       .select('*')
+      .order('sort_order')
       .order('name')
       .then(({ data }) => {
         if (data) {
@@ -63,6 +65,8 @@ export default function ClipartAdmin() {
           if (data.length > 0) setSelectedCategory(data[0].id)
         }
       })
+    void refreshCatStats()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Art in the selected category — matched by category_ids (an art can be in several categories).
@@ -148,6 +152,7 @@ export default function ClipartAdmin() {
       .map(i => i.id === item.id ? { ...i, category_ids: next } : i)
       .filter(i => (i.category_ids || []).includes(selectedCategory))
     )
+    void refreshCatStats()
   }
 
   const toggleActive = async (item: ClipartItem) => {
@@ -167,6 +172,7 @@ export default function ClipartAdmin() {
     if (error) { showMessage('Error deleting: ' + error.message, 'error'); return }
     setItems(prev => prev.filter(i => i.id !== item.id))
     showMessage('Deleted!')
+    void refreshCatStats()
   }
 
   const handleUpload = async (files: FileList | null) => {
@@ -222,14 +228,100 @@ export default function ClipartAdmin() {
     }
 
     setUploading(false)
+    void refreshCatStats()
     if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  // ── Category management (Denise, 2026-10-20): rename / on-off / reorder / delete-when-empty ──
+  // Per-category art counts drive the "N pieces live only here" confirm before turning one off and the
+  // delete-only-when-empty rule. One light fetch (id + category_ids for every item), refreshed after any
+  // change to category membership.
+  const [catStats, setCatStats] = useState<{ count: Record<string, number>; onlyHere: Record<string, number> }>({ count: {}, onlyHere: {} })
+  const refreshCatStats = async () => {
+    const { data } = await supabase.from('clipart_items').select('id, category_ids')
+    const count: Record<string, number> = {}, onlyHere: Record<string, number> = {}
+    for (const it of data ?? []) {
+      const ids = it.category_ids ?? []
+      for (const id of ids) count[id] = (count[id] ?? 0) + 1
+      if (ids.length === 1) onlyHere[ids[0]] = (onlyHere[ids[0]] ?? 0) + 1
+    }
+    setCatStats({ count, onlyHere })
+  }
+  const [editingCat, setEditingCat] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const cancelRenameRef = useRef(false) // Escape = discard; the save happens exactly once, on blur
+  const [catBusy, setCatBusy] = useState(false)
+
+  // Rename — LIVE for customers the moment it saves (Denise: no publish step). Art points at categories by
+  // id, so design numbers, links and orders are untouched.
+  const renameCategory = async (cat: Category) => {
+    const cancelled = cancelRenameRef.current
+    cancelRenameRef.current = false
+    const name = editName.trim()
+    setEditingCat(null)
+    if (cancelled || !name || name === cat.name) return
+    const { error } = await supabase.from('clipart_categories').update({ name }).eq('id', cat.id)
+    if (error) { showMessage('Error renaming: ' + error.message, 'error'); return }
+    setCategories(prev => prev.map(c => c.id === cat.id ? { ...c, name } : c))
+    showMessage('Renamed — live for customers now.')
+  }
+
+  // On/off. OFF MEANS GONE for customers (hidden from browsing AND search); the admin keeps everything.
+  // Say how many pieces have no other home before hiding them.
+  const toggleCategoryActive = async (cat: Category) => {
+    const turningOff = !!cat.is_active
+    const stranded = catStats.onlyHere[cat.id] ?? 0
+    if (turningOff && !confirm(
+      `Turn off "${cat.name}"?\n\nCustomers will no longer see this category — or ${stranded === 0 ? 'any art that lives only here (none today)' : `the ${stranded} piece${stranded === 1 ? '' : 's'} of art that live${stranded === 1 ? 's' : ''} only here`} — in browsing or search. Nothing is deleted; the admin still shows it all, and you can turn it back on any time.`
+    )) return
+    const { error } = await supabase.from('clipart_categories').update({ is_active: !cat.is_active }).eq('id', cat.id)
+    if (error) { showMessage('Error: ' + error.message, 'error'); return }
+    setCategories(prev => prev.map(c => c.id === cat.id ? { ...c, is_active: !cat.is_active } : c))
+    showMessage(turningOff ? 'Category turned off — hidden from customers.' : 'Category turned on.')
+  }
+
+  // Reorder (⤒ ▲ ▼ ⤓) — the customer Art panel follows this order. Same move → resequence → persist only the
+  // changed rows pattern as colors / fonts / templates.
+  const moveCategory = async (cat: Category, dir: 'up' | 'down' | 'top' | 'bottom') => {
+    if (catBusy) return
+    const idx = categories.findIndex(c => c.id === cat.id)
+    const target = dir === 'up' ? idx - 1 : dir === 'down' ? idx + 1 : dir === 'top' ? 0 : categories.length - 1
+    if (idx < 0 || target === idx || target < 0 || target >= categories.length) return
+    const arr = [...categories]
+    arr.splice(idx, 1)
+    arr.splice(target, 0, categories[idx])
+    const next = arr.map((c, i) => ({ ...c, sort_order: i }))
+    const toPersist = next.filter(c => (categories.find(o => o.id === c.id)?.sort_order ?? -1) !== c.sort_order)
+    setCatBusy(true)
+    setCategories(next) // optimistic
+    const results = await Promise.all(toPersist.map(c => supabase.from('clipart_categories').update({ sort_order: c.sort_order }).eq('id', c.id)))
+    setCatBusy(false)
+    const err = results.find(r => r.error)?.error
+    if (err) {
+      showMessage('Error reordering: ' + err.message, 'error')
+      const { data } = await supabase.from('clipart_categories').select('*').order('sort_order').order('name')
+      if (data) setCategories(data)
+    }
+  }
+
+  // Delete — only an EMPTY category. Art references categories by id in a plain list, so deleting one that
+  // still has art would leave invisible broken references on every piece; turn it off instead.
+  const deleteCategory = async (cat: Category) => {
+    if ((catStats.count[cat.id] ?? 0) > 0) { showMessage('This category still has art — turn it off instead, or move the art first.', 'error'); return }
+    if (!confirm(`Delete the empty category "${cat.name}"? This cannot be undone.`)) return
+    const { error } = await supabase.from('clipart_categories').delete().eq('id', cat.id)
+    if (error) { showMessage('Error deleting: ' + error.message, 'error'); return }
+    setCategories(prev => prev.filter(c => c.id !== cat.id))
+    if (selectedCategory === cat.id) setSelectedCategory(categories.find(c => c.id !== cat.id)?.id ?? '')
+    showMessage('Category deleted.')
   }
 
   const createCategory = async () => {
     if (!newCategoryName.trim()) return
+    const nextOrder = categories.length ? Math.max(...categories.map(c => c.sort_order ?? 0)) + 1 : 0
     const { data, error } = await supabase
       .from('clipart_categories')
-      .insert({ name: newCategoryName.trim(), is_active: true, sort_order: categories.length + 1 })
+      .insert({ name: newCategoryName.trim(), is_active: true, sort_order: nextOrder })
       .select()
       .single()
     if (error) { showMessage('Error: ' + error.message, 'error'); return }
@@ -259,7 +351,7 @@ export default function ClipartAdmin() {
         <div className="flex gap-6">
 
           {/* Sidebar - Categories */}
-          <div className="w-56 shrink-0">
+          <div className="w-80 shrink-0">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-xs font-mono uppercase tracking-widest text-gray-600">Categories</h2>
               <button onClick={() => setShowNewCategory(!showNewCategory)}
@@ -282,20 +374,53 @@ export default function ClipartAdmin() {
               </div>
             )}
 
+            {/* One row per category: ⤒▲▼⤓ order (customers follow it) · name (click = browse; ✎ = rename,
+                live immediately) · art count · ●/○ on-off (off = hidden from customers entirely) · 🗑 only
+                when empty. Off categories render dimmed, like off art. */}
             <div className="flex flex-col gap-1">
-              {categories.map(cat => (
-                <button key={cat.id} onClick={() => setSelectedCategory(cat.id)}
-                  className={`text-left px-3 py-2 rounded text-xs font-mono transition-all ${
-                    selectedCategory === cat.id
-                      ? 'bg-[#dd3333] text-white font-bold'
-                      : 'bg-gray-100 text-black hover:bg-gray-200'
-                  }`}>
-                  {cat.name}
-                  <span className={`float-right font-normal ${selectedCategory === cat.id ? 'text-white/80' : 'text-gray-500'}`}>
-                    {selectedCategory === cat.id ? items.length : ''}
-                  </span>
-                </button>
-              ))}
+              {categories.map((cat, i) => {
+                const selected = selectedCategory === cat.id
+                const count = catStats.count[cat.id] ?? 0
+                return (
+                  <div key={cat.id} className={`flex items-center gap-1 rounded pr-1 ${selected ? 'bg-[#dd3333] text-white' : 'bg-gray-100 text-black'} ${cat.is_active ? '' : 'opacity-60'}`}>
+                    <div className={`flex flex-col shrink-0 pl-1 ${selected ? 'text-white/80' : ''}`}>
+                      <div className="flex">
+                        <button onClick={() => moveCategory(cat, 'top')} disabled={i === 0 || catBusy} title="Move to top" className={BTN_CAT}>⤒</button>
+                        <button onClick={() => moveCategory(cat, 'up')} disabled={i === 0 || catBusy} title="Move up" className={BTN_CAT}>▲</button>
+                      </div>
+                      <div className="flex">
+                        <button onClick={() => moveCategory(cat, 'bottom')} disabled={i === categories.length - 1 || catBusy} title="Move to bottom" className={BTN_CAT}>⤓</button>
+                        <button onClick={() => moveCategory(cat, 'down')} disabled={i === categories.length - 1 || catBusy} title="Move down" className={BTN_CAT}>▼</button>
+                      </div>
+                    </div>
+                    {editingCat === cat.id ? (
+                      <input
+                        autoFocus
+                        value={editName}
+                        onChange={e => setEditName(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') e.currentTarget.blur()                                  // save once, via blur
+                          if (e.key === 'Escape') { cancelRenameRef.current = true; e.currentTarget.blur() } // discard
+                        }}
+                        onBlur={() => renameCategory(cat)}
+                        className="min-w-0 flex-1 rounded border border-[#dd3333] bg-white px-2 py-1 text-xs font-mono text-black outline-none"
+                      />
+                    ) : (
+                      <button onClick={() => setSelectedCategory(cat.id)}
+                        className={`min-w-0 flex-1 truncate px-2 py-2 text-left text-xs font-mono transition-all ${selected ? 'font-bold' : 'hover:text-[#dd3333]'}`}>
+                        {cat.name}{cat.is_active ? '' : ' (off)'}
+                      </button>
+                    )}
+                    <span className={`shrink-0 text-[10px] font-mono tabular-nums ${selected ? 'text-white/80' : 'text-gray-500'}`} title="Art in this category">{count}</span>
+                    <button onClick={() => { setEditingCat(cat.id); setEditName(cat.name) }} title="Rename (live for customers immediately)"
+                      className={`shrink-0 px-1 text-[11px] ${selected ? 'text-white/80 hover:text-white' : 'text-gray-500 hover:text-[#dd3333]'}`}>✎</button>
+                    <button onClick={() => toggleCategoryActive(cat)} title={cat.is_active ? 'Turn off — hides this category and any art that lives only here from customers' : 'Turn on'}
+                      className={`shrink-0 px-1 text-[11px] ${selected ? 'text-white/80 hover:text-white' : cat.is_active ? 'text-gray-700 hover:text-[#dd3333]' : 'text-gray-400 hover:text-[#dd3333]'}`}>{cat.is_active ? '●' : '○'}</button>
+                    <button onClick={() => deleteCategory(cat)} disabled={count > 0} title={count > 0 ? 'Only an empty category can be deleted — turn it off instead' : 'Delete this empty category'}
+                      className={`shrink-0 px-1 text-[11px] disabled:opacity-25 ${selected ? 'text-white/80 hover:text-white' : 'text-gray-500 hover:text-[#dd3333]'}`}>🗑</button>
+                  </div>
+                )
+              })}
             </div>
           </div>
 

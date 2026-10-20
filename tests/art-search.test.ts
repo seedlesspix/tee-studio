@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchesArtSearch, sortArt } from '../app/lib/artSearch'
+import { matchesArtSearch, sortArt, hasActiveCategory } from '../app/lib/artSearch'
 
 describe('matchesArtSearch — name, tags, Design #', () => {
   const eagle = { name: 'Golden Eagle', tags: ['bird', 'patriotic'], decal_number: 2491 }
@@ -29,4 +29,14 @@ describe('sortArt', () => {
   it('name A–Z', () => expect(names(sortArt(items, 'name'))).toEqual(['Ant', 'Bee', 'Cat', 'Dog']))
   it('design # ascending, unnumbered last', () => expect(names(sortArt(items, 'design'))).toEqual(['Cat', 'Dog', 'Bee', 'Ant']))
   it('does not mutate the input', () => { const copy = [...items]; sortArt(items, 'name'); expect(items).toEqual(copy) })
+})
+
+describe('hasActiveCategory — off means gone', () => {
+  const active = new Set(['a', 'b'])
+  it('offered when any category is on; hidden when none are', () => {
+    expect(hasActiveCategory({ category_ids: ['x', 'b'] }, active)).toBe(true)
+    expect(hasActiveCategory({ category_ids: ['x', 'y'] }, active)).toBe(false)
+    expect(hasActiveCategory({ category_ids: [] }, active)).toBe(false)
+    expect(hasActiveCategory({ category_ids: null }, active)).toBe(false)
+  })
 })

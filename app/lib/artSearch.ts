@@ -52,3 +52,10 @@ export function sortArt<T extends ArtSortable>(items: readonly T[], by: ArtSort)
   }
   return [...items].sort(cmp[by])
 }
+
+// "Off means gone" (Denise, 2026-10-20): a piece of art is offered to customers only if at least one of its
+// categories is ON. Art whose every category is off disappears from browsing AND search; the admin still
+// shows it so it can be re-homed or restored.
+export function hasActiveCategory(item: { category_ids?: string[] | null }, activeCategoryIds: ReadonlySet<string>): boolean {
+  return (item.category_ids ?? []).some(id => activeCategoryIds.has(id))
+}
