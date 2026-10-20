@@ -792,9 +792,17 @@ Captured for later scoping; not yet slotted into a specific day.
     wording the language system exists to own.
 - **Convert artwork → SVG** — requires image processing (probably server-side
   with Sharp or similar). Scope for Phase 5 print-file generation work.
-- **Category reordering in admin** — drag-and-reorder Clipart categories (and
-  possibly other lists). Extension of the ▲▼ reorder pattern from Phase 2
-  Colors/Fonts.
+- **Drag-and-drop reordering, everywhere the ▲▼ arrows live** (Denise's vote 2026-10-20: "moving an
+  item far takes a lot of clicks; build drag once, replace the arrows everywhere"). **Grounded
+  2026-10-20, PARKED (not cheap enough to bundle with the Art Library search/sort):** three lists have
+  ▲▼ today — `admin/colors`, `admin/fonts`, `admin/templates` (picker order); clipart categories have
+  no reorder at all yet (ordered by name). The **persistence half already exists**: each `move*`
+  handler resequences the whole list's `sort_order` and writes only the changed rows (optimistic +
+  refetch on error) — a drop handler plugs into exactly that. The missing half is the interaction: a
+  shared sortable-list component (dnd-kit — pointer, touch and keyboard, no library installed today),
+  rewiring the three lists, adding categories (switch their ordering from name to `sort_order` in
+  admin + designer), and touch testing. **~1.5–2 dev-days.** Cheap interim if the click-count is the
+  real pain: "⤒ to top / ⤓ to bottom" buttons beside ▲▼ in all three lists (~1 h).
 
 **Design Tool / Customer-facing** (fits Phase 3 Day 8 polish or Phase 3+
 enhancement):
