@@ -191,6 +191,7 @@ function OrderPage() {
       cartUrl: string
       warning?: string
       alreadyInCart?: boolean
+      cartLineStale?: boolean // the cart line's Desired by / Design notes differ from what was just entered
       addUrl?: string
       items?: Array<{ id: number; quantity: number; properties?: Record<string, string> }>
     }
@@ -199,7 +200,11 @@ function OrderPage() {
     // removed the line and genuinely want it back, confirm to add another copy (re-runs forcing the add).
     if (data.alreadyInCart && force !== true) {
       setAdding(false)
-      const viewCart = window.confirm(t('order.already_in_cart_confirm', 'This design is already in your cart. Select OK to view your cart, or Cancel to add another copy.'))
+      // A changed date/notes is saved on the design but the existing cart line keeps what it was added with —
+      // say so, and how to refresh it (remove + add again), instead of silently keeping the old values.
+      const viewCart = window.confirm(data.cartLineStale
+        ? t('order.already_in_cart_stale_confirm', "This design is already in your cart. Your new date or notes are saved, but the cart line still shows the old ones — remove it from your cart and add this design again to update them. Select OK to view your cart, or Cancel to add another copy now.")
+        : t('order.already_in_cart_confirm', 'This design is already in your cart. Select OK to view your cart, or Cancel to add another copy.'))
       if (viewCart) { window.location.assign(data.cartUrl); return }
       return handleAddToCart(true)
     }

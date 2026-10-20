@@ -204,6 +204,15 @@ so a customer who checks out late is never stranded. Anything backing a saved
 design ("My Designs") is never touched by either job. Paid orders are never
 deleted by anything.
 
+**Desired-by date and design notes on the Shopify order:** both travel with
+each design line as visible line item properties ("Desired by: Sun, Nov 1,
+2026" and "Design notes: …"), so they show under the product on the Shopify
+order page, on the packing slip, in the confirmation email, and in the
+customer's cart. Each design in a cart carries its own date. They are fixed
+when the design is added to the cart; if a customer changes the date or notes
+afterwards, the design tool tells them to remove the line and add it again.
+The full notes always stay on the order here regardless.
+
 **Cancelled orders:** when an order is cancelled in Shopify, it shows as
 **Cancelled** here (red pill, its own filter tab) with the date and reason.
 Nothing is removed — the customer details, the design and the artwork stay,

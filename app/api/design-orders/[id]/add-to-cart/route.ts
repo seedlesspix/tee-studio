@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { visibleLineProps, DESIRED_BY_PROPERTY, DESIGN_NOTES_PROPERTY } from '../../../../lib/cartLineProps'
 import { serviceClient, UUID_RE } from '../../../../lib/customer-library'
 import { getStoreOrigin } from '../../../../lib/shopify'
 import {
@@ -86,6 +87,9 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid desired_by' }, { status: 400 })
   }
   const desiredBy = typeof body.desired_by === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.desired_by) ? body.desired_by : null
+  // The notes that will be persisted below (same resolution as step 5): a string in the body wins (blank →
+  // none); absent → whatever the row already holds. Resolved here so the cart lines and the row agree.
+  const resolvedNotes = typeof body.notes === 'string' ? body.notes.trim() || null : (body.notes === null ? null : undefined)
 
   // Explicit "add another copy" from the order page's confirm — bypasses the already-in-cart guard below.
   const forceAdd = body.force === true
@@ -211,9 +215,23 @@ export async function POST(
       const cart = (await cartRes.json()) as {
         items?: Array<{ properties?: Record<string, string> | null }>
       }
-      const already = (cart.items ?? []).some((i) => i.properties?._design_order_id === id)
-      if (already) {
-        return NextResponse.json({ cartUrl, alreadyInCart: true })
+      const mine = (cart.items ?? []).filter((i) => i.properties?._design_order_id === id)
+      if (mine.length > 0) {
+        // Keep the ROW current even though we won't touch the cart line (Denise, 2026-10-20 — before this,
+        // a changed date/notes on a re-visit was silently dropped here). The cart line keeps the properties
+        // it was added with; tell the customer when they now differ so they can remove + re-add.
+        const notesForRow = resolvedNotes === undefined ? design.notes : resolvedNotes
+        const { error: keepErr } = await supabase
+          .from('design_orders')
+          .update({ desired_by: desiredBy, notes: notesForRow })
+          .eq('id', id)
+          .in('status', ['draft', 'ordering', 'cart_created'])
+        if (keepErr) console.error('[add-to-cart] already-in-cart persist failed:', keepErr)
+        const want = visibleLineProps({ desiredBy, notes: notesForRow })
+        const cartLineStale = mine.some((i) =>
+          (i.properties?.[DESIRED_BY_PROPERTY] ?? '') !== (want[DESIRED_BY_PROPERTY] ?? '') ||
+          (i.properties?.[DESIGN_NOTES_PROPERTY] ?? '') !== (want[DESIGN_NOTES_PROPERTY] ?? ''))
+        return NextResponse.json({ cartUrl, alreadyInCart: true, cartLineStale })
       }
     }
   } catch {
@@ -277,12 +295,17 @@ export async function POST(
     // 3. Build the cart line items the browser will submit to the store. N&N: one line PER ROSTER ENTRY
     // with VISIBLE Name/Number/Title so the coach proof-reads their roster in the cart before paying
     // (_design_order_id stays hidden with its underscore). Otherwise the classic one-line-per-size shape.
+    // VISIBLE on every line of this design (Denise, 2026-10-20): "Desired by" + "Design notes" — shown
+    // under the line item on the Shopify order page, packing slip, confirmation email and the cart. Per
+    // line, so a cart with several designs shows each design's own date. See app/lib/cartLineProps.ts.
+    const visible = visibleLineProps({ desiredBy, notes: resolvedNotes === undefined ? design.notes : resolvedNotes })
     const items = nnActive
       ? rosterEntries.map((e) => {
           const props: Record<string, string> = {}
           const nm = rosterValue(e, 'name'); if (nm) props.Name = nm
           if (e.number) props.Number = String(e.number)
           const tt = rosterValue(e, 'title'); if (tt) props.Title = tt
+          Object.assign(props, visible)
           props._design_order_id = id
           return {
             id: Number(product.variantsBySize[e.size].split('/').pop()),
@@ -293,7 +316,7 @@ export async function POST(
       : Object.entries(effQuantities).map(([size, quantity]) => ({
           id: Number(product.variantsBySize[size].split('/').pop()),
           quantity,
-          properties: { _design_order_id: id },
+          properties: { ...visible, _design_order_id: id },
         }))
 
     // Defensive: the guards above (per-size sum > 0 / roster shirt count > 0) guarantee ≥1 line, but the
@@ -344,7 +367,7 @@ export async function POST(
         quantities: effQuantities,
         total_qty: effTotalQty,
         total_price: Number((effTotalQty * price).toFixed(2)),
-        notes: typeof body.notes === 'string' ? body.notes.trim() || null : (body.notes ?? design.notes),
+        notes: resolvedNotes === undefined ? design.notes : resolvedNotes,
         desired_by: desiredBy,
         ...(acknowledgedAt ? { design_acknowledged_at: acknowledgedAt } : {}),
         status: 'cart_created',

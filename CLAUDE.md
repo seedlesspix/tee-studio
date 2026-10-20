@@ -1003,6 +1003,16 @@ needs a darker color rule), mockup's own background, **placeholder image never 4
 edge cache (no purge-on-edit for v1). Needs `outputFileTracingIncludes` SHARP_NATIVE for the
 route + live-Vercel verification (the known sharp trap).
 
+**Desired-by + design notes on the Shopify order (2026-10-20):** `add-to-cart` stamps two VISIBLE line
+item properties on every line of a design — `Desired by` (formatted, e.g. "Sun, Nov 1, 2026") and
+`Design notes` (whitespace-collapsed, ≤500 chars; full text stays on `design_orders.notes`) — next to
+the hidden `_design_order_id` and the N&N Name/Number/Title. Helpers in `app/lib/cartLineProps.ts`
+(tested). Per line, so multi-design carts show each design's own date; cart attributes / order note were
+rejected (single value per cart, "earliest" math, stale on line removal). **Gotcha fixed at the same
+time:** the already-in-cart idempotency early-return used to drop a changed date/notes entirely; it now
+persists them on the row and returns `cartLineStale` when the cart line's properties differ, and the
+order page tells the customer to remove + re-add (line properties are fixed at add time).
+
 **Collision guard:** the theme's pet-photo-upload edge function (`pet-photos` bucket,
 `pet_photo_uploads` table) lives in the same Supabase project and is **not referenced
 anywhere in this repo** — leave it untouched.
