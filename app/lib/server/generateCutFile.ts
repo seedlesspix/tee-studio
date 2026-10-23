@@ -8,6 +8,7 @@ import { getFontBuffer, toArrayBuffer, baseFamily } from './fontBuffer'
 import { boxFromSnapshot, isSnapshot, type CanvasBox } from './cutFileGeometry'
 import { outlineText, curvedTextToCutPath, type TextPlacement, type CutPath, type PhysBox } from './cutFileEngine'
 import { clipartToCutPaths } from './clipartCutEngine'
+import { effectiveCurvedScale } from '../curvedArc'
 import { assembleCutSvgUnioned, type NamedCutLayer, type ImageLayer } from './cutBoolean'
 import { separateRasterForCut } from './rasterSeparate'
 import { placeRasterCutLayers, rasterImageMatrix } from './rasterCutPlace'
@@ -120,7 +121,9 @@ export async function outlineVectorObject(
       const d = curvedTextToCutPath(
         font, String(t._originalText ?? ''),
         { curveAmount: Number(t._curveAmount ?? 0), fontSizePx: Number(t._curveFontSize ?? 36), bold: !!t._curveBold, italic: !!t._curveItalic, charSpacing: Number(t._curveCharSpacing ?? 0), path: curvePath },
-        { left: Number(t.left), top: Number(t.top), scaleX: Number(t.scaleX ?? 1), scaleY: Number(t.scaleY ?? 1), angle: Number(t.angle ?? 0) },
+        // A baked curved image's Fabric scale includes 1/_curveDensity (the 2× bake, 2026-10-23); the cut
+        // wants the customer's size → effectiveCurvedScale. Older bakes have no density → unchanged.
+        { left: Number(t.left), top: Number(t.top), scaleX: effectiveCurvedScale(Number(t.scaleX ?? 1), Number(t._curveDensity ?? 1)), scaleY: effectiveCurvedScale(Number(t.scaleY ?? 1), Number(t._curveDensity ?? 1)), angle: Number(t.angle ?? 0) },
         canvasBox, phys,
       )
       return { paths: [{ d, fill: typeof t._curveFill === 'string' ? t._curveFill : (typeof t.fill === 'string' ? t.fill : '#000000') }] }

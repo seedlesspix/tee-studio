@@ -220,6 +220,11 @@ export const UI_STRINGS = {
   'designer.choose_subtitle': { default: "Pick the garment for this design. You can switch again any time from Products.", group: "Designer — General", desc: "Help text under the header of the Grab 'n Go garment picker." },
   'designer.choose_current': { default: "Shown now", group: "Designer — General", desc: "Small tag on the garment currently on screen inside the Grab 'n Go garment picker (picking it just closes the picker)." },
   'designer.choose_empty': { default: "No garments can take this design right now.", group: "Designer — General", desc: "Shown in the Grab 'n Go garment picker when no active product can produce the linked design (print method mismatch or products unavailable)." },
+  // Placement guides (reference boxes such as "Chest") — hidden by default, shown while dragging/resizing
+  // or when the toggle is on.
+  'designer.guides_label': { default: "Guides", group: "Designer — General", desc: "Label of the stage-toolbar toggle that keeps placement guides (e.g. the Chest reference box) visible." },
+  'designer.guides_show': { default: "Show placement guides (they also appear while you drag or resize)", group: "Designer — General", desc: "Tooltip of the Guides toggle when guides are hidden." },
+  'designer.guides_hide': { default: "Hide placement guides", group: "Designer — General", desc: "Tooltip of the Guides toggle when guides are shown." },
   'designer.choose_hint': { default: "Your design is already on the garment behind this list. Keep it, or pick another garment.", group: "Designer — General", desc: "Footer hint in the Grab 'n Go garment picker, telling the customer the design is already placed behind the list." },
   // Staff-only Download PNG (desktop action bar; shown only to a signed-in admin).
   'designer.download_png': { default: "Download PNG", group: "Designer — General", desc: "Staff-only button in the designer's top bar (admins only; customers never see it). Opens a two-option menu." },

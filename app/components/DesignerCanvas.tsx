@@ -18,7 +18,7 @@ import { placedInches, lowResTier, effectiveDpi } from '../lib/lowRes'
 import { maxScaleForRotation } from '../lib/rotationFit'
 import NamesNumbersPanel from './NamesNumbersPanel'
 import { type RosterEntry, type NnRole, NN_ROLE_PROP, entryHasContent, condensedScaleX, rosterShirtCount, rosterSizeQuantities, rosterValue, jerseyStackLayout } from '../lib/namesNumbers'
-import { renderCurvedArc } from '../lib/curvedArc'
+import { renderCurvedArc, CURVE_BAKE_DENSITY, effectiveCurvedScale } from '../lib/curvedArc'
 import { bezierControlFromPeak, type Pt } from '../lib/curvePath'
 import { applyEmbroideryLook, removeEmbroideryLook } from '../lib/embroideryLook'
 import { drawDeleteIcon, drawRotateIcon, drawResizeIcon, makeHandleRender } from '../lib/selectionHandles'
@@ -58,7 +58,7 @@ import { type UploadItem } from './MyUploadsPanel'
 import {
   AlignStartVertical, AlignCenterVertical, AlignEndVertical,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
-  Undo2, Redo2, ZoomIn, ZoomOut,
+  Undo2, Redo2, ZoomIn, ZoomOut, Frame,
 } from 'lucide-react'
 import MyDesignsDrawer, { type SavedDesign } from './MyDesignsDrawer'
 import ProductPickerModal, { type TemplateProduct } from './ProductPickerModal'
@@ -208,6 +208,7 @@ const CANVAS_CUSTOM_PROPS = ['_isSvg', '_originalText', '_currentColor', '_isCur
   // slider + font/size/color and adjusting the curve re-bakes from its OWN values.
   '_curveAmount', '_curveFontFamily', '_curveFontSize', '_curveFill', '_curveBold', '_curveItalic', '_curveCharSpacing', '_curveUppercase',
   '_curvePath', // Z-hp type-on-path: the admin-drawn quadratic a curved text follows (persist so re-open + the cut match)
+  '_curveDensity', // bake density of a curved image (2 since 2026-10-23); its Fabric scale = size / density — the cut engine divides it out
   '_isVectorUpload', // an uploaded SVG (vector) — excluded from the low-res warning (client + bench)
   '_cutFromDifferentSource', // convert/re-add whose bench cut-source differs from _uploadSrc — cut-edge preview suppressed (Lens 2)
   '_nnRole', // Names & Numbers placeholder role ('name'|'number') — the substitution + cut-file split key
@@ -1366,6 +1367,16 @@ export default function DesignerCanvas({
   // prop because the designer page only mounts this component after the link is resolved.
   const [chooseOpen, setChooseOpen] = useState<boolean>(!!openPickerOnLoad)
   const deepLinkPlacedRef = useRef(false)
+  // Placement guides (the dashed "Chest" reference box etc.) — hidden by default, shown while the customer
+  // is dragging / resizing / rotating something (Denise, 2026-10-23: the always-on box + label sat on top of
+  // the artwork), or always when the "Show guides" toggle is on (remembered per browser).
+  const GUIDES_KEY = 'designer.showGuides'
+  const [showGuides, setShowGuides] = useState<boolean>(() => { try { return typeof window !== 'undefined' && window.localStorage.getItem(GUIDES_KEY) === '1' } catch { return false } })
+  const toggleGuides = () => setShowGuides(v => { try { window.localStorage.setItem(GUIDES_KEY, v ? '0' : '1') } catch { /* ignore */ } return !v })
+  const [interacting, setInteracting] = useState(false)
+  const interactingRef = useRef(false)
+  const beginInteract = () => { if (!interactingRef.current) { interactingRef.current = true; setInteracting(true) } }
+  const endInteract = () => { if (interactingRef.current) { interactingRef.current = false; setInteracting(false) } }
   // The design currently being edited (set on restore, and after a save) so
   // re-saving updates it in place instead of forking a copy.
   const currentDesignIdRef = useRef<string | null>(null)
@@ -2114,6 +2125,7 @@ export default function DesignerCanvas({
       canvas.on('object:moving', (e: any) => {
         const obj = e.target
         if (!obj) return
+        beginInteract() // guides show while something is being placed
         const bounds = getLiveBounds()
         if (!bounds) return
         constrainObject(obj, bounds)
@@ -2122,6 +2134,7 @@ export default function DesignerCanvas({
       canvas.on('object:scaling', (e: any) => {
         const obj = e.target
         if (!obj) return
+        beginInteract()
         // Remember a curved text is being SCALE-dragged, so object:modified re-bakes it (and only it).
         if (obj._isCurvedText) curvedScaleGestureRef.current = obj
         // Live low-res: scaling a raster upload UP lowers its effective DPI — refresh the warning as
@@ -2269,8 +2282,11 @@ export default function DesignerCanvas({
       // trigger it, which is exactly why it's safe as a dirty signal.
       // Catch-all re-clamp when any interaction settles (move/scale/rotate), so
       // nothing is left sitting outside the print area at release.
+      canvas.on('object:rotating', () => beginInteract())
+      canvas.on('mouse:up', () => endInteract()) // every gesture ends here, modified or not
       canvas.on('object:modified', (e: any) => {
         const obj = e?.target
+        endInteract()
         // Curved text baked to a raster: a scale gesture pixelates the bitmap. Re-bake the arc at the
         // settled size instead of leaving it scaled (rebakeCurvedOnResize does its own fit/constrain).
         // Gate on the scale-gesture flag (set in object:scaling), NOT on scaleX≠1 — a clamped/restored
@@ -2480,10 +2496,15 @@ export default function DesignerCanvas({
   ): Promise<any> => {
     // Uppercase is a DISPLAY transform (like plain text): bake the upper-cased glyphs but keep _originalText
     // RAW so the words can still be re-typed / toggled back. _curveUppercase persists the toggle state.
-    const { dataUrl } = renderCurvedArc(p.uppercase ? rawText.toUpperCase() : rawText, p) // p.path (Z-hp) → glyphs follow the drawn path; else the degrees arc
+    // Baked at CURVE_BAKE_DENSITY× (crisp on Retina) and shown at 1/density, so the on-canvas size is the
+    // same as a 1× bake. _curveDensity rides with the object so the resize re-bake + the cut engine can
+    // tell "customer size" from "bake scale".
+    const D = CURVE_BAKE_DENSITY
+    const { dataUrl } = renderCurvedArc(p.uppercase ? rawText.toUpperCase() : rawText, p, undefined, D) // p.path (Z-hp) → glyphs follow the drawn path; else the degrees arc
     const { FabricImage } = await import('fabric')
     const img: any = await FabricImage.fromURL(dataUrl)
-    img.set({ left, top, originX: 'center', originY: 'center' })
+    img.set({ left, top, originX: 'center', originY: 'center', scaleX: 1 / D, scaleY: 1 / D })
+    img._curveDensity = D
     if (angle) { img.set({ angle }); img.setCoords() }
     img._isCurvedText = true
     img._originalText = rawText
@@ -2502,11 +2523,12 @@ export default function DesignerCanvas({
     if (p.path) img._curvePath = p.path
     // Keep the baked curved text inside the print area (Issue-2).
     if (bounds) {
+      // Fit-clamp in CANVAS units (bitmap px ÷ density), then express the clamp on top of the bake scale.
       const maxScale = Math.min(
-        (bounds.right - bounds.left) / (img.width || 1),
-        (bounds.bottom - bounds.top) / (img.height || 1),
+        (bounds.right - bounds.left) / ((img.width || 1) / D),
+        (bounds.bottom - bounds.top) / ((img.height || 1) / D),
       )
-      if (maxScale < 1) img.set({ scaleX: maxScale, scaleY: maxScale })
+      if (maxScale < 1) img.set({ scaleX: maxScale / D, scaleY: maxScale / D })
       constrainObject(img, bounds)
     }
     return img
@@ -2684,7 +2706,8 @@ export default function DesignerCanvas({
     if (!canvas) return
     // Corner drags keep aspect (scaleX==scaleY); a side-handle drag distorts one axis. Either way an
     // arc is fixed-aspect, so re-bake at the LARGER extent and reset to uniform scale.
-    const k = Math.max(obj.scaleX || 1, obj.scaleY || 1)
+    // The object's Fabric scale includes 1/_curveDensity; the customer's size change is scale × density.
+    const k = effectiveCurvedScale(Math.max(obj.scaleX || 1, obj.scaleY || 1), Number(obj._curveDensity) || 1)
     const p = rebakeCurveParams(Number(obj._curveFontSize) || 36, Number(obj._curveAmount) || 0, k)
     const myToken = ++curveTokenRef.current
     const rebaked = await bakeCurvedArc(
@@ -5843,6 +5866,22 @@ export default function DesignerCanvas({
             <span className="w-px h-4 bg-gray-200 mx-1" />
             {/* Zoom — magnify the shirt to place fine detail (view-only; object coordinates unchanged).
                 Centered zoom; click the % to reset to 100%. */}
+            {(referenceGuidesRef.current[shirtView] || []).length > 0 && (
+              <>
+                {/* Placement guides toggle — only on products that have reference boxes. Quiet selected
+                    state (surface fill + dark text), never red: red is action-only in the designer. */}
+                <button
+                  title={showGuides ? t('designer.guides_hide', 'Hide placement guides') : t('designer.guides_show', 'Show placement guides (they also appear while you drag or resize)')}
+                  aria-pressed={showGuides}
+                  onPointerDown={e => { e.preventDefault(); toggleGuides() }}
+                  className={`flex items-center gap-1 px-2 py-1.5 rounded border text-xs font-mono transition-all ${showGuides ? 'bg-gray-900 text-white border-gray-900' : 'bg-gray-100 text-gray-700 border-gray-200 hover:border-gray-400'}`}
+                >
+                  <Frame size={14} strokeWidth={1.75} />
+                  {t('designer.guides_label', 'Guides')}
+                </button>
+                <span className="w-px h-4 bg-gray-200 mx-1" />
+              </>
+            )}
             <button title={t('designer.zoom_out', 'Zoom out')} disabled={view.zoom <= ZOOM_MIN}
               onPointerDown={e => { e.preventDefault(); zoomTo(view.zoom - ZOOM_STEP) }}
               className="flex items-center justify-center px-2 py-1.5 rounded bg-gray-100 border border-gray-200 text-gray-700 hover:border-[#dd3333] hover:text-gray-900 transition-all disabled:opacity-40 disabled:hover:border-gray-200">
@@ -5887,7 +5926,7 @@ export default function DesignerCanvas({
             willChange: view.zoom !== 1 ? 'transform' : undefined,
           }}>
             <div style={{ width: 680, height: 850, transformOrigin: 'top left', transform: stageScale !== 1 ? `scale(${stageScale})` : undefined }}>
-              <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} hidePrintAreaBorder={shirtView === 'hat_back'} overlayUrl={zoneOverlayUrl(shirtView, selectedColor) || null} arcGuide={shirtView === 'hat_back' && !zoneHasContent('hat_back') ? hatBackPath() : null} referenceGuides={referenceGuidesRef.current[shirtView] || []} onReady={handleCanvasReady} emptyState={emptyState} />
+              <CanvasStage canvasRef={canvasRef} shirtImgRef={shirtImgRef} printArea={printArea} hidePrintAreaBorder={shirtView === 'hat_back'} overlayUrl={zoneOverlayUrl(shirtView, selectedColor) || null} arcGuide={shirtView === 'hat_back' && !zoneHasContent('hat_back') ? hatBackPath() : null} referenceGuides={referenceGuidesRef.current[shirtView] || []} guidesVisible={showGuides || interacting} onReady={handleCanvasReady} emptyState={emptyState} />
             </div>
             {/* "Thinking" overlay for async ops (Remove Background API round-trip, edits + their
                 re-upload, converted-file uploads). Silence reads as broken; the spinner reads as

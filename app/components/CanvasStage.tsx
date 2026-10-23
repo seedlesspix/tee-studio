@@ -36,6 +36,7 @@ export default function CanvasStage({
   overlayUrl = null,
   arcGuide = null,
   referenceGuides = [],
+  guidesVisible = true,
   onReady,
   emptyState = null,
 }: {
@@ -51,6 +52,9 @@ export default function CanvasStage({
   // Chest reference guide: secondary print areas shown as dashed labelled outlines (placement/size
   // references, e.g. "Left Chest") — not design zones, never priced.
   referenceGuides?: { pct: PrintAreaPct; label: string }[]
+  // Reference guides are hidden until the customer drags/resizes (or turns "Show guides" on) — they fade
+  // in/out so the box + label never sit on top of finished artwork (Denise, 2026-10-23).
+  guidesVisible?: boolean
   // Type-on-path (Z-hp #2): the drawn arc the customer's hat-back text follows, in 680×850 canvas-px, shown
   // as a subtle dotted guide so they see the line before + while typing. Null off the hat_back zone.
   arcGuide?: { p0: { x: number; y: number }; control: { x: number; y: number }; p2: { x: number; y: number } } | null
@@ -166,7 +170,7 @@ export default function CanvasStage({
           Left Chest) goes. Reference only — no interaction, not part of the design box. Lighter than the
           main box so it reads as a guide, with a small label chip + white halo for light/dark garments. */}
       {referenceGuides.map((g, i) => (
-        <div key={i} style={{
+        <div key={i} data-reference-guide aria-hidden={!guidesVisible} style={{
           position: 'absolute',
           left: `${g.pct.xPct}%`, top: `${g.pct.yPct}%`,
           width: `${g.pct.widthPct}%`, height: `${g.pct.heightPct}%`,
@@ -175,6 +179,8 @@ export default function CanvasStage({
           pointerEvents: 'none',
           zIndex: 2,
           boxShadow: '0 0 0 1px rgba(255,255,255,0.6)',
+          opacity: guidesVisible ? 1 : 0,
+          transition: 'opacity 220ms ease',
         }}>
           {g.label && (
             <span style={{

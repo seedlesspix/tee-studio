@@ -28,7 +28,23 @@ export interface CurveParams {
   path?: { p0: Pt; control: Pt; p2: Pt }
 }
 
-export interface CurvedArcResult { dataUrl: string; width: number; height: number }
+export interface CurvedArcResult { dataUrl: string; width: number; height: number; density: number }
+
+// Bake DENSITY (2026-10-23): the arc is baked to a bitmap and displayed through a Fabric image. At density 1
+// the bitmap has one pixel per canvas unit, so on a Retina screen (two device pixels per unit) every baked
+// edge was upsampled 2× — curved text looked soft/stair-stepped next to crisp straight text (Denise's
+// screenshot). Bake at 2× and the designer shows it at scaleX = scaleY = 1/density, so the on-canvas size is
+// unchanged. Fixed at 2 (not devicePixelRatio) so saved designs are deterministic across screens.
+export const CURVE_BAKE_DENSITY = 2
+
+// A baked curved image carries its density in _curveDensity (older bakes have none → 1). Its Fabric scale
+// is therefore NOT its size: scale × density is. Everything that treats a curved image's scale as "how big
+// the customer made it" (the resize re-bake, the cut-file placement) must go through this.
+export function effectiveCurvedScale(scale: number | null | undefined, density: number | null | undefined): number {
+  const s = typeof scale === 'number' && Number.isFinite(scale) ? scale : 1
+  const d = typeof density === 'number' && Number.isFinite(density) && density > 0 ? density : 1
+  return s * d
+}
 
 // Minimal shape of the canvas + 2d context this uses — satisfied by both the DOM canvas and node-canvas.
 export interface ArcCanvas {
@@ -41,6 +57,7 @@ export interface ArcCtx {
   measureText(t: string): { width: number }
   fillText(t: string, x: number, y: number): void
   save(): void; restore(): void; translate(x: number, y: number): void; rotate(a: number): void
+  scale(x: number, y: number): void
   getImageData(x: number, y: number, w: number, h: number): { data: Uint8ClampedArray | number[] }
   drawImage(img: ArcCanvas, sx: number, sy: number, sw: number, sh: number, dx: number, dy: number, dw: number, dh: number): void
 }
@@ -53,7 +70,8 @@ const domCanvas: CanvasFactory = (w, h) => {
   return c as unknown as ArcCanvas
 }
 
-export function renderCurvedArc(rawText: string, p: CurveParams, makeCanvas: CanvasFactory = domCanvas): CurvedArcResult {
+export function renderCurvedArc(rawText: string, p: CurveParams, makeCanvas: CanvasFactory = domCanvas, density = 1): CurvedArcResult {
+  const D = Number.isFinite(density) && density > 0 ? density : 1
   const { curveAmount, fontSize: fSize, fontFamily: cFont, fill: cFill, bold: cBold, italic: cItalic, charSpacing = 0, path } = p
   // Per-glyph gap in px, matching Fabric's charSpacing (1/1000 em) so curved + straight spacing agree.
   const spacingPx = (charSpacing / 1000) * fSize
@@ -110,8 +128,10 @@ export function renderCurvedArc(rawText: string, p: CurveParams, makeCanvas: Can
   const originX = margin - cMinX
   const originY = margin - cMinY
 
-  const off = makeCanvas(W0, H0)
+  // Render at D× — every coordinate below stays in canvas units; the context scale does the rest.
+  const off = makeCanvas(Math.min(4000 * 2, W0 * D), Math.min(4000 * 2, H0 * D))
   const ctx = off.getContext('2d')!
+  if (D !== 1) ctx.scale(D, D)
   ctx.font = renderFont
   ctx.fillStyle = cFill
   ctx.textAlign = 'center'
@@ -139,7 +159,7 @@ export function renderCurvedArc(rawText: string, p: CurveParams, makeCanvas: Can
       }
     }
   }
-  const pad = Math.ceil(effFontSize * 0.3)
+  const pad = Math.ceil(effFontSize * 0.3 * D) // crop scan runs in bitmap px
   minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad)
   maxX = Math.min(W - 1, maxX + pad); maxY = Math.min(H - 1, maxY + pad)
   const cw = Math.max(1, maxX - minX), ch = Math.max(1, maxY - minY)
@@ -147,5 +167,5 @@ export function renderCurvedArc(rawText: string, p: CurveParams, makeCanvas: Can
   const crop = makeCanvas(cw, ch)
   const cropCtx = crop.getContext('2d')!
   cropCtx.drawImage(off, minX, minY, cw, ch, 0, 0, cw, ch)
-  return { dataUrl: crop.toDataURL('image/png'), width: crop.width, height: crop.height }
+  return { dataUrl: crop.toDataURL('image/png'), width: crop.width, height: crop.height, density: D }
 }
