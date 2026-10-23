@@ -2284,6 +2284,11 @@ export default function DesignerCanvas({
       // nothing is left sitting outside the print area at release.
       canvas.on('object:rotating', () => beginInteract())
       canvas.on('mouse:up', () => endInteract()) // every gesture ends here, modified or not
+      // Downsampled rasters (the hi-res clipart raster, a recolored copy, PNG art, curved-text bakes) are
+      // drawn smaller than their pixels; the browser's default 'low' smoothing point-samples them, which
+      // reads as jagged edges. 'high' box-filters/bicubic. The flag is context state and resets whenever
+      // the backing store is re-sized, so it is re-asserted on every render rather than set once.
+      canvas.on('before:render', (e: any) => { if (e?.ctx) e.ctx.imageSmoothingQuality = 'high' })
       canvas.on('object:modified', (e: any) => {
         const obj = e?.target
         endInteract()
@@ -2405,6 +2410,45 @@ export default function DesignerCanvas({
     const zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 4) / 4)) // snap to 0.25 steps
     setView(zoom <= 1 ? { zoom: 1, x: 0, y: 0 } : { zoom, x: 0, y: 0 })
   }
+
+  // ── Render scale: desktop supersampling + a sharp magnifier (2026-10-23) ───────────────────────────
+  // Fabric sizes its backing store by window.devicePixelRatio, read ONCE at load. Two ways that goes soft
+  // on a desktop: (1) a NON-retina monitor (DPR 1 — Denise's 1440p ultrawide) renders one pixel per CSS
+  // pixel, so every edge on the shirt is jagged (her "soft SVG" screenshot: the print box measured 265 px
+  // = 1× — the T1801 file and the hi-res clipart path were fine); (2) the magnifier (view.zoom) and a
+  // window dragged onto a retina display both ENLARGE pixels already drawn. Desktop now renders at
+  // max(DPR, 2) × zoom, capped at 4× (2720×3400 backing), re-rendering the design sharper rather than
+  // scaling the bitmap, and follows DPR changes live. Object coordinates are untouched: Fabric divides
+  // the factor back out of pointer math, and every export passes enableRetinaScaling=false (so the
+  // preview PNG, staff downloads and the parity harness are byte-identical). Mobile keeps the device
+  // ratio (memory; the pinch zoom stays a bitmap magnify).
+  const DESKTOP_MIN_RENDER_SCALE = 2, DESKTOP_MAX_RENDER_SCALE = 4
+  const renderScaleRef = useRef(0) // 0 = Fabric's own (nothing installed yet)
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas || typeof window === 'undefined') return
+    const apply = () => {
+      const dpr = window.devicePixelRatio || 1
+      if (isMobile && !renderScaleRef.current) return // never installed → leave Fabric's default alone
+      const target = isMobile ? dpr : Math.min(DESKTOP_MAX_RENDER_SCALE, Math.max(dpr, DESKTOP_MIN_RENDER_SCALE) * view.zoom)
+      if (Math.abs(target - renderScaleRef.current) < 0.01) return
+      renderScaleRef.current = target
+      canvas.getRetinaScaling = () => target // every Fabric path reads this: backing stores, pointer math, caches, hit-testing
+      canvas.setDimensions({ width: CANVAS_W, height: CANVAS_H }) // re-allocates lower + upper at the new scale; re-renders
+      if (typeof canvas.setTargetFindTolerance === 'function') canvas.setTargetFindTolerance(canvas.targetFindTolerance) // its pixel-probe canvas is scaled too
+    }
+    apply()
+    // The device ratio changes when the window moves between a retina and a non-retina display. Each
+    // media query is pinned to the CURRENT ratio and fires once when it stops matching; re-arm after each.
+    let mq: MediaQueryList | null = null
+    const onChange = () => { apply(); watch() }
+    const watch = () => {
+      mq?.removeEventListener('change', onChange)
+      try { mq = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`); mq.addEventListener('change', onChange) } catch { mq = null }
+    }
+    watch()
+    return () => mq?.removeEventListener('change', onChange)
+  }, [fabricCanvas, isMobile, view.zoom])
 
   // 1b: replaces the window._alignObject bridge — align the active object to the
   // print-area edges/center. Reads the live canvas from fabricCanvasRef.

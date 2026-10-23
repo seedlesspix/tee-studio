@@ -355,6 +355,23 @@ trusting a read, ask "what does this surface refuse to show me?"
 - **Unoptimized Fabric.js**: Canvas operations could batch updates or use Web Workers
 - **No caching**: No Redis or HTTP cache layer for expensive queries
 - **Download all clipart**: `ClipartPanel` loads all items for search (no pagination)
+- **Desktop render scale (SHIPPED 2026-10-23) — "soft SVG" was the DISPLAY, not the file.** Denise's
+  "SVG art goes soft when enlarged" (T1801, Art panel, print mode) traced through the real path in Chromium
+  + WebKit: the file was clean, every library SVG passes the hi-res pre-render, and the art is drawn from
+  its 1500-px raster at ≤530 device px. Her screenshot's print box measured 265 px with 1-px lines = a 1×
+  capture → her non-retina ultrawide (Acer 3440×1440): Fabric sizes its backing store by
+  `devicePixelRatio`, so on a 1× monitor the whole shirt renders one pixel per CSS pixel and edges go jagged.
+  Two more bitmap-magnifiers in the same family: the stage magnifier (`view.zoom`) was a pure CSS scale of
+  the rendered bitmap (200% = 2× blur), and Fabric reads DPR once at load (window dragged between a retina
+  and a 1× display = stale). **Now (desktop only, `DesignerCanvas` "Render scale" effect):** backing store =
+  max(DPR, 2) × zoom, capped at 4× (2720×3400), via a `canvas.getRetinaScaling` override +
+  `setDimensions` re-allocation, re-applied on a `(resolution: Ndppx)` media-query change; and
+  `before:render` sets `imageSmoothingQuality='high'` so downsampled rasters (hi-res clipart, recolored
+  copies, PNG art, curved bakes) are box-filtered, not point-sampled. Object coordinates untouched (Fabric
+  divides the factor out of pointer math); every export passes `enableRetinaScaling=false`, so previews,
+  staff downloads and the parity harness are unchanged. Mobile keeps the device ratio (memory; pinch stays
+  a bitmap magnify). **Triage rule for any "blurry/soft on desktop" report: ask which display, or measure
+  the screenshot (print box 265 px = 1×, 530 = retina) before touching the art pipeline.**
 
 ### Features & Missing Pieces
 - **Incomplete print methods**: Code references `printMethod` but configuration unclear
