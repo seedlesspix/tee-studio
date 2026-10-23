@@ -1292,10 +1292,11 @@ made intentional breaks safe — `obj.text` mixes the customer's newlines with t
 wrapper's, and they're the same character, so `_originalText` could never be
 re-derived from it without flattening stacked lines.
 
-**Curved text bake DENSITY (2026-10-23).** Denise's "SVG art goes soft when enlarged" screenshot was
-actually curved text in print mode: the arc was baked to a bitmap at 1× (one bitmap px per canvas unit),
-so on a 2× screen every baked edge was upsampled — stair-stepped "BUCKTOWN" next to crisp straight
-"CHICAGO". `renderCurvedArc` now takes a `density` (default 1; `bakeCurvedArc` passes
+**Curved text bake DENSITY (2026-10-23).** Shipped while chasing Denise's "SVG art goes soft when
+enlarged" report — which turned out to be SVG clipart (T1801) on her non-retina monitor, NOT curved text
+(see Known Issues → "Desktop render scale"); the density fix is kept because it was a real, separate
+defect: the arc was baked to a bitmap at 1× (one bitmap px per canvas unit), so on a 2× screen every
+baked edge was upsampled. `renderCurvedArc` now takes a `density` (default 1; `bakeCurvedArc` passes
 `CURVE_BAKE_DENSITY` = 2, fixed, not DPR-dependent, so saved designs are deterministic) and the Fabric
 image is shown at `scaleX = scaleY = 1/density` with `_curveDensity` stamped (in `CANVAS_CUSTOM_PROPS`).
 **A baked curved image's scale is therefore NOT its size: `effectiveCurvedScale(scale, density)` is.**
@@ -1304,8 +1305,7 @@ The two readers of that scale were normalized: `rebakeCurvedOnResize` (resize �
 2× bake at scale 0.5 vs a 1× bake at scale 1 — `tests/curve-density.test.ts`). The D2 re-fit callers
 use the re-fit factor, not the object's scale, so they were already fine; old bakes carry no density →
 1 → unchanged. Production was never soft (cut files are vector from the `_curve*` params); the preview
-PNG now gets real detail too. The hi-res SVG clipart raster (1500 px) was NOT the cause — crisp at 100%
-and 150% zoom in a Retina reproduction; the embroidery look's soft halo (shadow + satin) is by design.
+PNG now gets real detail too. The embroidery look's soft halo (shadow + satin) is by design.
 
 **Placement guides hide by default (2026-10-23).** Reference boxes (e.g. the Cotton T "Chest" 3.5")
 were always-on dashed outlines with a label that sat on the artwork. They now render at opacity 0 and
