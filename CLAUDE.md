@@ -474,9 +474,11 @@ nothing to hide.
 | `SHOPIFY_CUSTOMER_ACCOUNT_CLIENT_SECRET` | Required² | Server | **Yes** | Confidential OAuth client secret (`client_secret_basic` at the token endpoint). |
 | `NEXT_PUBLIC_APP_URL` | Required² | Public | No | Public origin used to build the OAuth `redirect_uri`; must match Shopify's registered callback. |
 | `DEBUG_SECRET` | Optional | Server | **Yes** | Shared secret gating `/api/debug` (`?secret=…`). Unset → endpoint 404s (fails closed). |
+| `BACKUP_MANIFEST_SECRET` | Optional³ | Server | **Yes** | Bearer secret for `/api/backup/manifest`, the path-to-design list the nightly storage backup writes to B2 (see `BACKUP.md`). Unset → 401. Same value lives in GitHub's secret store. |
 
 ¹ Required only once the Shopify `order/paid` webhook is registered (see the
 webhook note in Known Issues). ² Required for the Phase 1 customer-login flow.
+³ Required once the nightly storage backup is configured (`BACKUP.md`).
 
 > **Legacy/unused:** `.env.local` also contains `SHOPIFY_STOREFRONT_PRIVATE_TOKEN`,
 > which is **not referenced anywhere in the code** — the Storefront client uses the
@@ -1382,6 +1384,19 @@ Mechanics — reuse Phase 3's proven machinery wholesale:
 - **Joins the "Admin Reporting" backlog** (order statistics / best-selling
   products/colors/sizes) — one reporting effort, one dashboard, not two.
 
+### Cloudinary backup — Part 2 of the storage backup (DECIDED 2026-10-29, must exist BEFORE real orders)
+
+Part 1 (above, Deployment Notes) backs up Supabase Storage only. **Customer upload originals live on
+Cloudinary** (`customer_uploads.cloudinary_url` / `original_url`, the `_uploadSrc` copies inside saved
+designs, `design_orders.uploaded_files`), and the "reprints are indefinite" rule makes that the most
+important half once orders flow. Today it holds only test data (0 paid orders on 2026-10-29), so the
+timing is comfortable, but **it is a launch prerequisite, not a nice-to-have** (Denise: "it must be in place
+before we take real orders"). rclone has no Cloudinary backend and no Cloudinary Admin API key is
+configured. Two routes to scope when picked up: (a) Cloudinary's own Backup add-on (zero code, if the plan
+includes it); (b) our job: list assets through the Admin API (new secret) and copy them into the same B2
+bucket under `cloudinary/<public_id>`, with the manifest extended to Cloudinary refs (the backup log already
+prints `cloudinary_refs_not_in_this_backup=N` every night so the gap stays visible). ~1 day for (b).
+
 ### Embroidery — post-launch feature thread (Denise, 2026-08-04)
 
 **Untouched territory — the THIRD production mode** (vinyl-cut / print-then-cut /
@@ -1409,6 +1424,20 @@ discovery conversation. Full context in the `project_embroidery` memory.
 
 ## Deployment Notes
 
+- **Storage backup (2026-10-29): every Supabase Storage bucket → Backblaze B2, nightly, from GitHub
+  Actions.** `.github/workflows/storage-backup.yml` (03:30 Chicago + Run workflow) → `scripts/storage-backup.sh`
+  (pinned rclone; the bucket list comes from Supabase's S3 root, so new buckets are covered automatically and an
+  empty list FAILS; compare = size + server modtime, NOT size-only, because this app overwrites files in place
+  via `upsert: true`; deletions → `deleted/<date>/` kept 90 days; per-bucket count check; healthchecks.io
+  pings) → `POST /api/backup/manifest` (Bearer `BACKUP_MANIFEST_SECRET`, service role, pure helpers in
+  `app/lib/backupManifest.ts`, tested) reconciles the public tables' storage URLs against rclone's listing
+  → `manifest/manifest.csv` in B2 with each file `ok` / `orphan` / `missing`. Modelled on quote-builder's
+  backup (`~/Desktop/quote-builder/BACKUP.md`); ours differs in those three places. **Covers** all 7 buckets
+  incl. `pet-photos` (the Shopify project's, read only — the collision guard is honored). **Does NOT cover
+  Cloudinary** (customer upload originals; see Named Future Features → "Cloudinary backup — Part 2") or the
+  database (Supabase Pro keeps daily DB backups). Operator doc, setup steps, restores, monitoring: **`BACKUP.md`**.
+  Known data fact (2026-10-29): 776 of 778 per-order files in `design-exports` and 27 clipart files are
+  orphans — the cleanup crons delete rows, never files; the manifest flags them, cleanup is a separate decision.
 - Hosted on Vercel (inferred)
 - Environment variables must be set in Vercel dashboard for production (see the
   Environment Variables section above — mind the "Sensitive in Vercel" column)

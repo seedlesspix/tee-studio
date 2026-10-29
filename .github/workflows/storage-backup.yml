@@ -1,0 +1,40 @@
+# The nightly storage backup (2026-10-29): every Supabase Storage bucket to Backblaze B2 with rclone,
+# incremental, deletions kept 90 days, the path-to-design manifest beside the files, a per-bucket count
+# check, a healthchecks.io ping. Runs every night and on the "Run workflow" button. Every credential is a
+# GitHub secret (Settings → Secrets and variables → Actions); the B2 bucket's name is the variable
+# B2_BUCKET. Until the secrets exist the script exits cleanly with "not configured yet". See BACKUP.md.
+name: Storage backup
+on:
+  schedule:
+    - cron: "30 8 * * *"   # GitHub cron is UTC: 3:30 AM Chicago in summer (CDT), 2:30 AM in winter (CST); offset from quote-builder's 08:00
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: storage-backup
+  cancel-in-progress: false
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Install rclone (pinned, checksum verified)
+        run: |
+          set -euo pipefail
+          V=v1.68.2
+          curl -fsSLO "https://downloads.rclone.org/$V/rclone-$V-linux-amd64.zip"
+          curl -fsSL "https://downloads.rclone.org/$V/SHA256SUMS" | grep " rclone-$V-linux-amd64.zip$" | sha256sum -c -
+          unzip -q "rclone-$V-linux-amd64.zip"
+          sudo install -m 755 "rclone-$V-linux-amd64/rclone" /usr/local/bin/rclone
+          rclone version
+      - name: Back up every bucket
+        env:
+          SUPABASE_S3_ACCESS_KEY_ID: ${{ secrets.SUPABASE_S3_ACCESS_KEY_ID }}
+          SUPABASE_S3_SECRET_ACCESS_KEY: ${{ secrets.SUPABASE_S3_SECRET_ACCESS_KEY }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          B2_BUCKET: ${{ vars.B2_BUCKET }}
+          BACKUP_MANIFEST_SECRET: ${{ secrets.BACKUP_MANIFEST_SECRET }}
+          HEALTHCHECKS_PING_URL: ${{ secrets.HEALTHCHECKS_PING_URL }}
+        run: bash scripts/storage-backup.sh
