@@ -1,12 +1,11 @@
 // Background-removal provider glue (2026-10-30) — PURE: request builders, response parsing and error
 // wording for the designer's "Remove Background" button. The route (/api/remove-bg) does the fetching.
 //
-// Why two providers: remove.bg's self-serve API ends on 1 December 2026 (it moves to Leonardo.Ai,
-// part of Canva). Leonardo is the official successor — same engine lineage, URL in, JSON out, billed
-// per image (USD, pay-as-you-go). The provider is chosen by which key is configured: LEONARDO_API_KEY
-// wins; REMOVE_BG_API_KEY is the legacy path that keeps working until the cutover and is to be deleted
-// after it. Either way the route downloads the cutout bytes and re-hosts them on Cloudinary — order
-// artwork is kept forever, and Leonardo's ephemeral result URLs live only ~30 minutes.
+// Provider: Leonardo.Ai (part of Canva), the official successor to remove.bg, whose self-serve API ends
+// on 1 December 2026. Cutover confirmed in production on 2026-10-30; the remove.bg path was removed the
+// same day so the button fails loudly ("isn't set up") rather than falling back to a dead vendor. The
+// route downloads the cutout bytes and re-hosts them on Cloudinary — order artwork is kept forever, and
+// Leonardo's ephemeral result URLs live only ~30 minutes.
 //
 // Leonardo contract (docs.leonardo.ai → "Migrate from the remove.bg API"):
 //   POST https://cloud.leonardo.ai/api/rest/v2/generationssync   Authorization: Bearer <key>, JSON only
@@ -16,22 +15,17 @@
 // ephemeral:true = nothing is kept in the Leonardo library (customer images stay ours), result URL is a
 // short-lived download link. HTTPS URLs only, ~20 MB max input.
 
-export type Provider = 'leonardo' | 'removebg'
+export type Provider = 'leonardo'
 
-export type ProviderEnv = { LEONARDO_API_KEY?: string; REMOVE_BG_API_KEY?: string }
+export type ProviderEnv = { LEONARDO_API_KEY?: string }
 
-// Which provider the deployment uses, from the keys present. Leonardo first (the successor); remove.bg
-// only while no Leonardo key exists; null = the feature is not set up.
+// The configured key, or null = the feature is not set up (the route answers 503 with the key's name).
 export function pickProvider(env: ProviderEnv): { provider: Provider; key: string } | null {
   const leo = (env.LEONARDO_API_KEY || '').trim()
-  if (leo) return { provider: 'leonardo', key: leo }
-  const rbg = (env.REMOVE_BG_API_KEY || '').trim()
-  if (rbg) return { provider: 'removebg', key: rbg }
-  return null
+  return leo ? { provider: 'leonardo', key: leo } : null
 }
 
 export const LEONARDO_SYNC_URL = 'https://cloud.leonardo.ai/api/rest/v2/generationssync'
-export const REMOVE_BG_URL = 'https://api.remove.bg/v1.0/removebg'
 
 export type ProviderRequest = { url: string; init: { method: 'POST'; headers: Record<string, string>; body: BodyInit } }
 
@@ -56,13 +50,6 @@ export function buildLeonardoRequest(imageUrl: string, key: string): ProviderReq
       body: JSON.stringify(body),
     },
   }
-}
-
-export function buildRemoveBgRequest(imageUrl: string, key: string): ProviderRequest {
-  const form = new FormData()
-  form.append('image_url', imageUrl)
-  form.append('size', 'auto')
-  return { url: REMOVE_BG_URL, init: { method: 'POST', headers: { 'X-Api-Key': key }, body: form } }
 }
 
 export type LeonardoResult = { url: string; costUsd: number | null; width?: number; height?: number }
@@ -105,11 +92,12 @@ export function extractLeonardoError(json: unknown): string | null {
   return msg ? msg.slice(0, 200) : 'request rejected'
 }
 
-// Customer-facing failure wording per provider + HTTP status. The detail (when the provider's JSON
-// error carries one) is appended by the route.
+// Customer-facing failure wording per HTTP status. The detail (when the provider's JSON error carries
+// one) is appended by the route.
 export function describeProviderFailure(provider: Provider, status: number): string {
-  const name = provider === 'leonardo' ? 'Leonardo.Ai' : 'remove.bg'
-  const keyName = provider === 'leonardo' ? 'LEONARDO_API_KEY' : 'REMOVE_BG_API_KEY'
+  void provider
+  const name = 'Leonardo.Ai'
+  const keyName = 'LEONARDO_API_KEY'
   if (status === 401 || status === 403) return `authentication — the ${keyName} looks wrong or unauthorized`
   if (status === 402) return `quota/credits — the ${name} account is out of credits`
   if (status === 429) return 'rate limit — too many requests, wait a moment'
@@ -117,13 +105,11 @@ export function describeProviderFailure(provider: Provider, status: number): str
   return `${name} returned ${status}`
 }
 
-// Pull a human detail string out of either provider's error body, if there is one.
+// Pull a human detail string out of a non-2xx error body, if there is one.
 export function extractErrorDetail(bodyText: string): string {
   try {
     const j = JSON.parse(bodyText)
-    const rbg = j?.errors?.[0]?.title            // remove.bg: { errors: [{ title, code }] }
-    const leo = j?.error ?? j?.message ?? j?.detail // Leonardo: { error } / { message } / { detail }
-    const d = rbg ?? leo
+    const d = j?.error ?? j?.message ?? j?.detail ?? j?.errors?.[0]?.message // Leonardo: { error } / { message } / { detail } / { errors:[{message}] }
     if (typeof d === 'string') return d.slice(0, 200)
     if (d && typeof d === 'object' && typeof d.message === 'string') return d.message.slice(0, 200)
   } catch { /* not JSON */ }

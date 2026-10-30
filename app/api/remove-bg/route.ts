@@ -6,16 +6,16 @@
 // only the new URL. Order artwork is kept forever, so the re-host is mandatory (Leonardo's result
 // links expire in ~30 minutes).
 //
-// PROVIDER SWITCH (2026-10-30): remove.bg's self-serve API ends on 1 December 2026 (it moves to
-// Leonardo.Ai, part of Canva). LEONARDO_API_KEY → Leonardo (the successor; the designer's new path);
-// else REMOVE_BG_API_KEY → remove.bg (legacy, keeps working until the cutover; delete the key after).
-// Request/response shapes and the customer-facing wording live in app/lib/backgroundRemoval.ts
-// (pure, tested). Unauthenticated endpoint that spends paid credits per call → gated: same-site
+// PROVIDER: Leonardo.Ai (LEONARDO_API_KEY) — the successor to remove.bg, whose self-serve API ends on
+// 1 December 2026. Cutover confirmed in production 2026-10-30; the remove.bg path is gone, so a missing
+// key fails loudly (503) instead of falling back to a dead vendor. Request/response shapes (as observed
+// in production, not as the migration guide describes them) and the customer-facing wording live in
+// app/lib/backgroundRemoval.ts (pure, tested). Unauthenticated endpoint that spends paid credits per call → gated: same-site
 // origin + per-IP throttle + a per-instance hourly credit circuit-breaker (see rateLimit.ts).
 import { NextRequest, NextResponse } from 'next/server'
 import { rateLimit, clientIp, originAllowed } from '../../lib/server/rateLimit'
 import {
-  pickProvider, buildLeonardoRequest, buildRemoveBgRequest, parseLeonardoResult, describeProviderFailure, extractErrorDetail,
+  pickProvider, buildLeonardoRequest, parseLeonardoResult, describeProviderFailure, extractErrorDetail,
   extractLeonardoError, type Provider,
 } from '../../lib/backgroundRemoval'
 
@@ -32,8 +32,8 @@ const PROVIDER_TIMEOUT_MS = 45_000
 
 // Call the chosen provider and return the cutout's PNG bytes, or a ready-to-send error response.
 async function fetchCutout(provider: Provider, key: string, imageUrl: string): Promise<{ bytes: Buffer } | { error: NextResponse }> {
-  const req = provider === 'leonardo' ? buildLeonardoRequest(imageUrl, key) : buildRemoveBgRequest(imageUrl, key)
-  const vendor = provider === 'leonardo' ? 'Leonardo.Ai' : 'remove.bg'
+  const req = buildLeonardoRequest(imageUrl, key)
+  const vendor = 'Leonardo.Ai'
   let res: Response
   try {
     res = await fetch(req.url, { ...req.init, signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS) })
@@ -47,8 +47,6 @@ async function fetchCutout(provider: Provider, key: string, imageUrl: string): P
     const detail = extractErrorDetail(body)
     return { error: NextResponse.json({ error: `Background removal failed: ${describeProviderFailure(provider, res.status)}${detail ? ` — ${detail}` : ''}.` }, { status: 502 }) }
   }
-  if (provider === 'removebg') return { bytes: Buffer.from(await res.arrayBuffer()) } // remove.bg streams the PNG itself
-
   // Leonardo answers JSON with a short-lived download link (and what the call cost) → fetch the bytes now.
   const json = await res.json().catch(() => null)
   const result = parseLeonardoResult(json)
@@ -74,7 +72,7 @@ async function fetchCutout(provider: Provider, key: string, imageUrl: string): P
 }
 
 export async function POST(req: NextRequest) {
-  const chosen = pickProvider({ LEONARDO_API_KEY: process.env.LEONARDO_API_KEY, REMOVE_BG_API_KEY: process.env.REMOVE_BG_API_KEY })
+  const chosen = pickProvider({ LEONARDO_API_KEY: process.env.LEONARDO_API_KEY })
   if (!chosen) {
     console.error('[remove-bg] no background-removal key is set in this deployment (LEONARDO_API_KEY)')
     return NextResponse.json({ error: "Remove Background isn't set up yet (no API key — add LEONARDO_API_KEY and redeploy)." }, { status: 503 })

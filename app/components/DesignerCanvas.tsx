@@ -4120,7 +4120,7 @@ export default function DesignerCanvas({
         img._editHist = [snapshotState(img, img.getSrc?.() ?? img._element?.src ?? oldSrc, oldSrc, preEntry ? { ...preEntry } : undefined)]
         img._editIdx = 0
       }
-      // Remove Background returns a cutout at a DIFFERENT pixel size than the original (remove.bg
+      // Remove Background returns a cutout at a DIFFERENT pixel size than the original (provider
       // output res / Cloudinary re-host), so setSrc would resize it on the shirt. Preserve the
       // on-shirt WIDTH (uniform scale, aspect kept). Crop deliberately keeps scale + repositions.
       const prevScaledW = opts?.preserveSize ? (img.getScaledWidth?.() || 0) : 0
@@ -4190,12 +4190,12 @@ export default function DesignerCanvas({
     await applyEditedImage(img, imageDataToPngDataUrl(imgData))
   }
 
-  // Remove Background — AI auto removal via the server proxy (remove.bg). For photos/complex art
+  // Remove Background — AI auto removal via the server proxy (Leonardo.Ai since 2026-10-30). For photos/complex art
   // where a color-knockout won't do. Persists the transparent result like every other edit.
   const removeBackgroundFromSelected = async () => {
     const img: any = fabricCanvas?.getActiveObject()
     if (!img || String(img.type).toLowerCase() !== 'image') return
-    // Send the image's HOSTED Cloudinary URL — remove.bg fetches it itself. Never ship the bytes:
+    // Send the image's HOSTED Cloudinary URL — the provider fetches it itself. Never ship the bytes:
     // Vercel caps this function's request+response at ~4.5MB and any real phone photo exceeds it.
     const src = String(img._uploadSrc || '')
     if (!/^https?:\/\//.test(src)) { alert(t('designer.removebg_wait', 'Please wait a moment for the upload to finish (or re-upload the image), then try Remove Background again.')); return }

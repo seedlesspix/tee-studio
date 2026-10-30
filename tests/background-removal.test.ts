@@ -1,20 +1,16 @@
 import { describe, it, expect } from 'vitest'
 import {
-  pickProvider, buildLeonardoRequest, buildRemoveBgRequest, parseLeonardoResult, describeProviderFailure,
-  extractErrorDetail, extractLeonardoError, LEONARDO_SYNC_URL, REMOVE_BG_URL,
+  pickProvider, buildLeonardoRequest, parseLeonardoResult, describeProviderFailure,
+  extractErrorDetail, extractLeonardoError, LEONARDO_SYNC_URL,
 } from '../app/lib/backgroundRemoval'
 
-describe('pickProvider — Leonardo wins, remove.bg is the legacy path, nothing = not set up', () => {
-  it('prefers Leonardo when both keys exist (the cutover switch)', () => {
-    expect(pickProvider({ LEONARDO_API_KEY: 'leo', REMOVE_BG_API_KEY: 'rbg' })).toEqual({ provider: 'leonardo', key: 'leo' })
+describe('pickProvider — Leonardo only; no key = not set up (never a silent fallback to remove.bg)', () => {
+  it('returns the Leonardo key', () => {
+    expect(pickProvider({ LEONARDO_API_KEY: 'leo' })).toEqual({ provider: 'leonardo', key: 'leo' })
   })
-  it('falls back to remove.bg until the Leonardo key exists', () => {
-    expect(pickProvider({ REMOVE_BG_API_KEY: 'rbg' })).toEqual({ provider: 'removebg', key: 'rbg' })
-    expect(pickProvider({ LEONARDO_API_KEY: '   ', REMOVE_BG_API_KEY: 'rbg' })).toEqual({ provider: 'removebg', key: 'rbg' })
-  })
-  it('null when no key is configured', () => {
+  it('null when the key is missing or blank', () => {
     expect(pickProvider({})).toBeNull()
-    expect(pickProvider({ LEONARDO_API_KEY: '', REMOVE_BG_API_KEY: '' })).toBeNull()
+    expect(pickProvider({ LEONARDO_API_KEY: '   ' })).toBeNull()
   })
 })
 
@@ -34,17 +30,6 @@ describe('buildLeonardoRequest — the documented sync call, URL in, PNG out, no
     expect(body.parameters.size).toBe('full')
     expect(body.parameters.format).toBe('png')
     expect(body.parameters.guidances.image_reference).toEqual([{ image: { type: 'URL', url: 'https://res.cloudinary.com/demo/image/upload/v1/x.jpg' } }])
-  })
-})
-
-describe('buildRemoveBgRequest — the legacy call, unchanged', () => {
-  it('multipart image_url + size=auto with the X-Api-Key header', () => {
-    const r = buildRemoveBgRequest('https://res.cloudinary.com/demo/x.jpg', 'KEY')
-    expect(r.url).toBe(REMOVE_BG_URL)
-    expect(r.init.headers['X-Api-Key']).toBe('KEY')
-    const form = r.init.body as FormData
-    expect(form.get('image_url')).toBe('https://res.cloudinary.com/demo/x.jpg')
-    expect(form.get('size')).toBe('auto')
   })
 })
 
@@ -91,14 +76,14 @@ describe('extractLeonardoError — a 200 that carries an error list (the exact p
 describe('failure wording', () => {
   it('names the right key and vendor per provider', () => {
     expect(describeProviderFailure('leonardo', 401)).toContain('LEONARDO_API_KEY')
-    expect(describeProviderFailure('removebg', 403)).toContain('REMOVE_BG_API_KEY')
+    expect(describeProviderFailure('leonardo', 403)).toContain('LEONARDO_API_KEY')
     expect(describeProviderFailure('leonardo', 402)).toContain('Leonardo.Ai account is out of credits')
     expect(describeProviderFailure('leonardo', 429)).toContain('rate limit')
     expect(describeProviderFailure('leonardo', 422)).toContain('rejected the image')
-    expect(describeProviderFailure('removebg', 500)).toBe('remove.bg returned 500')
+    expect(describeProviderFailure('leonardo', 500)).toBe('Leonardo.Ai returned 500')
   })
-  it('extracts a detail from either vendor\'s error JSON', () => {
-    expect(extractErrorDetail(JSON.stringify({ errors: [{ title: 'Insufficient credits', code: 'x' }] }))).toBe('Insufficient credits')
+  it('extracts a detail from a non-2xx error body', () => {
+    expect(extractErrorDetail(JSON.stringify({ errors: [{ message: 'Insufficient credits' }] }))).toBe('Insufficient credits')
     expect(extractErrorDetail(JSON.stringify({ error: 'Unauthorized' }))).toBe('Unauthorized')
     expect(extractErrorDetail(JSON.stringify({ message: 'Model not found' }))).toBe('Model not found')
     expect(extractErrorDetail(JSON.stringify({ error: { message: 'nested' } }))).toBe('nested')
