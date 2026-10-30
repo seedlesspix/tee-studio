@@ -39,6 +39,9 @@ export function buildLeonardoRequest(imageUrl: string, key: string): ProviderReq
   const body = {
     model: 'remove-bg',
     ephemeral: true, // keep nothing in the Leonardo library; we re-host the result ourselves
+    // Documented as optional (default false) but the live API REJECTS its absence: production log
+    // 2026-10-30, HTTP 200 with [{"message":"public must be boolean", ...}]. Always send it.
+    public: false,
     parameters: {
       size: 'full',   // full-resolution cutout (what remove.bg's size=auto gave us)
       format: 'png',  // transparency
@@ -80,6 +83,20 @@ export function parseLeonardoResult(json: unknown): LeonardoResult | null {
     width: typeof first.width === 'number' ? first.width : undefined,
     height: typeof first.height === 'number' ? first.height : undefined,
   }
+}
+
+// Leonardo can answer HTTP 200 with an ERROR LIST instead of a result (seen in production 2026-10-30:
+// `[{"extensions":{"code":"BAD_REQUEST",...},"message":"public must be boolean","path":[]}]`), or the
+// GraphQL-style `{ errors: [{ message }] }`. Return the first message so the customer and the log see
+// Leonardo's own words rather than "unexpected response"; null when the body isn't an error list.
+export function extractLeonardoError(json: unknown): string | null {
+  const list = Array.isArray(json) ? json : (json && typeof json === 'object' && Array.isArray((json as { errors?: unknown }).errors))
+    ? (json as { errors: unknown[] }).errors : null
+  if (!list || !list.length) return null
+  const first = list[0] as { message?: unknown; extensions?: { errorMessages?: unknown } } | undefined
+  const fromExt = Array.isArray(first?.extensions?.errorMessages) ? first!.extensions!.errorMessages!.filter(m => typeof m === 'string').join('; ') : ''
+  const msg = typeof first?.message === 'string' && first.message ? first.message : fromExt
+  return msg ? msg.slice(0, 200) : 'request rejected'
 }
 
 // Customer-facing failure wording per provider + HTTP status. The detail (when the provider's JSON

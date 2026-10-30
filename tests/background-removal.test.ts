@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   pickProvider, buildLeonardoRequest, buildRemoveBgRequest, parseLeonardoResult, describeProviderFailure,
-  extractErrorDetail, LEONARDO_SYNC_URL, REMOVE_BG_URL,
+  extractErrorDetail, extractLeonardoError, LEONARDO_SYNC_URL, REMOVE_BG_URL,
 } from '../app/lib/backgroundRemoval'
 
 describe('pickProvider — Leonardo wins, remove.bg is the legacy path, nothing = not set up', () => {
@@ -26,10 +26,11 @@ describe('buildLeonardoRequest — the documented sync call, URL in, PNG out, no
     expect(r.init.headers.authorization).toBe('Bearer KEY')
     expect(r.init.headers['content-type']).toBe('application/json')
   })
-  it('body: model remove-bg, ephemeral, full-size png, the image as a URL reference', () => {
+  it('body: model remove-bg, ephemeral, public:false (the live API rejects its absence), full-size png, the image as a URL reference', () => {
     const body = JSON.parse(r.init.body as string)
     expect(body.model).toBe('remove-bg')
     expect(body.ephemeral).toBe(true)
+    expect(body.public).toBe(false) // production 2026-10-30: 200 + [{"message":"public must be boolean"}] without it
     expect(body.parameters.size).toBe('full')
     expect(body.parameters.format).toBe('png')
     expect(body.parameters.guidances.image_reference).toEqual([{ image: { type: 'URL', url: 'https://res.cloudinary.com/demo/image/upload/v1/x.jpg' } }])
@@ -59,6 +60,23 @@ describe('parseLeonardoResult', () => {
     expect(parseLeonardoResult({})).toBeNull()
     expect(parseLeonardoResult(null)).toBeNull()
     expect(parseLeonardoResult('nope')).toBeNull()
+  })
+})
+
+describe('extractLeonardoError — a 200 that carries an error list (the exact production body, 2026-10-30)', () => {
+  const prodBody = [{ extensions: { code: 'BAD_REQUEST', errorCode: 1, errorMessages: ['public must be boolean'], statusCode: 400 }, locations: [], message: 'public must be boolean', path: [] }]
+  it('surfaces Leonardo\'s message from an array body and from a GraphQL errors object', () => {
+    expect(parseLeonardoResult(prodBody)).toBeNull()
+    expect(extractLeonardoError(prodBody)).toBe('public must be boolean')
+    expect(extractLeonardoError({ errors: [{ message: 'model not found' }] })).toBe('model not found')
+    expect(extractLeonardoError([{ extensions: { errorMessages: ['a', 'b'] } }])).toBe('a; b')
+    expect(extractLeonardoError([{}])).toBe('request rejected')
+  })
+  it('is null for a real result or junk, so a good response is never mistaken for an error', () => {
+    expect(extractLeonardoError({ results: [{ url: 'https://x/y.png' }] })).toBeNull()
+    expect(extractLeonardoError([])).toBeNull()
+    expect(extractLeonardoError(null)).toBeNull()
+    expect(extractLeonardoError('nope')).toBeNull()
   })
 })
 

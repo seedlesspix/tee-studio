@@ -16,7 +16,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { rateLimit, clientIp, originAllowed } from '../../lib/server/rateLimit'
 import {
   pickProvider, buildLeonardoRequest, buildRemoveBgRequest, parseLeonardoResult, describeProviderFailure, extractErrorDetail,
-  type Provider,
+  extractLeonardoError, type Provider,
 } from '../../lib/backgroundRemoval'
 
 export const runtime = 'nodejs'
@@ -53,8 +53,10 @@ async function fetchCutout(provider: Provider, key: string, imageUrl: string): P
   const json = await res.json().catch(() => null)
   const result = parseLeonardoResult(json)
   if (!result) {
-    console.error('[remove-bg] Leonardo returned an unexpected shape', JSON.stringify(json).slice(0, 800))
-    return { error: NextResponse.json({ error: 'Background removal failed: Leonardo.Ai returned an unexpected response.' }, { status: 502 }) }
+    // A 200 can still carry Leonardo's validation errors (production, 2026-10-30) — say what it said.
+    const rejected = extractLeonardoError(json)
+    console.error('[remove-bg] Leonardo returned no result', rejected ?? 'unexpected shape', JSON.stringify(json).slice(0, 800))
+    return { error: NextResponse.json({ error: rejected ? `Background removal failed: Leonardo.Ai rejected the request — ${rejected}.` : 'Background removal failed: Leonardo.Ai returned an unexpected response.' }, { status: 502 }) }
   }
   if (result.costUsd != null) console.log(`[remove-bg] leonardo ok cost=$${result.costUsd} ${result.width ?? '?'}x${result.height ?? '?'}`)
   let dl: Response
