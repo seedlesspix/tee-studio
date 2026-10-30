@@ -392,6 +392,20 @@ trusting a read, ask "what does this surface refuse to show me?"
   hi-res clipart data URLs from every snapshot — history gets light first, then gets built. Don't
   re-debate the order. **Quick win SHIPPED 2026-10-17:** the desktop arrows are hidden (not just
   disabled) when no image with edit history is selected, matching mobile.
+- **Remove Background provider = Leonardo.Ai (switched 2026-10-30; remove.bg dies 1 Dec 2026).**
+  `/api/remove-bg` keeps the URL-in/URL-out shape (client sends the Cloudinary URL, the provider fetches
+  it, we download the cutout and re-host it on Cloudinary — mandatory, order artwork is kept forever and
+  Leonardo's result links expire in ~30 min). Provider glue is pure + tested in
+  `app/lib/backgroundRemoval.ts`: `pickProvider` (LEONARDO_API_KEY wins, REMOVE_BG_API_KEY legacy),
+  Leonardo sync call `POST …/api/rest/v2/generationssync` `{ model:'remove-bg', ephemeral:true,
+  parameters:{ size:'full', format:'png', guidances:{ image_reference:[{ image:{ type:'URL', url } }] } } }`
+  → `results[0].url` + `cost.amount` (USD $0.1047/image on 2026-10-30, logged per call). Rate limits,
+  origin gate and the designer's edit pipeline are untouched. Alternatives weighed: Photoroom ($0.02/img but
+  prepaid 1,000-image packs that don't roll over → pricier below ~200/month), Cloudinary's
+  `e_background_removal` (billing only described as "a special transformation count"; the legacy add-on is
+  closed to accounts created after Feb 2026), in-browser @imgly (40 MB+ download, slow on phones).
+  **After the cutover is confirmed in production: delete `REMOVE_BG_API_KEY` from Vercel.** Unused remove.bg
+  credits expire 1 Dec 2026 (non-refundable).
 - **No save drafts**: Designs only saved at checkout
 - **No design sharing**: No public gallery or social sharing
 - **Webhook**: `shopify-webhook/route.ts` handles two Shopify topics at one URL. **Both are APP
@@ -475,10 +489,13 @@ nothing to hide.
 | `NEXT_PUBLIC_APP_URL` | Required² | Public | No | Public origin used to build the OAuth `redirect_uri`; must match Shopify's registered callback. |
 | `DEBUG_SECRET` | Optional | Server | **Yes** | Shared secret gating `/api/debug` (`?secret=…`). Unset → endpoint 404s (fails closed). |
 | `BACKUP_MANIFEST_SECRET` | Optional³ | Server | **Yes** | Bearer secret for `/api/backup/manifest`, the path-to-design list the nightly storage backup writes to B2 (see `BACKUP.md`). Unset → 401. Same value lives in GitHub's secret store. |
+| `LEONARDO_API_KEY` | Required⁴ | Server | **Yes** | Leonardo.Ai key for the designer's **Remove Background** button (`/api/remove-bg`). remove.bg's self-serve API ends **1 Dec 2026** and moves to Leonardo.Ai; this key is the successor path. |
+| `REMOVE_BG_API_KEY` | Legacy | Server | **Yes** | remove.bg key, read ONLY while `LEONARDO_API_KEY` is unset. Dead after 1 Dec 2026 — delete from Vercel once Leonardo is confirmed. |
 
 ¹ Required only once the Shopify `order/paid` webhook is registered (see the
 webhook note in Known Issues). ² Required for the Phase 1 customer-login flow.
 ³ Required once the nightly storage backup is configured (`BACKUP.md`).
+⁴ Required for Remove Background to work at all; without either key the button answers "isn't set up yet" (503).
 
 > **Legacy/unused:** `.env.local` also contains `SHOPIFY_STOREFRONT_PRIVATE_TOKEN`,
 > which is **not referenced anywhere in the code** — the Storefront client uses the
