@@ -70,8 +70,14 @@ export type LeonardoResult = { url: string; costUsd: number | null; width?: numb
 // The cutout's download URL (and what the call cost) out of Leonardo's JSON, or null when the shape
 // isn't what the docs promise — the route treats that as "unexpected response", never as success.
 export function parseLeonardoResult(json: unknown): LeonardoResult | null {
-  if (!json || typeof json !== 'object') return null
-  const j = json as { results?: unknown; cost?: unknown }
+  if (!json || typeof json !== 'object' || Array.isArray(json)) return null
+  // The LIVE sync endpoint wraps the documented object under a top-level `generateSync` key (production
+  // success body, 2026-10-30: `{"generateSync":{"id":…,"cost":{…},"results":[{"contentType":"image/png",
+  // "url":"https://…s3…?X-Amz-Expires=1800…"}]}}`). The migration guide shows it unwrapped; accept both.
+  const outer = json as { generateSync?: unknown; results?: unknown }
+  const inner = outer.generateSync && typeof outer.generateSync === 'object' && !Array.isArray(outer.generateSync)
+    ? outer.generateSync : json
+  const j = inner as { results?: unknown; cost?: unknown }
   const results = Array.isArray(j.results) ? j.results : []
   const first = results[0] as { url?: unknown; width?: unknown; height?: unknown } | undefined
   if (!first || typeof first.url !== 'string' || !/^https:\/\//.test(first.url)) return null

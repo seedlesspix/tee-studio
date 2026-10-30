@@ -49,7 +49,15 @@ describe('buildRemoveBgRequest — the legacy call, unchanged', () => {
 })
 
 describe('parseLeonardoResult', () => {
-  it('reads results[0].url and cost.amount', () => {
+  it('reads the LIVE shape: everything under a top-level generateSync key (production success body, 2026-10-30)', () => {
+    const prod = { generateSync: { id: '1f1d497b-1745-6f20-9758-4458c74526db', blockedCount: 0, cost: { amount: '0.1047', unit: 'DOLLARS' },
+      results: [{ contentType: 'image/png', url: 'https://leonardoai-generations-temporary-assets-prod.s3.us-east-1.amazonaws.com/ephemeral/users/u/generations/g/remove-bg_-0.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=1800' }] } }
+    const res = parseLeonardoResult(prod)
+    expect(res?.url).toBe(prod.generateSync.results[0].url)
+    expect(res?.costUsd).toBe(0.1047)
+    expect(res?.width).toBeUndefined() // the live body carries no width/height
+  })
+  it('reads results[0].url and cost.amount in the documented (unwrapped) shape too', () => {
     const res = parseLeonardoResult({ id: 'g1', blockedCount: 0, cost: { amount: '0.1047', unit: 'DOLLARS' }, results: [{ url: 'https://cdn.leonardo.ai/out.png', contentType: 'image/png', width: 1200, height: 900 }] })
     expect(res).toEqual({ url: 'https://cdn.leonardo.ai/out.png', costUsd: 0.1047, width: 1200, height: 900 })
   })
